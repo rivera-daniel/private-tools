@@ -1,4 +1,6 @@
 // File names and reported values come from the user's files. Render through textContent only.
+import { clearFile, takeFile } from '/tools/lib/handoff.js';
+
 const $ = (id) => document.getElementById(id);
 const MAX_BYTES = 200 * 1024 * 1024;
 const TIMEOUT_MS = 120000;
@@ -95,3 +97,9 @@ for (const type of ['dragleave', 'drop']) zone.addEventListener(type, () => zone
 zone.addEventListener('drop', (e) => { e.preventDefault(); add([...e.dataTransfer.files]); });
 for (const type of ['dragover', 'drop']) window.addEventListener(type, (e) => e.preventDefault());
 window.addEventListener('pagehide', () => { for (const u of urls) URL.revokeObjectURL(u); });
+
+// Image Inspector hands over the image it just inspected.
+if (location.hash === '#from-inspector') {
+  history.replaceState(null, '', location.pathname);
+  takeFile().then((file) => { if (file) add([file]); }, () => {});
+} else clearFile();

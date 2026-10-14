@@ -50,6 +50,7 @@ Planned improvements:
 
 - All parsing runs in a Web Worker in the browser. No file data leaves the device.
 - Pages are served with a Content Security Policy of `default-src 'self'` and `connect-src 'none'`, so the page cannot make network requests. The site itself loads no third-party scripts, fonts or analytics.
+- Opening an inspected image in Metadata Cleaner passes the file through the browser's own storage (IndexedDB). The cleaner deletes it as soon as it reads it, and any tool page deletes a leftover copy when it loads.
 - Extracted values are rendered as text only and are never interpreted as HTML.
 - Parsers treat every input as hostile: reads are bounds-checked, directory loops are detected, and decompression, nesting depth and field counts are capped.
 

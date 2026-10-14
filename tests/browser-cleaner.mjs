@@ -53,6 +53,18 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   assert.deepEqual(problems, [], 'console problems');
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   assert.equal(overflow, false, `horizontal overflow at ${label} width`);
+
+  // The inspector's cleaner card opens the cleaner with the inspected image queued, then the stored copy is gone.
+  await page.context().setOffline(false);
+  await page.goto(`${base}/tools/image-inspector/`, { waitUntil: 'networkidle' });
+  await page.setInputFiles('#file', `${dir}/photo.jpg`);
+  await page.waitForSelector('#cleaner:not([hidden])');
+  await Promise.all([page.waitForURL(`${base}/tools/metadata-cleaner/`), page.click('#cleaner')]);
+  await page.waitForFunction(() => document.querySelector('.job')?.dataset.state === 'done', null, { timeout: 15000 });
+  assert.equal(await page.$eval('.job strong', (n) => n.textContent), 'photo.jpg');
+  const leftover = await page.evaluate(() => new Promise((resolve) => { const r = indexedDB.open('private-tools'); r.onsuccess = () => { const g = r.result.transaction('handoff').objectStore('handoff').count(); g.onsuccess = () => resolve(g.result); }; }));
+  assert.equal(leftover, 0, 'handed-off file left in IndexedDB');
+  assert.deepEqual(problems, [], 'console problems after handoff');
   console.log(`${label}: ok`);
   await page.close();
 }

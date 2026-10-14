@@ -1,4 +1,6 @@
 // Every extracted value is attacker-controlled. Render through textContent only.
+import { clearFile, sendFile } from '/tools/lib/handoff.js';
+
 const $ = (id) => document.getElementById(id);
 const MAX_BYTES = 200 * 1024 * 1024;
 const TIMEOUT_MS = 60000;
@@ -12,6 +14,7 @@ const SUPPORTED = new Set(['JPEG', 'PNG', 'WebP', 'HEIC', 'HEIF', 'AVIF', 'JPEG 
 // Workers load with the page, so inspecting a file needs no network access. A spare stands by so
 // cancelling still works offline.
 let worker = spawn(); let spare = spawn(); let pending = null; let timer = null; let previewUrl = null;
+let cleanerFile = null;
 
 function spawn() {
   const w = new Worker('/tools/image-inspector/worker.js', { type: 'module' });
@@ -39,7 +42,7 @@ function reset() {
   if (pending) restart();
   for (const id of ['signals', 'privacy', 'highlights', 'sources', 'technical', 'structure', 'warnings']) $(id).replaceChildren();
   if (previewUrl) URL.revokeObjectURL(previewUrl);
-  previewUrl = null;
+  previewUrl = null; cleanerFile = null;
   $('preview').removeAttribute('src'); $('preview').hidden = false; $('no-preview').hidden = true;
   $('filter').value = '';
   $('results').hidden = true; $('busy').hidden = true; $('dropzone').hidden = false;
@@ -95,10 +98,11 @@ function render(file, report) {
 
   const { blocks: removable, bytes: removableBytes } = report.cleanable;
   const cleanable = CLEANABLE.has(report.format);
+  cleanerFile = cleanable && removable > 0 ? file : null;
   $('cleaner').hidden = removable === 0;
   $('cleaner-title').textContent = `${plural(removable, 'metadata block')} (${formatBytes(removableBytes)}) can be removed`;
   $('cleaner-detail').textContent = cleanable
-    ? `Open Metadata Cleaner to remove ${removable === 1 ? 'it' : 'them'} on your device.`
+    ? `Open this image in Metadata Cleaner to remove ${removable === 1 ? 'it' : 'them'} on your device.`
     : `Metadata Cleaner supports JPEG, PNG, WebP and GIF. ${report.format} support is planned.`;
 
   const highlights = [...report.highlights].sort((a, b) => order(a.name) - order(b.name));
@@ -171,6 +175,14 @@ function applyFilter() {
   }
   $('filter-empty').hidden = any || !q;
 }
+
+// The cleaner card opens Metadata Cleaner with this image already queued.
+$('cleaner').addEventListener('click', async (e) => {
+  if (!cleanerFile || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  try { await sendFile(cleanerFile); location.assign('/tools/metadata-cleaner/#from-inspector'); } catch { location.assign('/tools/metadata-cleaner/'); }
+});
+clearFile();
 
 $('filter').addEventListener('input', applyFilter);
 $('file').addEventListener('change', (e) => inspect(e.target.files[0]));

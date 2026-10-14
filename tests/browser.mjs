@@ -104,7 +104,7 @@ try {
   // Catalog card links to the tool.
   const page = await browser.newPage();
   await page.goto(`${base}/tools/`, { waitUntil: 'networkidle' });
-  await page.getByRole('button', { name: /Image Inspector/ }).click();
+  await page.getByRole('link', { name: /Image Inspector/ }).first().click();
   await page.waitForURL(/\/tools\/image-inspector\/$/);
   console.log('catalog link ok');
   console.log('browser checks passed');

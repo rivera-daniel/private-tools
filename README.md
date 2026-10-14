@@ -18,6 +18,23 @@ Lists the metadata stored in an image file and highlights what it exposes.
 
 Each metadata block is reported with its byte offset and length.
 
+## Roadmap
+
+| Tool | Status | Description |
+|---|---|---|
+| Image Inspector | Available | Lists image metadata and flags what it exposes. |
+| Metadata Cleaner | In development | Removes metadata from images on your device, then re-inspects the result to confirm what was removed. |
+| PDF Privacy Cleaner | Planned | Inspects PDF metadata, hidden content and embedded files, and prepares a cleaner copy to share. |
+| Private OCR | Planned | Extracts text from images and scanned documents on your device. |
+| Image Converter | Planned | Converts, resizes and compresses images without uploading them. |
+| Resume ATS Preview | Planned | Shows the text an applicant tracking system extracts from a resume and flags formatting it cannot read. |
+
+Planned improvements to Image Inspector:
+
+- [ ] Offline support across page reloads (service worker)
+- [ ] Content Credentials signature and trust-chain verification
+- [ ] Decoding of Brotli-compressed JPEG XL metadata boxes
+
 ## Privacy model
 
 - All parsing runs in a Web Worker in the browser. No file data leaves the device.
@@ -31,6 +48,7 @@ Each metadata block is reported with its byte offset and length.
 site/                    Deployable static site, served under /tools/
   _headers               Response headers, including the Content Security Policy
   tools/index.html       Tool catalog
+  tools/assets/         Shared stylesheet, theme script, fonts and icons
   tools/image-inspector/ Image Inspector page, UI and worker
   tools/lib/metadata/    Metadata parsers (ES modules, no dependencies)
 tests/                   Parser and browser tests, fixtures and reference data

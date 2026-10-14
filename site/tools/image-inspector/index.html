@@ -1,10 +1,17 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="theme-color" content="#fcfcfd"><meta name="description" content="See all the metadata in an image: GPS location, camera and serial numbers, names, software, hidden data, Content Credentials and AI-generated image declarations. Runs in your browser. Nothing is uploaded."><title>Image Inspector — Private Tools</title><link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/tools/assets/styles.css"><link rel="stylesheet" href="/tools/assets/fidelity.css"><link rel="stylesheet" href="/tools/assets/catalog-layout.css"><link rel="stylesheet" href="/tools/image-inspector/inspector.css"></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="description" content="See all the metadata in an image: GPS location, camera and serial numbers, names, software, hidden data, Content Credentials and AI-generated image declarations. Runs in your browser. Nothing is uploaded."><title>Image Inspector — Private Tools</title><meta name="color-scheme" content="light dark"><link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/tools/assets/site.css"><link rel="stylesheet" href="/tools/image-inspector/inspector.css"><script src="/tools/assets/theme.js"></script></head>
 <body>
-<header class="header wrap"><a class="brand" href="/tools/"><span class="mark" aria-hidden="true"><svg viewBox="0 0 44 30"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg></span>Private Tools</a><nav><a href="/tools/#tools">All tools</a><a href="#how-it-works">How it works</a><a href="#privacy">Privacy</a></nav></header>
+<header class="header wrap">
+  <a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
+  <nav aria-label="Primary">
+    <a class="nav-text" href="/tools/">All tools</a>
+    <a class="nav-text" href="https://github.com/rivera-daniel/private-tools">GitHub</a>
+    <button type="button" class="icon-button" id="theme-toggle" aria-label="Change theme"></button>
+  </nav>
+</header>
 <main>
 <section class="tool-hero wrap">
-  <p class="crumbs"><a href="/tools/#tools">All tools</a><span aria-hidden="true">/</span>Image Inspector</p>
+  <p class="crumbs"><a href="/tools/">All tools</a><span aria-hidden="true">/</span>Image Inspector</p>
   <h1 class="tool-title">Image Inspector</h1>
   <p class="tool-intro">See everything an image file says about itself. Location, camera, people, software, AI provenance and hidden data, read on your device.</p>
 </section>
@@ -12,7 +19,7 @@
 <section class="wrap workbench" aria-live="polite">
   <label class="dropzone" id="dropzone">
     <input type="file" id="file" class="visually-hidden" accept="image/*,.heic,.heif,.avif,.jxl,.tif,.tiff,.dng,.cr2,.cr3,.nef,.arw,.orf,.rw2,.pef,.raf,.psd,.psb,.bmp,.svg">
-    <span class="drop-art" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke="#bd102b" stroke-width="2.2"/><rect x="17" y="21" width="30" height="23" rx="3" fill="#d4d9de"/><path d="m19 41 8-11 6 7 5-8 7 12" fill="#77848f"/><circle cx="40" cy="25" r="2.3" fill="#717b86"/></svg></span>
+    <span class="drop-art" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><rect class="art-soft-fill" x="17" y="21" width="30" height="23" rx="3"/><path class="art-mid-fill" d="m19 41 8-11 6 7 5-8 7 12"/><circle class="art-mid-fill" cx="40" cy="25" r="2.3"/></svg></span>
     <strong>Drop an image here</strong>
     <span class="drop-sub">or <span class="link">choose a file</span></span>
     <small>JPEG, PNG, WebP, HEIC, AVIF, JPEG XL, GIF, TIFF, camera raw, PSD, BMP and SVG, up to 200 MB.</small>
@@ -32,7 +39,7 @@
       <article class="summary" id="summary"><span class="summary-mark" aria-hidden="true"></span><div><p class="eyebrow">Privacy</p><h2 id="summary-title"></h2><p id="summary-detail"></p></div></article>
       <div class="warnings" id="warnings" hidden></div>
       <section class="signal-block" id="privacy-block" hidden><h3>Privacy exposure</h3><ul class="signals" id="privacy"></ul></section>
-      <a class="cleaner" id="cleaner" href="/tools/#tools" hidden><span class="cleaner-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6zM14 3v5h4"/><path d="m9.5 13.5 5 5m0-5-5 5"/></svg></span><span><strong id="cleaner-title"></strong><small id="cleaner-detail"></small></span><span class="arrow" aria-hidden="true">→</span></a>
+      <a class="cleaner" id="cleaner" href="/tools/" hidden><span class="cleaner-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6zM14 3v5h4"/><path d="m9.5 13.5 5 5m0-5-5 5"/></svg></span><span><strong id="cleaner-title"></strong><small id="cleaner-detail"></small></span><span class="arrow" aria-hidden="true">→</span></a>
       <section class="provenance" id="provenance"><span class="summary-mark" aria-hidden="true"></span><div><p class="eyebrow">AI provenance</p><h3 id="provenance-title"></h3><p id="provenance-detail"></p><ul class="signals" id="signals" hidden></ul></div></section>
       <section class="metadata-block" id="highlights-block" hidden><h3>Key details</h3><div id="highlights"></div></section>
       <section class="metadata-block" id="sources-block" hidden>
@@ -47,24 +54,62 @@
   </div>
 </section>
 
-<section class="about-tool wrap" id="how-it-works">
-  <div><p class="eyebrow"><span></span> How it works</p><h2>Reads the file.<br>Not the pixels.</h2></div>
-  <div class="principles">
-    <article><span>01</span><div><h3>Every metadata block</h3><p>EXIF, maker notes, XMP, IPTC, ICC profiles, Photoshop resources, PNG text, HEIF items and Content Credentials. Unknown fields are listed by ID, not dropped.</p></div></article>
-    <article><span>02</span><div><h3>AI provenance</h3><p>IPTC digital source type, Content Credentials, AI labels, and prompts saved by Stable Diffusion tools, ComfyUI, InvokeAI and Fooocus.</p></div></article>
-    <article><span>03</span><div><h3>Privacy exposure</h3><p>GPS location, serial numbers, names, embedded thumbnails, hidden depth maps and extra images, Photoshop layers, file paths and SVG scripts.</p></div></article>
+<section class="about-tool wrap" aria-labelledby="about-title">
+  <div class="about-intro">
+    <h2 id="about-title">About Image Inspector</h2>
+    <p>Image Inspector reads the metadata stored inside an image file. It runs entirely in your browser: the file is never uploaded, and the page keeps working with your network turned off.</p>
   </div>
-</section>
-
-<section class="privacy wrap limits" id="privacy">
-  <div><p class="eyebrow"><span></span> Honest limits</p><h2>A clue is not a verdict.</h2><p>No tool can prove from metadata alone whether an image was made by AI.</p></div>
-  <div class="principles">
-    <article><span>01</span><div><h3>Missing metadata proves nothing</h3><p>Social platforms, messaging apps and screenshots usually strip it. A clean result does not mean the image is human-made.</p></div></article>
-    <article><span>02</span><div><h3>Metadata can be edited</h3><p>Anyone can add, remove or change these fields. Declarations are reported as statements, not proof.</p></div></article>
-    <article><span>03</span><div><h3>Some data is listed, not decoded</h3><p>Vendor maker notes show identifying fields by name and the rest by tag ID. Brotli-compressed JPEG XL boxes are listed without their contents. Content Credentials signatures are not verified, and invisible watermarks such as SynthID cannot be detected.</p></div></article>
-    <article><span>04</span><div><h3>Verify it yourself</h3><p>Once the page has loaded, disconnect from the internet and inspect a file. It still works, because nothing leaves your device.</p></div></article>
+  <div class="about-grid">
+    <div><h3>What it reads</h3><p>EXIF and maker notes, XMP, IPTC, ICC profiles, Photoshop resources, PNG text, HEIF items and Content Credentials (C2PA). Fields it cannot decode are listed, not dropped.</p></div>
+    <div><h3>What it flags</h3><p>GPS location, serial numbers, names, embedded thumbnails, hidden images and layers, editor file paths, and scripts or external links in SVG files.</p></div>
+    <div><h3>AI provenance</h3><p>Declarations such as IPTC digital source type, Content Credentials and generator settings. It reports what the file states and never labels an image as AI-generated or authentic.</p></div>
+  </div>
+  <div class="limits" id="limits">
+    <h3>Limitations</h3>
+    <ul>
+      <li>Metadata can be edited or removed, and most platforms strip it on upload. A file with no metadata proves nothing about its origin.</li>
+      <li>Content Credentials signatures are not verified. Invisible watermarks such as SynthID cannot be detected from metadata.</li>
+      <li>Vendor maker notes show identifying fields by name and other entries by tag ID. Brotli-compressed JPEG XL boxes are listed without their contents.</li>
+    </ul>
   </div>
 </section>
 </main>
-<footer class="wrap"><a class="brand" href="/tools/"><span class="mark" aria-hidden="true"><svg viewBox="0 0 44 30"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg></span>Private Tools</a><span>Made for your browser. Built around your privacy.</span></footer>
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-about">
+        <a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
+        <p>File tools that run in your browser. Your files are processed on your device and never uploaded. No account required.</p>
+      </div>
+      <div>
+        <h2>Tools</h2>
+        <ul>
+          <li><a href="/tools/image-inspector/">Image Inspector</a></li>
+          <li>Metadata Cleaner<span class="soon">Coming soon</span></li>
+          <li><a href="/tools/">All tools</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <ul>
+          <li><a href="https://github.com/rivera-daniel/private-tools#roadmap">Roadmap</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools">Source code</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools/issues">Report an issue</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Trust</h2>
+        <ul>
+          <li><a href="https://github.com/rivera-daniel/private-tools#privacy-model">How your data is handled</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools/blob/main/LICENSE">License (AGPL-3.0)</a></li>
+          <li><a href="https://danielrivera.ai/">danielrivera.ai</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Daniel Rivera</span>
+      <span>Processed on your device. Nothing is uploaded.</span>
+    </div>
+  </div>
+</footer>
 <script type="module" src="/tools/image-inspector/ui.js"></script></body></html>

@@ -1,26 +1,77 @@
-const paths={image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m4 18 6-6 4 4 3-3 3 4"/>',doc:'<path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6"/>',text:'<path d="M5 5h14M12 5v15M8 20h8M3 8V3h5M16 3h5v5M3 16v5h5M16 21h5v-5"/>',resume:'<path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h4"/>',convert:'<rect x="5" y="3" width="15" height="13" rx="2"/><path d="m7 13 4-4 4 4 3-3M3 9v11h13M15 19l3 2-3 2"/>',pdf:'<path d="M6 3h8l4 4v14H6zM14 3v5h4M9 11h6M9 15h6M9 18h3"/>'};
-const tools=[
-{name:'Image Inspector',copy:'See every piece of metadata in an image: location, camera, people, software and AI provenance.',category:['images','privacy'],icon:'image',status:'Available',href:'/tools/image-inspector/'},
-{name:'Metadata Cleaner',copy:'Remove location, camera details, and other sensitive metadata from images.',category:['images','privacy'],icon:'doc',status:'Coming next'},
-{name:'Private OCR',copy:'Extract text from images and scanned documents, directly on your device.',category:['images','documents'],icon:'text',status:'Planned'},
-{name:'Resume ATS Preview',copy:'Preview extracted resume text and spot formatting that may be difficult to read.',category:['documents','careers'],icon:'resume',status:'Planned'},
-{name:'Image Converter',copy:'Convert, resize, and optimize images in a simple private workflow.',category:['images'],icon:'convert',status:'Planned'},
-{name:'PDF Privacy Cleaner',copy:'Inspect document metadata and prepare a cleaner file to share.',category:['documents','privacy'],icon:'pdf',status:'Planned'}];
-const cards=document.querySelector('#cards');
-const strokeIcon=(content)=>`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${content}</svg>`;
-cards.insertAdjacentHTML('beforebegin',`<div class="trust-band"><article>${strokeIcon('<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/>')}<div><strong>No uploads</strong><p>Your files never leave your device.</p></div></article><article>${strokeIcon('<rect x="4" y="3" width="16" height="13" rx="1"/><path d="M2 20h20l-2-4H4z"/>')}<div><strong>Runs locally</strong><p>All processing happens in your browser.</p></div></article><article>${strokeIcon('<path d="m13 2-9 12h7l-1 8 10-13h-8z"/>')}<div><strong>Free to use</strong><p>No accounts. No paywalls.</p></div></article></div>`);
-document.querySelectorAll('.mark').forEach(mark=>{mark.innerHTML='<svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>'});
-document.querySelector('.search>span').innerHTML=strokeIcon('<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>');
-tools.forEach((tool,index)=>{const card=document.createElement('button');card.className='card';card.type='button';card.dataset.index=index;card.innerHTML=`<span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true">${paths[tool.icon]}</svg></span><span><h3>${tool.name}</h3><p>${tool.copy}</p><small>${tool.status}</small></span><span class="arrow" aria-hidden="true">→</span>`;card.addEventListener('click',()=>{if(tool.href){location.href=tool.href;return}document.querySelector('#dialog-title').textContent=tool.name;document.querySelector('#dialog-copy').textContent=tool.copy;document.querySelector('#tool-dialog').showModal()});cards.append(card)});
-const corners='<path d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke="#bd102b" stroke-width="2.2"/>';
-const documentShape='<path d="M17 7h23l10 10v40H17zM40 7v11h10M23 28h19M23 35h19M23 42h14" stroke="#252930" stroke-width="1.8"/>';
-const toolArtwork=[
-`${corners}<rect x="17" y="21" width="30" height="23" rx="3" fill="#d4d9de"/><path d="m19 41 8-11 6 7 5-8 7 12" fill="#77848f" stroke="none"/><circle cx="40" cy="25" r="2.3" fill="#717b86" stroke="none"/>`,
-`${documentShape}<circle cx="49" cy="49" r="11" fill="#bd102b" stroke="#fff" stroke-width="2"/><path d="M44 49h10" stroke="#fff" stroke-width="1.7"/>`,
-`${corners}<path d="M23 25v-4h19v4M32.5 21v23M27 44h11" stroke="#818991" stroke-width="4"/>`,
-`${documentShape}<path d="M47 55v-8m6 8V40m6 15V34" stroke="#bd102b" stroke-width="4"/>`,
-'<g stroke="#aeb4bc" stroke-width="1.6"><rect x="9" y="19" width="29" height="29" rx="3"/><path d="m12 43 8-10 6 8 4-4 5 7"/></g><rect x="31" y="9" width="27" height="28" rx="3" fill="#f4f5f7" stroke="#31353c" stroke-width="1.7"/><path d="m34 33 7-10 6 6 5-6 4 10" fill="#929ba3" stroke="none"/><circle cx="49" cy="16" r="2" fill="#7a858e" stroke="none"/><g stroke="#bd102b" stroke-width="2.4"><path d="M40 47a8 8 0 0 0-14-3l-2 3m0-5v5h5M25 53a8 8 0 0 0 14 2l2-3m0 5v-5h-5"/></g>',
-'<path d="M16 7h24l10 10v39H16zM40 7v11h10" stroke="#252930" stroke-width="1.8"/><text x="21" y="40" fill="#252930" stroke="none" font-family="Inter,sans-serif" font-size="13" font-weight="500">PDF</text><path d="m49 40-9 4v8c0 5 5 8 9 10 4-2 9-5 9-10v-8z" fill="#bd102b" stroke="#f7f8fa" stroke-width="2"/><path d="m49 47-4 2v4l4 3 4-3v-4z" fill="#fff" stroke="none"/>'
+// Tool catalog: renders cards, search and category filters. Tool data is static.
+const TOOLS = [
+  { name: 'Image Inspector', copy: 'See every piece of metadata in an image: location, camera, people, software and AI provenance.', category: ['images', 'privacy'], art: 'inspector', status: 'Available', href: '/tools/image-inspector/' },
+  { name: 'Metadata Cleaner', copy: 'Remove location, camera details and other sensitive metadata from images.', category: ['images', 'privacy'], art: 'cleaner', status: 'Coming soon' },
+  { name: 'Private OCR', copy: 'Extract text from images and scanned documents on your device.', category: ['images', 'documents'], art: 'ocr', status: 'Planned' },
+  { name: 'Resume ATS Preview', copy: 'Preview the text an applicant tracking system extracts from your resume and spot formatting it cannot read.', category: ['documents', 'careers'], art: 'resume', status: 'Planned' },
+  { name: 'Image Converter', copy: 'Convert, resize and compress images without uploading them.', category: ['images'], art: 'converter', status: 'Planned' },
+  { name: 'PDF Privacy Cleaner', copy: 'Inspect document metadata and prepare a cleaner file to share.', category: ['documents', 'privacy'], art: 'pdf', status: 'Planned' },
 ];
-document.querySelectorAll('.card .icon').forEach((icon,index)=>{icon.innerHTML=`<svg class="tool-art" viewBox="0 0 64 64" aria-hidden="true" fill="none" stroke-linecap="round" stroke-linejoin="round">${toolArtwork[index]}</svg>`});
-let category='all';const search=document.querySelector('#search');function filter(){const query=search.value.toLowerCase().trim();let count=0;document.querySelectorAll('.card').forEach(card=>{const tool=tools[card.dataset.index];const visible=(category==='all'||tool.category.includes(category))&&`${tool.name} ${tool.copy}`.toLowerCase().includes(query);card.hidden=!visible;if(visible)count++});document.querySelector('#empty').hidden=count>0}search.addEventListener('input',filter);document.querySelectorAll('[data-filter]').forEach(button=>button.addEventListener('click',()=>{category=button.dataset.filter;document.querySelectorAll('[data-filter]').forEach(item=>{item.classList.toggle('active',item===button);item.setAttribute('aria-pressed',String(item===button))});filter()}));document.addEventListener('keydown',event=>{if(event.key==='/'&&!document.querySelector('dialog').open&&document.activeElement.tagName!=='INPUT'){event.preventDefault();search.focus()}});
+
+// Artwork uses theme classes from site.css so it follows light and dark mode.
+const corners = '<path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/>';
+const page = '<path class="art-ink" d="M17 7h23l10 10v40H17zM40 7v11h10M23 28h19M23 35h19M23 42h14" stroke-width="1.8"/>';
+const ART = {
+  inspector: `${corners}<rect class="art-soft-fill" x="17" y="21" width="30" height="23" rx="3"/><path class="art-mid-fill" d="m19 41 8-11 6 7 5-8 7 12"/><circle class="art-mid-fill" cx="40" cy="25" r="2.3"/>`,
+  cleaner: `${page}<circle class="art-red-fill art-surface" cx="49" cy="49" r="11" stroke-width="2"/><path class="art-on-red" d="M44 49h10" stroke-width="1.7"/>`,
+  ocr: `${corners}<path class="art-mid" d="M23 25v-4h19v4M32.5 21v23M27 44h11" stroke-width="4"/>`,
+  resume: `${page}<path class="art-red" d="M47 55v-8m6 8V40m6 15V34" stroke-width="4"/>`,
+  converter: '<g class="art-mid" stroke-width="1.6"><rect x="9" y="19" width="29" height="29" rx="3"/><path d="m12 43 8-10 6 8 4-4 5 7"/></g><rect class="art-paper-fill art-ink" x="31" y="9" width="27" height="28" rx="3" stroke-width="1.7"/><path class="art-mid-fill" d="m34 33 7-10 6 6 5-6 4 10"/><circle class="art-mid-fill" cx="49" cy="16" r="2"/><path class="art-red" d="M40 47a8 8 0 0 0-14-3l-2 3m0-5v5h5M25 53a8 8 0 0 0 14 2l2-3m0 5v-5h-5" stroke-width="2.4"/>',
+  pdf: '<path class="art-ink" d="M16 7h24l10 10v39H16zM40 7v11h10" stroke-width="1.8"/><text class="art-ink-fill" x="21" y="40" font-family="Inter,sans-serif" font-size="13" font-weight="500">PDF</text><path class="art-red-fill art-surface" d="m49 40-9 4v8c0 5 5 8 9 10 4-2 9-5 9-10v-8z" stroke-width="2"/><path class="art-on-red-fill" d="m49 47-4 2v4l4 3 4-3v-4z"/>',
+};
+const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+
+const cards = document.getElementById('cards');
+const search = document.getElementById('search');
+const dialog = document.getElementById('tool-dialog');
+let category = 'all';
+
+function card(tool) {
+  const el = document.createElement(tool.href ? 'a' : 'button');
+  el.className = 'card';
+  if (tool.href) el.href = tool.href; else el.type = 'button';
+  const art = `<svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ART[tool.art]}</svg>`;
+  el.innerHTML = `<span class="icon">${art}</span><span><h3></h3><p></p><span class="status"></span></span><span class="arrow">${ARROW}</span>`;
+  el.querySelector('h3').textContent = tool.name;
+  el.querySelector('p').textContent = tool.copy;
+  const status = el.querySelector('.status');
+  status.textContent = tool.status;
+  status.classList.toggle('available', Boolean(tool.href));
+  if (!tool.href) el.addEventListener('click', () => {
+    document.getElementById('dialog-status').textContent = tool.status;
+    document.getElementById('dialog-title').textContent = tool.name;
+    document.getElementById('dialog-copy').textContent = tool.copy;
+    dialog.showModal();
+  });
+  el.tool = tool;
+  return el;
+}
+
+cards.append(...TOOLS.map(card));
+
+function filter() {
+  const query = search.value.toLowerCase().trim();
+  let shown = 0;
+  for (const el of cards.children) {
+    const { tool } = el;
+    const visible = (category === 'all' || tool.category.includes(category)) && `${tool.name} ${tool.copy}`.toLowerCase().includes(query);
+    el.hidden = !visible;
+    if (visible) shown++;
+  }
+  document.getElementById('empty').hidden = shown > 0;
+}
+
+search.addEventListener('input', filter);
+for (const button of document.querySelectorAll('[data-filter]')) {
+  button.addEventListener('click', () => {
+    category = button.dataset.filter;
+    for (const other of document.querySelectorAll('[data-filter]')) {
+      other.classList.toggle('active', other === button);
+      other.setAttribute('aria-pressed', String(other === button));
+    }
+    filter();
+  });
+}
+document.addEventListener('keydown', (event) => {
+  if (event.key === '/' && !dialog.open && document.activeElement.tagName !== 'INPUT') { event.preventDefault(); search.focus(); }
+});

@@ -1,13 +1,95 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="theme-color" content="#fafbfc"><title>Private Tools — Your files. Your device. Your tools.</title><link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/tools/assets/styles.css"><link rel="stylesheet" href="/tools/assets/fidelity.css"><link rel="stylesheet" href="/tools/assets/catalog-layout.css"></head>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="description" content="Browser-based file tools that run on your device. Inspect image metadata and more without uploading anything.">
+<meta name="color-scheme" content="light dark">
+<title>Private Tools</title>
+<link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/tools/assets/site.css">
+<script src="/tools/assets/theme.js"></script>
+</head>
 <body>
-<header class="header wrap"><a class="brand" href="#"><span class="mark" aria-hidden="true"><i></i><i></i></span>Private Tools</a><nav><a href="#tools">All tools</a><a href="#how-it-works">How it works</a><a href="#privacy">Privacy</a></nav></header>
+<header class="header wrap">
+  <a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
+  <nav aria-label="Primary">
+    <a class="nav-text" href="https://github.com/rivera-daniel/private-tools#roadmap">Roadmap</a>
+    <a class="nav-text" href="https://github.com/rivera-daniel/private-tools">GitHub</a>
+    <button type="button" class="icon-button" id="theme-toggle" aria-label="Change theme"></button>
+  </nav>
+</header>
+
 <main>
-<section class="hero wrap"><div class="hero-copy"><h1 class="ownership-headline">Your files. Your device. <span>Your tools.</span></h1><p class="intro">Useful browser tools. No uploads. No accounts.</p></div>
-</section>
-<section class="catalog wrap" id="tools"><div class="catalog-top"><h2>Your private toolkit</h2><span>Small tools. Straightforward results.</span></div><label class="search"><span aria-hidden="true">⌕</span><input type="search" id="search" placeholder="Search tools…" aria-label="Search tools"><small>e.g. image, PDF, metadata, OCR</small><kbd>/</kbd></label><div class="filters" role="group" aria-label="Filter tools"><button class="active" data-filter="all" aria-pressed="true">All tools</button><button data-filter="images" aria-pressed="false">Images</button><button data-filter="documents" aria-pressed="false">Documents</button><button data-filter="privacy" aria-pressed="false">Privacy</button><button data-filter="careers" aria-pressed="false">Careers</button></div><div id="cards" class="cards"></div><p id="empty" hidden>No tools match that search. Try “image” or “privacy”.</p></section>
-<section class="privacy wrap" id="privacy"><div><p class="eyebrow"><span></span> Privacy, by default</p><h2>A useful result.<br>A smaller digital footprint.</h2><p>Your documents, photos, and personal details belong on your device. Our tools are being built to work locally, without sending your files to a server.</p></div><div class="principles"><article><span>01</span><div><h3>Your browser does the work</h3><p>Processing uses your device. File contents are never uploaded.</p></div></article><article><span>02</span><div><h3>No account to get started</h3><p>Open a tool, choose your file, and get your result.</p></div></article><article><span>03</span><div><h3>Clear results. Honest limits.</h3><p>See what was found, what changed, and what the tool cannot determine.</p></div></article></div></section>
-<section class="about wrap" id="how-it-works"><h2>How it works</h2><p>Choose a tool, open a file from your device, and save your result. Processing happens inside your browser. Tools currently marked as planned are still being built.</p></section>
-</main><footer class="wrap"><a class="brand" href="#"><span class="mark" aria-hidden="true"><i></i><i></i></span>Private Tools</a><span>Made for your browser. Built around your privacy.</span></footer>
-<dialog id="tool-dialog"><form method="dialog"><button class="close" aria-label="Close">×</button></form><p class="eyebrow">On the workbench</p><h2 id="dialog-title"></h2><p id="dialog-copy"></p><p class="dialog-note">This is a design preview. File processing is not available yet.</p><form method="dialog"><button class="primary">Back to the catalog</button></form></dialog>
-<script type="module" src="/tools/assets/app.js"></script></body></html>
+  <section class="catalog wrap" aria-labelledby="catalog-title">
+    <h1 class="visually-hidden" id="catalog-title">Private Tools</h1>
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+      <span class="visually-hidden">Search tools</span>
+      <input type="search" id="search" placeholder="Search tools" autocomplete="off">
+      <kbd>/</kbd>
+    </label>
+    <div class="filters" role="group" aria-label="Filter tools">
+      <button type="button" class="active" data-filter="all" aria-pressed="true">All tools</button>
+      <button type="button" data-filter="images" aria-pressed="false">Images</button>
+      <button type="button" data-filter="documents" aria-pressed="false">Documents</button>
+      <button type="button" data-filter="privacy" aria-pressed="false">Privacy</button>
+      <button type="button" data-filter="careers" aria-pressed="false">Careers</button>
+    </div>
+    <div class="cards" id="cards"></div>
+    <p class="empty" id="empty" hidden>No tools match that search.</p>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-about">
+        <a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
+        <p>File tools that run in your browser. Your files are processed on your device and never uploaded. No account required.</p>
+      </div>
+      <div>
+        <h2>Tools</h2>
+        <ul>
+          <li><a href="/tools/image-inspector/">Image Inspector</a></li>
+          <li>Metadata Cleaner<span class="soon">Coming soon</span></li>
+          <li><a href="/tools/">All tools</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <ul>
+          <li><a href="https://github.com/rivera-daniel/private-tools#roadmap">Roadmap</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools">Source code</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools/issues">Report an issue</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Trust</h2>
+        <ul>
+          <li><a href="https://github.com/rivera-daniel/private-tools#privacy-model">How your data is handled</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools/blob/main/LICENSE">License (AGPL-3.0)</a></li>
+          <li><a href="https://danielrivera.ai/">danielrivera.ai</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Daniel Rivera</span>
+      <span>Processed on your device. Nothing is uploaded.</span>
+    </div>
+  </div>
+</footer>
+
+<dialog id="tool-dialog">
+  <form method="dialog"><button class="close" aria-label="Close">×</button></form>
+  <p class="eyebrow" id="dialog-status"></p>
+  <h2 id="dialog-title"></h2>
+  <p id="dialog-copy"></p>
+  <p>This tool is not available yet. Follow its progress on the <a href="https://github.com/rivera-daniel/private-tools#roadmap"><u>roadmap</u></a>.</p>
+  <form method="dialog"><button class="button">Back to tools</button></form>
+</dialog>
+
+<script type="module" src="/tools/assets/app.js"></script>
+</body>
+</html>

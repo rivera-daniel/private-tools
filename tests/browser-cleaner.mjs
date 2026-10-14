@@ -23,7 +23,9 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? 
 for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mobile', { width: 390, height: 800 }]]) {
   const page = await browser.newPage({ viewport, acceptDownloads: true });
   const problems = [];
-  page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) problems.push(m.text()); });
+  // On production Cloudflare injects its bot-detection script and Web Analytics beacon. The CSP blocks both, which is the intent.
+  const expected = (t) => process.env.ALLOW_CF_JSD && /Executing inline script violates the following Content Security Policy|static\.cloudflareinsights\.com\/beacon/.test(t);
+  page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) && !expected(m.text())) problems.push(m.text()); });
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   await page.goto(`${base}/tools/metadata-cleaner/`, { waitUntil: 'networkidle' });
   await page.screenshot({ path: `${shots}/cleaner-${label}-empty.png` });

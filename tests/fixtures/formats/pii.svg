@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generator: Adobe Illustrator 28.0, SVG Export Plug-In -->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="48" viewBox="0 0 64 48" sodipodi:docname="client-logo-final.svg" inkscape:export-filename="/Users/jane/Clients/Acme/logo.png" onload="alert(1)">
+<title>Acme logo draft</title><desc>Made by Jane for Acme</desc>
+<metadata><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/"><rdf:Description rdf:about=""><dc:creator><rdf:Seq><rdf:li>Jane Doe</rdf:li></rdf:Seq></dc:creator></rdf:Description></rdf:RDF></metadata>
+<script>fetch('//tracker.example/p')</script>
+<image xlink:href="https://tracker.example/pixel.gif" width="1" height="1"/>
+<rect width="64" height="48" fill="#bd102b"/>
+</svg>

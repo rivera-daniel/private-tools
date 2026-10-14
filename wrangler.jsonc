@@ -1,0 +1,12 @@
+// Cloudflare Worker serving site/ as static assets. Response headers are declared in site/_headers.
+{
+  "name": "private-tools",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./site", "html_handling": "auto-trailing-slash", "not_found_handling": "none" },
+  "routes": [
+    { "pattern": "danielrivera.ai/tools", "zone_name": "danielrivera.ai" },
+    { "pattern": "danielrivera.ai/tools/*", "zone_name": "danielrivera.ai" }
+  ],
+  "workers_dev": false,
+  "preview_urls": false
+}

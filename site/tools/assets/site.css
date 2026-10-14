@@ -57,6 +57,10 @@ button{cursor:pointer}
 
 /* Catalog */
 .catalog{padding:44px 0 80px}
+.hero{text-align:center;margin-bottom:32px}
+.hero h1{font-size:clamp(36px,4.6vw,62px);line-height:1.1;letter-spacing:-.045em;font-weight:720;margin:0}
+.hero h1 span{color:var(--red-text)}
+.hero p{font-size:clamp(17px,1.6vw,21px);line-height:1.5;color:var(--muted);margin:14px 0 0}
 .search{display:flex;align-items:center;gap:12px;max-width:720px;margin:0 auto;height:60px;padding:0 22px;border:1px solid var(--line);border-radius:30px;background:var(--surface);transition:border-color .2s,box-shadow .2s}
 .search:focus-within{border-color:var(--line-strong);box-shadow:var(--shadow)}
 .search svg{width:21px;height:21px;color:var(--muted);flex:none}
@@ -115,7 +119,7 @@ dialog .close{float:right;border:0;background:none;font-size:26px;line-height:1;
   .wrap{width:calc(100% - 36px)}
   .header{height:64px;gap:16px}.brand{font-size:18px}.brand svg{width:32px;height:22px}
   .header nav{gap:16px}.header nav .nav-text{display:none}
-  .catalog{padding:24px 0 56px}.search{height:54px}.search kbd{display:none}
+  .catalog{padding:24px 0 56px}.hero{margin-bottom:24px}.hero h1{font-size:36px}.search{height:54px}.search kbd{display:none}
   .filters{justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto;margin:16px -18px 24px;padding:0 18px 4px}
   .filters button{flex:none;font-size:13px;padding:8px 14px}
   .cards{grid-template-columns:1fr;gap:12px}

@@ -1,0 +1,109 @@
+// Lossless metadata removal. The cleaner cuts the metadata blocks the inspector found out of the file's
+// container and copies every other byte as is, so pixels are never decoded or re-encoded.
+import { LIMITS, concat } from '../metadata/bytes.js';
+import { inspectImage } from '../metadata/index.js';
+import { enumValue } from '../metadata/tags.js';
+
+export const CLEANABLE = 'JPEG, PNG, WebP and GIF';
+const FORMATS = new Set(['JPEG', 'PNG', 'WebP', 'GIF']);
+const ORIENTED = new Set(['JPEG', 'PNG', 'WebP']);
+
+export async function cleanImage(input) {
+  const u8 = input instanceof Uint8Array ? input : new Uint8Array(input);
+  if (u8.length > LIMITS.maxFileBytes) return refuse('This file is larger than 200 MB.');
+  const before = await inspectImage(u8);
+  if (!before.format) return refuse(`This file is not an image the Metadata Cleaner supports. Supported formats: ${CLEANABLE}.`);
+  if (!FORMATS.has(before.format)) return refuse(`${before.format} files cannot be cleaned yet. The Metadata Cleaner supports ${CLEANABLE}.`);
+  if (before.warnings.some((w) => /damaged|truncated|past the end|Too many/.test(w))) return refuse('The file is damaged or unusually structured, so it was left untouched.');
+
+  const blocks = before.blocks.filter((b) => b.removable !== false && !hasRemovableAncestor(before.blocks, b));
+  const cuts = [];
+  for (const b of blocks) {
+    if (!Number.isInteger(b.offset) || !Number.isInteger(b.length) || b.offset < 0 || b.length <= 0 || b.offset + b.length > u8.length) return refuse('A metadata block could not be located safely, so the file was left untouched.');
+    cuts.push([b.offset, b.offset + b.length]);
+  }
+  cuts.sort((a, c) => a[0] - c[0]);
+  const merged = [];
+  for (const cut of cuts) { const last = merged.at(-1); if (last && cut[0] <= last[1]) last[1] = Math.max(last[1], cut[1]); else merged.push([...cut]); }
+
+  const parts = []; let at = 0;
+  for (const [from, to] of merged) { parts.push(u8.subarray(at, from)); at = to; }
+  parts.push(u8.subarray(at));
+  let out = concat(parts);
+
+  // Display rotation lives in EXIF. Dropping it would turn a portrait photo sideways, so it alone is kept.
+  const orientation = ORIENTED.has(before.format) ? readOrientation(before) : 1;
+  if (orientation > 1) out = withOrientation(out, before.format, orientation);
+  if (before.format === 'WebP') out = fixWebp(out, orientation > 1);
+
+  const after = await inspectImage(out);
+  const leftovers = after.blocks.filter((b) => b.removable !== false && !hasRemovableAncestor(after.blocks, b) && !(orientation > 1 && b.kind === 'EXIF'));
+  const sizeOk = after.width === before.width && after.height === before.height && after.format === before.format;
+  if (leftovers.length || !sizeOk || after.warnings.length) return refuse('The cleaned file did not pass the check afterwards, so it was not produced.');
+
+  return {
+    ok: true, data: out, format: before.format, width: before.width, height: before.height,
+    bytesBefore: u8.length, bytesAfter: out.length,
+    removed: blocks.map((b) => ({ kind: b.kind, container: b.container ?? '', bytes: b.length })),
+    exposures: before.signals.filter((s) => s.kind === 'privacy' || s.kind === 'declared').map((s) => s.title),
+    kept: [...(orientation > 1 ? [`Orientation (${enumValue('Orientation', orientation)})`] : []), ...after.blocks.filter((b) => b.removable === false).map((b) => `${b.kind} (${b.container})`)],
+    orientation,
+  };
+}
+
+const refuse = (reason) => ({ ok: false, reason });
+
+function hasRemovableAncestor(blocks, b) {
+  for (let p = b.parent; p !== null && p !== undefined; p = blocks[p]?.parent) if (blocks[p]?.removable !== false) return true;
+  return false;
+}
+
+function readOrientation(report) {
+  const field = report.sources.find((s) => s.name === 'EXIF IFD0')?.fields.find((f) => f.key === 'Orientation');
+  if (!field) return 1;
+  for (let n = 1; n <= 8; n++) if (enumValue('Orientation', n) === field.value || field.value === String(n)) return n;
+  return 1;
+}
+
+// Smallest valid EXIF payload: a big-endian TIFF header and one IFD holding Orientation.
+function minimalTiff(orientation) {
+  return Uint8Array.from([0x4d, 0x4d, 0, 0x2a, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, orientation, 0, 0, 0, 0, 0, 0]);
+}
+
+function withOrientation(u8, format, orientation) {
+  const tiff = minimalTiff(orientation);
+  if (format === 'JPEG') {
+    const exif = Uint8Array.from([0xff, 0xe1, 0, 8 + tiff.length, 0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff]);
+    // JFIF must stay the first segment.
+    let at = 2;
+    if (u8[2] === 0xff && u8[3] === 0xe0) at = 4 + ((u8[4] << 8) | u8[5]);
+    return concat([u8.subarray(0, at), exif, u8.subarray(at)]);
+  }
+  if (format === 'PNG') return concat([u8.subarray(0, 33), pngChunk('eXIf', tiff), u8.subarray(33)]);
+  const chunk = riffChunk('EXIF', tiff);
+  return concat([u8, chunk]);
+}
+
+function riffChunk(type, data) {
+  const head = new Uint8Array(8); head.set([...type].map((c) => c.charCodeAt(0)));
+  new DataView(head.buffer).setUint32(4, data.length, true);
+  return concat([head, data, new Uint8Array(data.length & 1)]);
+}
+
+// WebP: the RIFF size and the VP8X feature flags must describe what is left.
+function fixWebp(u8, keepExif) {
+  const out = u8.slice(); const view = new DataView(out.buffer);
+  view.setUint32(4, out.length - 8, true);
+  if (String.fromCharCode(...out.subarray(12, 16)) === 'VP8X') out[20] = (out[20] & ~0x0c) | (keepExif ? 0x08 : 0);
+  return out;
+}
+
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xffffffff; for (const byte of u8) c = CRC[(c ^ byte) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+
+function pngChunk(type, data) {
+  const out = new Uint8Array(12 + data.length); const view = new DataView(out.buffer);
+  view.setUint32(0, data.length); out.set([...type].map((c) => c.charCodeAt(0)), 4); out.set(data, 8);
+  view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+  return out;
+}

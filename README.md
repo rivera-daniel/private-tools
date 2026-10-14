@@ -18,19 +18,30 @@ Lists the metadata stored in an image file and highlights what it exposes.
 
 Each metadata block is reported with its byte offset and length.
 
+### Metadata Cleaner
+
+Removes the metadata blocks the inspector finds, without decoding or re-encoding the image.
+
+- **Formats:** JPEG, PNG, WebP and GIF, up to 200 MB. Other formats are refused with a reason and never altered.
+- **Removed:** EXIF, XMP, IPTC, PNG text chunks, Content Credentials, thumbnails, comments, Photoshop data, unknown application data and any data after the end of the image.
+- **Kept:** image data, ICC color profiles and the EXIF Orientation value, which is rewritten as a minimal EXIF block so rotated photos still display upright.
+- **Check:** every output is inspected again. If metadata remains, the dimensions change or the parser warns, no file is produced.
+- **Limits:** invisible watermarks are not metadata and stay. Removing a phone photo's trailing gain map can flatten an HDR image.
+
 ## Roadmap
 
 | Tool | Status | Description |
 |---|---|---|
 | Image Inspector | Available | Lists image metadata and flags what it exposes. |
-| Metadata Cleaner | In development | Removes metadata from images on your device, then re-inspects the result to confirm what was removed. |
+| Metadata Cleaner | Available | Removes metadata from JPEG, PNG, WebP and GIF files on your device and re-inspects the result. |
 | PDF Privacy Cleaner | Planned | Inspects PDF metadata, hidden content and embedded files, and prepares a cleaner copy to share. |
 | Private OCR | Planned | Extracts text from images and scanned documents on your device. |
 | Image Converter | Planned | Converts, resizes and compresses images without uploading them. |
 | Resume ATS Preview | Planned | Shows the text an applicant tracking system extracts from a resume and flags formatting it cannot read. |
 
-Planned improvements to Image Inspector:
+Planned improvements:
 
+- [ ] Metadata Cleaner support for HEIC, AVIF and TIFF
 - [ ] Offline support across page reloads (service worker)
 - [ ] Content Credentials signature and trust-chain verification
 - [ ] Decoding of Brotli-compressed JPEG XL metadata boxes
@@ -50,6 +61,8 @@ site/                    Deployable static site, served under /tools/
   tools/index.html       Tool catalog
   tools/assets/         Shared stylesheet, theme script, fonts and icons
   tools/image-inspector/ Image Inspector page, UI and worker
+  tools/metadata-cleaner/ Metadata Cleaner page, UI and worker
+  tools/lib/clean/       Lossless metadata removal
   tools/lib/metadata/    Metadata parsers (ES modules, no dependencies)
 tests/                   Parser and browser tests, fixtures and reference data
 server.js                Development server
@@ -73,6 +86,12 @@ npm test          # parser tests
 
 ```sh
 BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium npm run test:browser
+```
+
+`tests/browser-cleaner.mjs` does the same for the Metadata Cleaner. It cleans files offline, saves them and re-inspects the downloads.
+
+```sh
+BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium node tests/browser-cleaner.mjs
 ```
 
 ### Reference data

@@ -52,7 +52,9 @@ export async function parsePng(b, r) {
         const ancillaryPrivate = type.charCodeAt(1) & 0x20 ? 'private ' : '';
         note = `${ancillaryPrivate}chunk, not decoded`;
         r.field('Other chunks', type, `${fmtBytes(len)}, not decoded`);
-        r.block('Unknown chunk', o, len + 12, { container: type, decoded: false });
+        // A critical chunk (uppercase first letter) is needed to display the image, so it is never removable.
+        const critical = !(type.charCodeAt(0) & 0x20);
+        r.block('Unknown chunk', o, len + 12, { container: type, decoded: false, ...(critical ? { removable: false } : {}) });
       }
     } catch (error) { r.warn(`PNG ${type} chunk could not be fully read (${error.message}).`); }
     if (type !== 'IDAT') r.struct(type, o, len + 12, note);

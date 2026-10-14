@@ -37,7 +37,7 @@ export async function parseJpeg(b, r) {
         r.field('JFIF', 'Version', `${d.u8at(5)}.${String(d.u8at(6)).padStart(2, '0')}`);
         r.field('JFIF', 'Density', `${d.u16(8)} × ${d.u16(10)} ${['(aspect ratio)', 'dpi', 'dots/cm'][d.u8at(7)] ?? ''}`.trim());
         if (d.u8at(12) && d.u8at(13)) r.field('JFIF', 'Thumbnail', `${d.u8at(12)} × ${d.u8at(13)}`);
-      } else if (marker === 0xe0 && startsWith(data, 'JFXX\0')) { note = 'JFIF extension (thumbnail)'; r.block('Thumbnail', at, data.length, { container: 'APP0 JFXX' }); }
+      } else if (marker === 0xe0 && startsWith(data, 'JFXX\0')) { note = 'JFIF extension (thumbnail)'; r.block('Thumbnail', o, len + 2, { container: 'APP0 JFXX' }); }
       else if (marker === 0xe1 && startsWith(data, 'Exif\0')) { note = 'EXIF'; r.within(r.block('EXIF', o, len + 2, { container: 'APP1' }), () => parseTiff(d.sub(6, data.length - 6), r, { label: 'EXIF', at: at + 6 })); }
       else if (marker === 0xe1 && startsWith(data, 'http://ns.adobe.com/xap/1.0/\0')) { note = 'XMP'; parseXmp(utf8.decode(data.subarray(29)), r); r.block('XMP', o, len + 2, { container: 'APP1' }); }
       else if (marker === 0xe1 && startsWith(data, 'http://ns.adobe.com/xmp/extension/\0')) {

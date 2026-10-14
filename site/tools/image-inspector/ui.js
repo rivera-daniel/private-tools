@@ -4,6 +4,7 @@ const MAX_BYTES = 200 * 1024 * 1024;
 const TIMEOUT_MS = 60000;
 const HIGHLIGHT_ORDER = ['Provenance', 'Generation data', 'Location', 'Camera', 'People', 'Software', 'Dates', 'Description', 'Comments', 'Color profile', 'File'];
 const OPEN_HIGHLIGHTS = new Set(['Provenance', 'Generation data', 'Location', 'Camera', 'People']);
+const CLEANABLE = new Set(['JPEG', 'PNG', 'WebP', 'GIF']);
 const PROVENANCE_ORDER = { declared: 0, clue: 1, credentials: 2 };
 const LABELS = { declared: 'Declared', clue: 'Clue', credentials: 'Credentials', privacy: 'Exposed' };
 const SUPPORTED = new Set(['JPEG', 'PNG', 'WebP', 'HEIC', 'HEIF', 'AVIF', 'JPEG XL', 'GIF', 'TIFF', 'DNG', 'CR2', 'CR3', 'NEF', 'ARW', 'ORF', 'RW2', 'PEF', 'RAF', 'PSD', 'PSB', 'BMP', 'SVG']);
@@ -92,11 +93,13 @@ function render(file, report) {
   fillSignals('signals', report.signals.filter((s) => s.kind !== 'privacy').sort((a, b) => PROVENANCE_ORDER[a.kind] - PROVENANCE_ORDER[b.kind]));
   $('signals').hidden = !report.signals.some((s) => s.kind !== 'privacy');
 
-  const removable = report.blocks.filter((b) => b.removable !== false);
-  const removableBytes = removable.reduce((n, b) => n + (b.length || 0), 0);
-  $('cleaner').hidden = removable.length === 0;
-  $('cleaner-title').textContent = `${plural(removable.length, 'metadata block')} (${formatBytes(removableBytes)}) can be removed`;
-  $('cleaner-detail').textContent = `Metadata Cleaner will remove ${removable.length === 1 ? 'it' : 'them'} on your device. Coming next.`;
+  const { blocks: removable, bytes: removableBytes } = report.cleanable;
+  const cleanable = CLEANABLE.has(report.format);
+  $('cleaner').hidden = removable === 0;
+  $('cleaner-title').textContent = `${plural(removable, 'metadata block')} (${formatBytes(removableBytes)}) can be removed`;
+  $('cleaner-detail').textContent = cleanable
+    ? `Open Metadata Cleaner to remove ${removable === 1 ? 'it' : 'them'} on your device.`
+    : `Metadata Cleaner supports JPEG, PNG, WebP and GIF. ${report.format} support is planned.`;
 
   const highlights = [...report.highlights].sort((a, b) => order(a.name) - order(b.name));
   $('highlights').replaceChildren(...highlights.map((g) => renderGroup(g, OPEN_HIGHLIGHTS.has(g.name))));

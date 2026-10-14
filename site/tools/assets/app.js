@@ -1,7 +1,7 @@
 // Tool catalog: renders cards, search and category filters. Tool data is static.
 const TOOLS = [
   { name: 'Image Inspector', copy: 'See every piece of metadata in an image: location, camera, people, software and AI provenance.', category: ['images', 'privacy'], art: 'inspector', status: 'Available', href: '/tools/image-inspector/' },
-  { name: 'Metadata Cleaner', copy: 'Remove location, camera details and other sensitive metadata from images.', category: ['images', 'privacy'], art: 'cleaner', status: 'Coming soon' },
+  { name: 'Metadata Cleaner', copy: 'Remove location, camera details and other sensitive metadata from images.', category: ['images', 'privacy'], art: 'cleaner', status: 'Available', href: '/tools/metadata-cleaner/' },
   { name: 'Private OCR', copy: 'Extract text from images and scanned documents on your device.', category: ['images', 'documents'], art: 'ocr', status: 'Planned' },
   { name: 'Resume ATS Preview', copy: 'Preview the text an applicant tracking system extracts from your resume and spot formatting it cannot read.', category: ['documents', 'careers'], art: 'resume', status: 'Planned' },
   { name: 'Image Converter', copy: 'Convert, resize and compress images without uploading them.', category: ['images'], art: 'converter', status: 'Planned' },

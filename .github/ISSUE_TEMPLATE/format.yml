@@ -1,0 +1,21 @@
+name: Format or metadata request
+description: Ask for a file format, metadata field or finding the tools do not cover yet.
+labels: [enhancement]
+body:
+  - type: input
+    id: format
+    attributes:
+      label: Format or field
+      placeholder: For example, Sony ARW maker notes or Keynote files
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What it exposes
+      description: What personal or hidden data this format or field can carry.
+  - type: input
+    id: sample
+    attributes:
+      label: Where to get a sample
+      description: A public sample file or the app and steps that produce one.

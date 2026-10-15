@@ -508,7 +508,7 @@ export function mountRedact(container, ctx) {
       parts.push(el('ul', { class: 'rd-checklist' }, verification.checks.map((c) => el('li', {}, icon(ICONS.check), el('span', { text: c })))));
       const rows = summarize(removed);
       if (rows.length) parts.push(el('details', { class: 'rd-removed' }, el('summary', { text: `What was removed (${rows.length})` }), el('ul', {}, rows.map((t) => el('li', { text: t })))));
-      parts.push(el('p', { class: 'rd-hint', text: 'The editor now holds the redacted document. Download it from there.' }));
+      parts.push(el('p', { class: 'rd-hint', text: 'The editor now holds the redacted document. Save it below.' }));
     }
     result.replaceChildren(...parts);
     result.dataset.state = ok ? 'ok' : 'error';

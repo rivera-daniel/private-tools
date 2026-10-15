@@ -44,6 +44,7 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) && !expected(m.text())) problems.push(m.text()); });
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('response', (r) => { if (r.status() >= 400 && !/redact-ui\.js$/.test(r.url())) problems.push(`HTTP ${r.status()}: ${r.url()}`); });
+  let inflight = 0; page.on('request', () => inflight++); page.on('requestfinished', () => inflight--); page.on('requestfailed', () => inflight--);
   page.on('requestfailed', (r) => { if (!/redact-ui\.js$/.test(r.url())) problems.push(`request failed: ${r.url()}`); });
   const loaded = []; context.on('request', (r) => loaded.push(r.url()));
   await page.goto(`${base}/tools/pdf-editor/`, { waitUntil: 'networkidle' });
@@ -91,6 +92,9 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   redactAsked = true;
   await page.click('#tab-redact');
   await page.waitForFunction(() => document.getElementById('redact-panel').children.length > 0);
+  // The redaction panel loads its worker and engine after it appears. Wait for every request to settle.
+  await page.waitForFunction(() => performance.getEntriesByType('resource').length > 0);
+  for (let quiet = 0, seen = -1; quiet < 4; await page.waitForTimeout(250)) { const n = await page.evaluate(() => performance.getEntriesByType('resource').length); quiet = n === seen && inflight === 0 ? quiet + 1 : 0; seen = n; }
   await page.click('#tab-organize');
 
   // Everything else is loaded: the rest works offline.

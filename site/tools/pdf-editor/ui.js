@@ -480,6 +480,8 @@ function selectMode(tab) {
   for (const t of tabs) { const on = t === tab; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; $(t.getAttribute('aria-controls')).hidden = !on; }
   $('layout').hidden = mode === 'redact';
   $('page-tools').hidden = mode !== 'organize';
+  // The layout holding the Save card is hidden while redacting, so the card follows the redaction panel.
+  if (mode === 'redact') $('redact-panel').after($('save-form')); else document.querySelector('.side').append($('save-form'));
   if (mode === 'redact') openRedact();
 }
 for (const t of tabs) {

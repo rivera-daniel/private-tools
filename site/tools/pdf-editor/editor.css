@@ -108,3 +108,4 @@ input[type=range]{display:block;width:100%;margin:0;accent-color:var(--red)}
   .page{padding:6px}
   .mode-panel,.save-card{padding:16px}
 }
+#redact-panel + .save-card{max-width:420px;margin:16px 0 0 auto}

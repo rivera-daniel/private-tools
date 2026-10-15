@@ -61,6 +61,15 @@ for (const moovFirst of [false, true]) for (const co64 of [false, true]) {
   });
 }
 
+test('MP4: a metadata box that ends where the trailer starts still shrinks its parent', async () => {
+  const { file } = mp4({ trailer: 'TRAILING-SECRET', mdta: false, metadataTrack: false });
+  const res = await cleanFile(file, 'clip.mp4');
+  assert.ok(res.ok, res.reason);
+  assert.ok(!has(res.data, 'TRAILING-SECRET') && !has(res.data, 'iPhone'));
+  const after = await assertClean(res.data, 'clip.mp4');
+  assert.deepEqual(after.warnings, []);
+});
+
 test('MP4: a kept track that referenced the removed metadata track loses only that reference', async () => {
   const { file, video } = mp4({ videoRef: true });
   const res = await cleanFile(file, 'clip.mp4');

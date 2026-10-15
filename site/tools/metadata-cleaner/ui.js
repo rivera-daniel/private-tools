@@ -146,7 +146,7 @@ for (const type of ['dragover', 'drop']) window.addEventListener(type, (e) => e.
 window.addEventListener('pagehide', () => { for (const u of urls) URL.revokeObjectURL(u); });
 
 // The list of formats comes from the clean module, so the page never lists one it cannot clean.
-import('/tools/lib/clean/index.js').then((m) => { $('formats').textContent = `${m.CLEANABLE.charAt(0).toUpperCase()}${m.CLEANABLE.slice(1)}, up to 200 MB each.`; }, () => {});
+import('/tools/lib/clean/index.js').then((m) => { const list = m.describeCleanable(); $('formats').textContent = `${list.charAt(0).toUpperCase()}${list.slice(1)}, up to 200 MB each.`; }, () => {});
 
 // The inspectors hand over the file they just inspected.
 if (location.hash === '#from-inspector') {

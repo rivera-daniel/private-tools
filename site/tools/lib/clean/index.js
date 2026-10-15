@@ -81,7 +81,6 @@ export function describeCleanable(formats = cleanableFormats()) {
   ].filter(Boolean);
   return listJoin(parts);
 }
-export const CLEANABLE = describeCleanable();
 
 // Any file the inspector can read. Images go through cleanImage. Other formats go through their family's
 // cleaner, and the result is inspected again before it is handed back.

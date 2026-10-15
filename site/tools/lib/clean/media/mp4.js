@@ -14,12 +14,12 @@ export function cleanMp4(u8, report, blocks) {
   const all = []; const walk = (list) => { for (const x of list) { all.push(x); if (x.children) walk(x.children); } }; walk(tree.boxes);
   const at = new Map(all.map((x) => [x.offset, x]));
   const mdats = tree.boxes.filter((x) => x.type === 'mdat');
-  const removes = []; const zeros = []; const dropped = new Set(); let dates = false;
+  const removes = []; const zeros = []; const dropped = new Set(); let dates = false; let trailer = null;
 
   for (const blk of blocks) {
     const box = at.get(blk.offset);
     if (blk.kind === 'Dates') dates = true;
-    else if (blk.kind === 'Trailer') removes.push([blk.offset, u8.length]);
+    else if (blk.kind === 'Trailer') trailer = [blk.offset, u8.length];
     else if (blk.kind === 'Padding') { if (!box) throw locate(); zeros.push([box.start, box.end]); }
     else if (blk.kind === 'Data reference') removes.push([blk.offset, blk.offset + blk.length]);
     else if (blk.kind === 'Metadata track') {
@@ -45,7 +45,9 @@ export function cleanMp4(u8, report, blocks) {
     else for (const ref of stale) removes.push([ref.offset, ref.end]);
   }
 
-  const cuts = merge(removes);
+  // The trailer stays a cut of its own: merged with a box that ends where it starts, its bytes would hide
+  // that box's removal from the parent's size.
+  const cuts = [...merge(removes), ...(trailer ? [trailer] : [])];
   const inCut = (o) => cuts.some(([s, e]) => o >= s && o < e);
   const kept = all.filter((x) => !inCut(x.offset));
   const before = prefix(cuts);

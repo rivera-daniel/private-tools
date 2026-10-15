@@ -24,12 +24,14 @@ try {
   for(const colorScheme of ['light','dark']){
    await page.emulateMedia({colorScheme});
    await page.locator('.cat-card:last-of-type').scrollIntoViewIfNeeded();
-   assert.equal(await page.locator('.tool-illustration').count(),TOOLS.filter(t=>!t.stage).length);
+   assert.equal(await page.locator('#cards .tool-illustration').count(),TOOLS.filter(t=>!t.stage).length);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow ${width}/${colorScheme}`);
    await page.evaluate(()=>window.scrollTo(0,0));
    await page.screenshot({path:`${shots}/${width}-${colorScheme}.jpg`,type:'jpeg',quality:80,fullPage:true});
   }
   assert.equal(await page.locator('.app-shelf a').count(),5);
+  assert.equal(await page.locator('.app-shelf .tool-illustration').count(),5);
+  assert.equal(await page.locator('.app-shelf .app-icon').count(),0);
   await page.locator('.app-shelf a').last().click();assert.match(page.url(),/#pdf-editor$/);
   await page.locator('#search').fill('Office');assert.equal(await page.getByRole('button',{name:/Office Viewer/}).count(),1);assert.match(await page.getByRole('button',{name:/Office Viewer/}).locator('.cat-tag').textContent(),/Planned/);
   await page.getByRole('button',{name:/Office Viewer/}).click();assert.ok(await page.locator('#tool-dialog').isVisible());await page.keyboard.press('Escape');assert.equal(await page.locator('#tool-dialog').isVisible(),false);

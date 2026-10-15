@@ -12,6 +12,11 @@ import { parseTiffFile, parseRaf } from './formats/tiff-file.js';
 import { parseBmp } from './formats/bmp.js';
 import { parsePsd } from './formats/psd.js';
 import { parseSvg } from './formats/svg.js';
+import * as documents from './families/documents.js';
+import * as pdf from './families/pdf.js';
+import * as media from './families/media.js';
+import * as programs from './families/programs.js';
+import { scanFile } from './families/scan.js';
 
 export { LIMITS };
 export const SUPPORTED = 'JPEG, PNG, WebP, HEIC, HEIF, AVIF, JPEG XL, GIF, TIFF, DNG and camera raw (CR2, CR3, NEF, ARW, ORF, RW2, PEF, RAF), PSD, BMP and SVG';
@@ -49,6 +54,34 @@ export async function inspectImage(input) {
   try { await parser(new Bytes(u8), r); }
   catch (error) { r.warn(`The file is damaged or truncated. Results may be incomplete (${error.message}).`); }
   if (r.width === null) {
+    const exif = r.sources.get('EXIF Exif') ?? [];
+    const w = Number(exif.find((f) => f.key === 'PixelXDimension')?.value); const h = Number(exif.find((f) => f.key === 'PixelYDimension')?.value);
+    if (w && h) { r.width = w; r.height = h; }
+  }
+  analyze(r);
+  return r.toJSON();
+}
+
+// Each family module exports detect(u8, name), returning an async parser(b, r, ctx) or null.
+const FAMILIES = [documents, pdf, media, programs];
+
+// Any file: the format's own parser when one matches, then the generic scan every file gets.
+export async function inspectFile(input, name = '') {
+  const u8 = input instanceof Uint8Array ? input : new Uint8Array(input);
+  const r = new Report(u8.length);
+  if (u8.length > LIMITS.maxFileBytes) { r.warn('File exceeds the 200 MB limit and was not inspected.'); return r.toJSON(); }
+  const image = detect(u8);
+  if (image) r.category = 'Image';
+  let parser = image;
+  for (const family of FAMILIES) { if (parser) break; parser = family.detect(u8, name); }
+  const b = new Bytes(u8);
+  if (parser) {
+    try { await parser(b, r, { name }); }
+    catch (error) { r.warn(`The file is damaged or truncated. Results may be incomplete (${error.message}).`); }
+  }
+  try { await scanFile(b, r, { name }); }
+  catch (error) { r.warn(`The general scan stopped early (${error.message}).`); }
+  if (r.category === 'Image' && r.width === null) {
     const exif = r.sources.get('EXIF Exif') ?? [];
     const w = Number(exif.find((f) => f.key === 'PixelXDimension')?.value); const h = Number(exif.find((f) => f.key === 'PixelYDimension')?.value);
     if (w && h) { r.width = w; r.height = h; }

@@ -1,8 +1,11 @@
 // Lossless metadata removal. The cleaner cuts the metadata blocks the inspector found out of the file's
 // container and copies every other byte as is, so pixels are never decoded or re-encoded.
-import { LIMITS, concat } from '../metadata/bytes.js';
-import { inspectImage } from '../metadata/index.js';
+import { LIMITS, concat, crc32 } from '../metadata/bytes.js';
+import { inspectFile, inspectImage } from '../metadata/index.js';
 import { enumValue } from '../metadata/tags.js';
+import * as documents from './families/documents.js';
+import * as pdf from './families/pdf.js';
+import * as media from './families/media.js';
 
 export const CLEANABLE = 'JPEG, PNG, WebP and GIF';
 const FORMATS = new Set(['JPEG', 'PNG', 'WebP', 'GIF']);
@@ -48,6 +51,40 @@ export async function cleanImage(input) {
     exposures: before.signals.filter((s) => s.kind === 'privacy' || s.kind === 'declared').map((s) => s.title),
     kept: [...(orientation > 1 ? [`Orientation (${enumValue('Orientation', orientation)})`] : []), ...after.blocks.filter((b) => b.removable === false).map((b) => `${b.kind} (${b.container})`)],
     orientation,
+  };
+}
+
+// Each family module exports formats (a Set of report.format values) and
+// clean(u8, report, ctx) => { data, removed: [{ kind, container, bytes }], kept: [string], allowed?: (block) => boolean }.
+// It throws a Refusal to leave the file untouched. allowed marks blocks deliberately kept, which the check
+// afterwards accepts. ctx: { name, options }.
+const FAMILIES = [documents, pdf, media];
+export class Refusal extends Error {}
+
+// Any file the inspector can read. Images go through cleanImage. Other formats go through their family's
+// cleaner, and the result is inspected again before it is handed back.
+export async function cleanFile(input, name = '', options = {}) {
+  const u8 = input instanceof Uint8Array ? input : new Uint8Array(input);
+  if (u8.length > LIMITS.maxFileBytes) return refuse('This file is larger than 200 MB.');
+  const before = await inspectFile(u8, name);
+  if (FORMATS.has(before.format)) return cleanImage(u8);
+  const family = FAMILIES.find((f) => f.formats?.has(before.format));
+  if (!family) return refuse(before.format ? `${before.format} files cannot be cleaned yet.` : 'This file type is not one the Metadata Cleaner can rewrite safely, so it was left untouched.');
+  if (before.warnings.some((w) => /damaged|truncated|past the end|Too many/.test(w))) return refuse('The file is damaged or unusually structured, so it was left untouched.');
+  if (!before.cleanable.blocks) return { ok: true, data: u8, format: before.format, bytesBefore: u8.length, bytesAfter: u8.length, removed: [], exposures: [], kept: [] };
+  let result;
+  try { result = await family.clean(u8, before, { name, options }); }
+  catch (error) { if (error instanceof Refusal) return refuse(error.message); throw error; }
+  const after = await inspectFile(result.data, name);
+  const allowed = result.allowed ?? (() => false);
+  const leftovers = after.blocks.filter((b) => b.removable !== false && !hasRemovableAncestor(after.blocks, b) && !allowed(b));
+  const newWarnings = after.warnings.filter((w) => !before.warnings.includes(w));
+  const same = after.format === before.format && after.width === before.width && after.height === before.height;
+  if (leftovers.length || newWarnings.length || !same) return refuse('The cleaned file did not pass the check afterwards, so it was not produced.');
+  return {
+    ok: true, data: result.data, format: before.format, width: before.width, height: before.height,
+    bytesBefore: u8.length, bytesAfter: result.data.length, removed: result.removed, kept: result.kept,
+    exposures: before.signals.filter((s) => s.kind === 'privacy' || s.kind === 'declared').map((s) => s.title),
   };
 }
 
@@ -97,9 +134,6 @@ function fixWebp(u8, keepExif) {
   if (String.fromCharCode(...out.subarray(12, 16)) === 'VP8X') out[20] = (out[20] & ~0x0c) | (keepExif ? 0x08 : 0);
   return out;
 }
-
-const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
-function crc32(u8) { let c = 0xffffffff; for (const byte of u8) c = CRC[(c ^ byte) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
 
 function pngChunk(type, data) {
   const out = new Uint8Array(12 + data.length); const view = new DataView(out.buffer);

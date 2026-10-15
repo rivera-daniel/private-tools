@@ -10,7 +10,8 @@ const metadataFields = (r) => [...r.sources].filter(([name]) => !TECHNICAL.test(
 // - blocks: every metadata block with its byte location, decoded or not. Metadata Cleaner removes these.
 export class Report {
   constructor(size) {
-    this.format = null; this.width = null; this.height = null; this.size = size;
+    // category: Image, Document, Audio, Video, Archive, Program or Other.
+    this.format = null; this.category = null; this.width = null; this.height = null; this.size = size;
     this.sources = new Map(); this.highlights = new Map(); this.blocks = []; this.structure = [];
     this.signals = []; this.warnings = []; this.c2pa = []; this.inflated = 0;
   }
@@ -75,7 +76,7 @@ export class Report {
 
   toJSON() {
     return {
-      format: this.format, width: this.width, height: this.height, size: this.size,
+      format: this.format, category: this.category, width: this.width, height: this.height, size: this.size,
       sources: [...this.sources].map(([name, fields]) => ({ name, fields, technical: TECHNICAL.test(name) })),
       highlights: [...this.highlights].map(([name, fields]) => ({ name, fields })),
       blocks: this.blocks, structure: this.structure,

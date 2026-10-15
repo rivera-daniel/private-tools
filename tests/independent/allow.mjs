@@ -14,8 +14,9 @@ const ORIENTATION = ['IFD0:Orientation', 'File:ExifByteOrder'];
 const ZIP = ['ZIP:ZipRequiredVersion', 'ZIP:ZipBitFlag', 'ZIP:ZipCompression', 'ZIP:ZipModifyDate', 'ZIP:ZipCRC', 'ZIP:ZipCompressedSize', 'ZIP:ZipUncompressedSize', 'ZIP:ZipFileName'];
 const QT_MOVIE = ['MajorBrand', 'MinorVersion', 'CompatibleBrands', 'Free', 'Wide', 'Skip', 'MediaDataSize', 'MediaDataOffset', 'MediaData', 'MovieHeaderVersion', 'CreateDate', 'ModifyDate', 'TimeScale', 'Duration', 'PreferredRate', 'PreferredVolume', 'MatrixStructure', 'PreviewTime', 'PreviewDuration', 'PosterTime', 'SelectionTime', 'SelectionDuration', 'CurrentTime', 'NextTrackID', 'HandlerType', 'HandlerVendorID'].map((t) => `QuickTime:${t}`);
 const QT_TRACK = ['TrackHeaderVersion', 'TrackCreateDate', 'TrackModifyDate', 'TrackID', 'TrackDuration', 'TrackLayer', 'TrackVolume', 'MatrixStructure', 'ImageWidth', 'ImageHeight', 'Unknown_edts', 'MediaHeaderVersion', 'MediaCreateDate', 'MediaModifyDate', 'MediaTimeScale', 'MediaDuration', 'MediaLanguageCode', 'HandlerClass', 'HandlerType', 'GraphicsMode', 'OpColor', 'CompressorID', 'VendorID', 'SourceImageWidth', 'SourceImageHeight', 'XResolution', 'YResolution', 'CompressorName', 'BitDepth', 'AVCConfiguration', 'PixelAspectRatio', 'BufferSize', 'MaxBitrate', 'AverageBitrate', 'VideoFrameRate', 'SyncSampleTable', 'CompositionTimeToSample', 'SampleToChunk', 'SampleSizes', 'ChunkOffset', 'ChunkOffset64', 'Balance', 'AudioFormat', 'AudioChannels', 'AudioBitsPerSample', 'AudioSampleRate', 'PurchaseFileFormat', 'Unknown_mp4a', 'Unknown_esds', 'LayoutFlags', 'TimeToSampleTable', 'SampleGroupDescription', 'SampleToGroup', 'HandlerDescription', 'EditList'].map((t) => `Track:${t}`);
+// The segment UID is replaced with fresh random bytes on every clean, so what is left is not the original.
 const MKV = ['EBMLVersion', 'EBMLReadVersion', 'EBMLMaxIDLength', 'EBMLMaxSizeLength', 'DocType', 'DocTypeVersion', 'DocTypeReadVersion', 'SeekID', 'SeekPosition', 'CRC-32', 'CueTime', 'CueTrack', 'CueClusterPosition', 'CueRelativePosition', 'Void', 'Matroska_0x0070'].map((t) => `Matroska:${t}`)
-  .concat(['TimecodeScale', 'Duration', 'MuxingApp', 'WritingApp', 'CRC-32'].map((t) => `Info:${t}`))
+  .concat(['TimecodeScale', 'Duration', 'MuxingApp', 'WritingApp', 'CRC-32', 'SegmentUID'].map((t) => `Info:${t}`))
   .concat(['TrackNumber', 'TrackUID', 'TrackLacing', 'TrackLanguage', 'TrackDefault', 'CodecID', 'TrackType', 'VideoFrameRate', 'ImageWidth', 'ImageHeight', 'DisplayWidth', 'DisplayHeight', 'VideoScanType', 'Matroska_0x15b0', 'MaxBlockAdditionID', 'CodecPrivate', 'Matroska_0x16aa', 'Matroska_0x16bb', 'DefaultDuration', 'AudioChannels', 'AudioSampleRate', 'AudioBitsPerSample', 'CodecDelay', 'SeekPreRoll'].map((t) => `Track:${t}`));
 
 export const EXIFTOOL_ALLOW = {
@@ -27,7 +28,7 @@ export const EXIFTOOL_ALLOW = {
   pdf: [...FILE, 'PDF:PDFVersion', 'PDF:Linearized', 'PDF:PageCount', 'PDF:HasXFA', /^PDF:EmbeddedImage(Width|Height|ColorSpace|Filter|)$/, ...JPEG_FRAME],
   ooxml: [...FILE, ...ZIP], odf: [...FILE, ...ZIP], zip: [...FILE, ...ZIP],
   // The package document's manifest, spine and language are needed to open the book.
-  epub: [...FILE, ...ZIP, /^XML:(Manifest|Spine)/, 'XML-dc:Language', 'XML-dc:IdentifierId', 'XML:MetaProperty', 'XML:Meta', 'XML:MetaName', 'XML:MetaContent'],
+  epub: [...FILE, ...ZIP, /^XML:(Manifest|Spine)/, 'XML-dc:Language', 'XML-dc:IdentifierId', 'XML-dc:Identifier', 'XML:MetaProperty', 'XML:Meta', 'XML:MetaName', 'XML:MetaContent'],
   mp4: [...FILE, ...QT_MOVIE, ...QT_TRACK, 'QuickTime:Unknown_free', 'Track:Unknown_btrt'],
   // MPEG covers the frame header and the encoder's Xing/LAME header inside the first audio frame.
   mpeg: [...FILE, 'File:ID3Size', /^MPEG:/, /^AAC:(ProfileType|SampleRate|Channels)$/],
@@ -44,9 +45,9 @@ export const EXIFTOOL_ALLOW = {
 
 // Tags the cleaner keeps on purpose where keeping them is a product decision. They are reported, not failed.
 export const EXIFTOOL_POLICY = {
-  epub: [['XML-dc:Identifier', 'EPUB unique identifier (required by the format; could be replaced with a fresh one)'], ['XML-dc:Title', 'EPUB title']],
+  epub: [['XML-dc:Title', 'EPUB title']],
   mp4: [[/^Track:(ChapterListTrackID|Gen\w+|Text|OtherFormat|FontTable|SampleTime|SampleDuration)$/, 'chapter text track']],
-  mkv: [[/^Chapter:/, 'chapters'], ['Matroska:EditionFlagDefault', 'chapters'], ['Info:SegmentUID', 'Matroska segment UID (a per-file identifier)']],
+  mkv: [[/^Chapter:/, 'chapters'], ['Matroska:EditionFlagDefault', 'chapters']],
   mpeg: [['AAC:Encoder', 'encoder name inside the AAC bitstream']],
 };
 

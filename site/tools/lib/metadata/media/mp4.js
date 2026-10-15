@@ -115,6 +115,15 @@ function unreferenced(b, top, moov, r) {
   }
 }
 
+const GENERIC_HANDLERS = { vide: 'VideoHandler', soun: 'SoundHandler', hint: 'HintHandler', meta: 'MetaHandler', text: 'TextHandler', sbtl: 'SubtitleHandler', subt: 'SubtitleHandler', tmcd: 'TimeCodeHandler', alis: 'DataHandler', 'url ': 'DataHandler' };
+const GENERIC_NAMES = new Set([...Object.values(GENERIC_HANDLERS), 'Handler']);
+export const genericHandler = (b, h) => GENERIC_HANDLERS[b.ascii(h.start + 8, 4)] ?? 'Handler';
+// The name after the 24-byte hdlr header: a C string, or a counted string in QuickTime files.
+export function handlerName(b, h) {
+  const raw = b.slice(h.start + 24, h.end - h.start - 24);
+  return raw.length && raw[0] === raw.length - 1 ? text(raw.subarray(1)) : text(raw);
+}
+
 function padding(b, box, r) {
   const u8 = b.u8.subarray(box.start, box.end);
   if (u8.every((x) => x === 0)) return;
@@ -176,10 +185,14 @@ function trakBox(b, trak, r, ctx) {
   }
   if (tkhd) times(b, tkhd, r, ctx, who);
   r.field('Container', who, desc.filter(Boolean).join(' · '));
-  if (hdlr && b.has(hdlr.start + 24, 1)) {
-    const raw = b.slice(hdlr.start + 24, hdlr.end - hdlr.start - 24);
-    const name = raw.length && raw[0] === raw.length - 1 ? text(raw.subarray(1)) : text(raw);
-    if (name) r.field('Container', `${who} handler name`, name);
+  for (const h of [hdlr, kid(kid(mdia, 'minf'), 'hdlr')]) {
+    if (!h || !b.has(h.start + 24, 1)) continue;
+    const name = handlerName(b, h);
+    if (!name) continue;
+    r.field('Container', `${who} handler name`, name);
+    // Writers put their own text here, sometimes a person's or project's name. Anything but a generic
+    // name is rewritten to the generic name for the handler type.
+    if (!GENERIC_NAMES.has(name)) r.block('Handler name', h.offset, h.size, { container: `${who} hdlr`, note: name });
   }
   let id = -1;
   if (isTimedMetadata(b, trak)) {

@@ -8,10 +8,13 @@ import { Refusal } from '../index.js';
 const CLEANERS = { MP4: cleanMp4, MOV: cleanMp4, M4A: cleanMp4, '3GP': cleanMp4, MP3: cleanMpeg, MP2: cleanMpeg, AAC: cleanMpeg, WAV: cleanWav, AIFF: cleanAiff, FLAC: cleanFlac, Ogg: cleanOgg, Opus: cleanOgg, MKV: cleanMkv, WebM: cleanMkv };
 export const formats = new Set(Object.keys(CLEANERS));
 
+// Matroska's segment UID is replaced, and MP4 handler names are made generic, even when nothing else is found.
+export const mustRewrite = (report) => ['MKV', 'WebM'].includes(report.format) || report.blocks.some((b) => b.kind === 'Handler name');
+
 export async function clean(u8, report, ctx) {
   const cleaner = CLEANERS[report.format];
   if (!cleaner) throw new Refusal(`${report.format} files cannot be cleaned yet.`);
-  return cleaner(u8, report, cleanable(report.blocks));
+  return cleaner(u8, report, cleanable(report.blocks), ctx.options ?? {});
 }
 
 // Removable blocks with no removable ancestor: the units the format cleaners act on.

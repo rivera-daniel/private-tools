@@ -176,3 +176,43 @@ test('a cleaner that trips over a malformed structure refuses instead of throwin
   assert.equal(r.ok, false);
   assert.match(r.reason, /could not be rewritten safely/);
 });
+
+// ---------- rulings on what is kept, replaced or refused ----------
+
+test('a ZIP with Office or OpenDocument metadata parts that is no longer such a file is refused', async () => {
+  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
+  const { rawZip } = await import('./fixtures/documents.js');
+  for (const name of ['docProps/core.xml', 'meta.xml']) {
+    const zip = rawZip([{ name, data: Buffer.from('<x><creator>Jane Doe</creator></x>') }, { name: 'readme.txt', data: Buffer.from('hi') }]);
+    const r = await cleanFile(zip, 'broken.zip');
+    assert.equal(r.ok, false, name);
+    assert.match(r.reason, /Office or OpenDocument/);
+  }
+});
+
+test('EPUB: the package identifier, and toc.ncx with it, get a fresh urn:uuid on every clean', async () => {
+  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
+  const { readZip, readEntry } = await import('../site/tools/lib/zip/index.js');
+  const { epub } = await import('./fixtures/documents.js');
+  const book = await epub();
+  const ids = [];
+  for (let i = 0; i < 2; i++) {
+    const r = await cleanFile(book, 'book.epub');
+    assert.ok(r.ok, r.reason);
+    assert.ok(r.removed.some((x) => x.kind === 'Book identifier'));
+    const zip = readZip(r.data); const read = async (n) => Buffer.from(await readEntry(zip, zip.entries.find((e) => e.name === n))).toString('utf8');
+    const opf = await read('OEBPS/content.opf'); const ncx = await read('OEBPS/toc.ncx');
+    const id = /<dc:identifier id="uid">([^<]+)</.exec(opf)[1];
+    assert.match(id, /^urn:uuid:[0-9a-f-]{36}$/);
+    assert.ok(!opf.includes('12345678-90ab-cdef') && !ncx.includes('12345678-90ab-cdef'));
+    assert.ok(ncx.includes(`content="${id}"`));
+    ids.push(id);
+  }
+  assert.notEqual(ids[0], ids[1]);
+});
+
+test('JPEG: a kept color profile names its text in the kept list', async () => {
+  const r = await cleanImage(readFileSync(new URL('./fixtures/camera-no-manifest.jpg', import.meta.url)));
+  assert.ok(r.ok, r.reason);
+  assert.ok(r.kept.some((k) => /^Color profile text: .*Description "sRGB IEC61966-2.1"/.test(k)), JSON.stringify(r.kept));
+});

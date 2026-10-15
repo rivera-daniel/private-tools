@@ -83,7 +83,18 @@ export function parseMp3(b, r, ctx) {
   if (b.has(first + 36, 18) && b.ascii(first + 36, 4) === 'VBRI') { frames = b.u32(first + 50); vbr = true; r.field('Container', 'VBR header', `VBRI version ${b.u16(first + 40)}`); }
   r.field('Container', 'Bitrate', vbr ? 'Variable' : `${h.bitrate / 1000} kbps`);
   r.field('Container', 'Duration', duration(frames ? (frames * h.samples) / h.rate : ((end - first) * 8) / h.bitrate));
+  let o = first;
+  for (let x, n = 0; n < 4000000 && (x = mpegHeader(b, o)) && o + x.length <= end; n++) o += x.length;
   leftoverBefore(r, start, first);
+  leftoverAfter(b, r, o, end, mpegHeader);
+}
+
+// Bytes after the last whole frame and before any trailing tags: a cut-off frame or the rest of a damaged
+// tag. Cut only when no further audio follows, so junk in the middle of a stream is never mistaken for an end.
+function leftoverAfter(b, r, last, end, read) {
+  if (last >= end || findSync(b, last, end, read, 2, end - last) >= 0) return;
+  r.field('Container', 'Bytes after the last frame', fmtBytes(end - last));
+  r.block('Leftover data', last, end - last, { container: 'After the last audio frame', decoded: false });
 }
 
 // Bytes between the leading tags and the first frame are no part of the audio: often tag padding, sometimes
@@ -109,4 +120,5 @@ export function parseAdts(b, r, ctx) {
   r.field('Container', 'Channels', String(h.channels));
   r.field('Container', 'Duration', duration((frames * 1024) / h.rate));
   leftoverBefore(r, start, first);
+  leftoverAfter(b, r, o, end, adtsHeader);
 }

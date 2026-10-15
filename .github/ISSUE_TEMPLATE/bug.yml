@@ -6,7 +6,7 @@ body:
     id: tool
     attributes:
       label: Tool
-      options: [Image Inspector, File Inspector, Metadata Cleaner, Archiver, Other]
+      options: [Image Inspector, File Inspector, Metadata Cleaner, Archiver, PDF Editor, Other]
     validations:
       required: true
   - type: textarea

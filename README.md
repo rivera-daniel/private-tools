@@ -55,6 +55,19 @@ Creates and opens archives in the browser.
 - **Safety:** paths that climb out of the extraction folder are blocked, links are never extracted, and archives whose contents expand far beyond their size are stopped.
 - **Limits:** Firefox and Safari keep the output in memory, which caps it at about 2 GB. Chromium writes straight to disk. RAR archives can be opened but not created.
 
+### PDF Editor
+
+Edits PDFs with [MuPDF](https://mupdf.com/) compiled to WebAssembly.
+
+- **Organize:** merge files, reorder pages by drag or keyboard, rotate, duplicate, delete and insert blank pages, split by ranges, every N pages or one file per page, and extract pages. Undo, redo and reset.
+- **Convert:** images to PDF (JPEGs are embedded without recompression and without their metadata) and pages to PNG or JPEG.
+- **Protect:** AES-256 encryption with print, copy and edit permissions, and removal of a password you know.
+- **Compress:** a lossless rewrite, plus optional lossy image downsampling.
+- **Watermark and page numbers:** text watermarks and page-number formats such as "Page 1 of 9".
+- **Redact:** search, common patterns (emails, phone numbers, SSNs, card numbers, IBANs, dates) or boxes drawn on the page. Text, image pixels, line art and form values under each box are deleted from the file, the redacted words are scrubbed from bookmarks, accessibility text, labels and links, and the file is rewritten as a single revision. Every result is checked before it is handed back: the redacted text must be gone from every page, object, stream and byte, or no file is produced. A rasterize mode turns marked pages into images. PDFs whose black boxes hide text that can still be copied are flagged.
+- **Save:** edits are applied, then hidden data is removed with Metadata Cleaner, then encryption is added.
+- **Limits:** existing text cannot be edited in place. Pages copied from a second file keep their content but lose links, comments and form fields. Saving rewrites the file, which invalidates existing digital signatures. Redaction checks fragments shorter than four characters only in page text.
+
 ## Roadmap
 
 | Tool | Status | Description |
@@ -63,7 +76,7 @@ Creates and opens archives in the browser.
 | File Inspector | Available | Shows what any file reveals: its true type, hidden text, user names, build paths, signatures and metadata. |
 | Metadata Cleaner | Available | Removes metadata from photos, documents, PDFs, audio and video on your device and re-inspects the result. |
 | Archiver | Available | Creates and opens ZIP, 7z, tar and gzip archives and extracts RAR, xz, ISO and more, with AES-256 encryption. |
-| PDF Editor | Planned | Merges, splits, reorders, rotates, protects and compresses PDFs, removes redacted content for real, and adds annotations, form entries and signatures, using MuPDF in WebAssembly. |
+| PDF Editor | Available | Merges, splits, reorders, rotates, protects and compresses PDFs and removes redacted content for real, using MuPDF in WebAssembly. Signing, annotations and forms are next. |
 | Photo Editor | Planned | A layered image editor with masks, adjustment layers, selections, filters and PSD support, based on the open-source PhotoCraft engine in WebAssembly. |
 | QR Code Generator | Planned | Creates static QR codes that never expire and never route through a tracking redirect. |
 | Image Redactor | Planned | Blurs, pixelates or blacks out faces, plates and account numbers by replacing the pixels, and strips metadata on save. |
@@ -99,7 +112,7 @@ Planned improvements:
 - All parsing and cleaning runs in a Web Worker in the browser. No file data leaves the device.
 - Pages are served with a Content Security Policy of `default-src 'self'` and `connect-src 'none'`, so the page cannot make network requests. The site itself loads no third-party scripts, fonts or analytics.
 - Opening an inspected file in Metadata Cleaner passes the file through the browser's own storage (IndexedDB). The cleaner deletes it as soon as it reads it, and any tool page deletes a leftover copy when it loads.
-- The Archiver page also allows `'wasm-unsafe-eval'` and `connect-src 'self'`, so its worker can load the libarchive WebAssembly module from the same site. It still cannot contact any other site.
+- The Archiver and PDF Editor pages also allow `'wasm-unsafe-eval'` and `connect-src 'self'`, so their workers can load their WebAssembly engines (libarchive, MuPDF) from the same site. They still cannot contact any other site.
 - Extracted values are rendered as text only and are never interpreted as HTML.
 - Parsers treat every input as hostile: reads are bounds-checked, directory loops are detected, and decompression, nesting depth and field counts are capped.
 
@@ -114,10 +127,13 @@ site/                    Deployable static site, served under /tools/
   tools/file-inspector/  File Inspector page, UI and worker
   tools/metadata-cleaner/ Metadata Cleaner page, UI and worker
   tools/archiver/        Archiver page, UI and workers
+  tools/pdf-editor/      PDF Editor page, UI and workers
   tools/lib/metadata/    Parsers: images, families/ (documents, PDF, media, programs, general scan)
   tools/lib/clean/       Metadata removal for each format family
   tools/lib/zip/         ZIP reader and writer, AES encryption
   tools/lib/archive/     tar, gzip and archive handling for the Archiver
+  tools/lib/pdf-editor/  PDF editing operations and redaction
+  tools/vendor/mupdf/    MuPDF.js WebAssembly build
   tools/vendor/libarchive/ libarchive WebAssembly build, its build script and licenses
 tests/                   Parser and browser tests, fixtures and reference data
 server.js                Development server
@@ -149,7 +165,7 @@ BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium npm run test:browser
 BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium node tests/browser-cleaner.mjs
 ```
 
-`tests/browser-files.mjs` checks the File Inspector the same way, with generated documents, PDFs, audio, programs and text files. `tests/browser-archiver.mjs` creates, encrypts and extracts archives in the Archiver.
+`tests/browser-files.mjs` checks the File Inspector the same way, with generated documents, PDFs, audio, programs and text files. `tests/browser-archiver.mjs` creates, encrypts and extracts archives in the Archiver. `tests/browser-pdf-editor.mjs` and `tests/browser-pdf-redact.mjs` cover the PDF Editor and its redaction panel.
 
 ### Reference data
 

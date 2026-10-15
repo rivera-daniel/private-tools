@@ -105,6 +105,8 @@ test('strings in a binary: user paths, shares, internal names, addresses, secret
   const r = await inspectFile(bin, 'tool.bin');
   assert.deepEqual(found(r, 'User folder path').sort(), ['/home/jroe/build/app', 'C:\\Users\\jroe\\source\\repos\\Tool\\obj\\Release\\Tool.pdb', 'D:\\Users\\mrivera\\Desktop\\plan.txt'].sort());
   assert.deepEqual(found(r, 'Network share'), ['\\\\fileserver01\\finance\\q3']);
+  const spaced = await inspectFile(enc('see \\\\nas\\Team Files\\plan.docx for details'), 'a.txt');
+  assert.deepEqual(found(spaced, 'Network share'), ['\\\\nas\\Team Files\\plan.docx']);
   assert.ok(found(r, 'Internal host name').includes('buildhost-7.lan'));
   assert.ok(found(r, 'IP address').includes(PRIVATE_IP));
   assert.ok(!found(r, 'IP address').includes('1.2.3.4'), 'version-like numbers are not addresses');

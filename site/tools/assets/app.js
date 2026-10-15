@@ -1,6 +1,7 @@
 // Tool catalog: renders cards, search and category filters. Tool data is static.
 const TOOLS = [
   { name: 'Image Inspector', copy: 'See every piece of metadata in an image: location, camera, people, software and AI provenance.', category: ['images', 'privacy'], art: 'inspector', status: 'Available', href: '/tools/image-inspector/' },
+  { name: 'File Inspector', copy: 'See what any file reveals: its true type, hidden text, user names, build paths, signatures and metadata.', category: ['images', 'documents', 'privacy'], art: 'files', status: 'Available', href: '/tools/file-inspector/' },
   { name: 'Metadata Cleaner', copy: 'Remove location, camera details and other sensitive metadata from images.', category: ['images', 'privacy'], art: 'cleaner', status: 'Available', href: '/tools/metadata-cleaner/' },
   { name: 'Private OCR', copy: 'Extract text from images and scanned documents on your device.', category: ['images', 'documents'], art: 'ocr', status: 'Planned' },
   { name: 'Resume ATS Preview', copy: 'Preview the text an applicant tracking system extracts from your resume and spot formatting it cannot read.', category: ['documents', 'careers'], art: 'resume', status: 'Planned' },
@@ -13,6 +14,7 @@ const corners = '<path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v
 const page = '<path class="art-ink" d="M17 7h23l10 10v40H17zM40 7v11h10M23 28h19M23 35h19M23 42h14" stroke-width="1.8"/>';
 const ART = {
   inspector: `${corners}<rect class="art-soft-fill" x="17" y="21" width="30" height="23" rx="3"/><path class="art-mid-fill" d="m19 41 8-11 6 7 5-8 7 12"/><circle class="art-mid-fill" cx="40" cy="25" r="2.3"/>`,
+  files: `${corners}<path class="art-ink" d="M21 15h15l8 8v26H21zM36 15v8h8" stroke-width="1.8"/><path class="art-mid" d="M26 29h10M26 34h7" stroke-width="1.8"/><circle class="art-red" cx="39" cy="40" r="5.5" stroke-width="2.2"/><path class="art-red" d="m43 44 5 5" stroke-width="2.2"/>`,
   cleaner: `${page}<circle class="art-red-fill art-surface" cx="49" cy="49" r="11" stroke-width="2"/><path class="art-on-red" d="M44 49h10" stroke-width="1.7"/>`,
   ocr: `${corners}<path class="art-mid" d="M23 25v-4h19v4M32.5 21v23M27 44h11" stroke-width="4"/>`,
   resume: `${page}<path class="art-red" d="M47 55v-8m6 8V40m6 15V34" stroke-width="4"/>`,

@@ -98,7 +98,7 @@ const PATTERNS = [
   ['Email address', /\b[A-Za-z0-9][A-Za-z0-9._%+-]{0,63}@(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,24}\b/g, (m) => (FILE_EXT_TLD.test(m.split('.').pop()) || /@\d+x\./.test(m) || NOISE_HOSTS.test(m.split('@')[1]) ? null : m)],
   ['User folder path', /\b[A-Za-z]:\\(?:Users|Documents and Settings)\\[^\\/:*?"<>|\p{C}]{1,64}(?:\\[^\\/:*?"<>|\p{C}]{1,128}){0,12}/giu, (m) => (pathUser(m) ? trimPath(m) : null)],
   ['User folder path', /(?<![\w.~-])\/(?:Users|home)\/[^/\s"'<>:;,|*?]{1,64}(?:\/[^/\s"'<>:;,|*?]{1,128}){0,12}/g, (m) => (pathUser(m) ? m : null)],
-  ['Network share', /(?<![\w\\])\\\\[A-Za-z][A-Za-z0-9._-]{0,62}\\[A-Za-z0-9$][^\\/:*?"<>|\r\n\t]{0,80}(?:\\[^\\/:*?"<>|\r\n\t]{1,128}){0,8}/g, (m) => m],
+  ['Network share', /(?<![\w\\])\\\\[A-Za-z][A-Za-z0-9._-]{0,62}\\[A-Za-z0-9$][^\\/:*?"<>|\p{C}]{0,80}(?:\\[^\\/:*?"<>|\p{C}]{1,128}){0,8}/gu, (m) => trimPath(m)],
   ['URL', /\b(?:https?|ftp|sftp|file|smb):\/\/[^\s"'<>\\^`{|}\x00-\x1f]{3,500}/g, (m) => {
     const url = m.replace(/[.,;:!?)\]]+$/, '');
     let host = ''; try { host = new URL(url).hostname; } catch { return null; }

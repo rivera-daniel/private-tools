@@ -64,8 +64,18 @@ Creates and opens archives in the browser.
 | Metadata Cleaner | Available | Removes metadata from photos, documents, PDFs, audio and video on your device and re-inspects the result. |
 | Archiver | Available | Creates and opens ZIP, 7z, tar and gzip archives and extracts RAR, xz, ISO and more, with AES-256 encryption. |
 | PDF Editor | Planned | Merges, splits, reorders, rotates, protects and compresses PDFs, removes redacted content for real, and adds annotations, form entries and signatures, using MuPDF in WebAssembly. |
+| Photo Editor | Planned | A layered image editor with masks, adjustment layers, selections, filters and PSD support, based on the open-source PhotoCraft engine in WebAssembly. |
+| QR Code Generator | Planned | Creates static QR codes that never expire and never route through a tracking redirect. |
+| Image Redactor | Planned | Blurs, pixelates or blacks out faces, plates and account numbers by replacing the pixels, and strips metadata on save. |
+| File Encryptor | Planned | Encrypts and decrypts files with a passphrase or public key in the open age format, compatible with the age command-line tool. |
+| Background Remover | Planned | Separates the subject of a photo from its background with an openly licensed segmentation model that runs on the device. |
+| Data Anonymizer | Planned | Detects personal data in CSV, Excel and JSON columns and masks, hashes, replaces or removes it. |
+| Developer Tools | Planned | Formats JSON and YAML, diffs text, encodes Base64 and URLs and tests regular expressions, and warns when a paste contains a secret. |
+| Password Generator | Planned | Generates passwords and passphrases with the Web Crypto random generator and estimates their strength offline. |
+| PGP Tool | Planned | Encrypts, decrypts, signs and verifies messages and files with OpenPGP keys. |
+| 2FA Backup Decoder | Planned | Reads authenticator export QR codes and otpauth links so two-factor accounts can be moved or backed up. |
 | Private OCR | Planned | Extracts text from images and scanned documents on your device. |
-| Image Converter | Planned | Converts, resizes and compresses images without uploading them. |
+| Image Converter | Planned | Converts HEIC to JPG and between other formats, resizes and compresses images without uploading them. |
 | Resume ATS Preview | Planned | Shows the text an applicant tracking system extracts from a resume and flags formatting it cannot read. |
 | Hash & Verify | Planned | Calculates MD5, SHA-1, SHA-256 and SHA-512 hashes of any file and checks them against an expected value. |
 | Timestamp Decoder | Planned | Reads a raw number as Unix, Windows FILETIME, Apple, Chrome/WebKit, DOS and GPS time. |

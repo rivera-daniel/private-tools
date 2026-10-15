@@ -3,7 +3,7 @@
 import { writeZip } from '../../zip/index.js';
 import { parseXml, rootOf, elements, get, remove, serialize } from '../../metadata/documents/xml.js';
 import { openPackage, planPackage, sanitizePart, partFamily, mayNeedRewrite, rewriteRels, relsPathFor } from '../../metadata/documents/opc.js';
-import { DOC_LIMITS, budget } from '../../metadata/documents/package.js';
+import { DOC_LIMITS, budget, targetKind } from '../../metadata/documents/package.js';
 import { TRACKED, refuse, copyEntry, cleanPicture, reopen, archiveRemovals } from './common.js';
 
 const enc = new TextEncoder();
@@ -22,7 +22,7 @@ export async function cleanOoxml(zip, report, options) {
     if (plan.remove.has(lower)) continue;
     if (rewriteRels(doc, pkg, plan)) out.set(lower, serialize(doc));
   }
-  for (const rel of plan.retarget.keys()) removed.push({ kind: 'Remote resource', container: `${pkg.entries.get(rel.relsName)?.name}: ${rel.target}`, bytes: rel.target.length });
+  for (const rel of plan.retarget.keys()) removed.push({ kind: targetKind(rel.target) === 'path' ? 'File path' : 'Remote resource', container: `${pkg.entries.get(rel.relsName)?.name}: ${rel.target}`, bytes: rel.target.length });
   for (const rel of plan.dropRels) if (rel.external) removed.push({ kind: 'Remote resource', container: `${pkg.entries.get(rel.relsName)?.name}: ${rel.target}`, bytes: rel.target.length });
   if (pkg.typesDoc) {
     let changed = false;
@@ -49,7 +49,7 @@ export async function cleanOoxml(zip, report, options) {
     if (t === null) refuse(`${e.name} is too large to clean safely, so the document was left untouched.`);
     if (!mayNeedRewrite(t, fam, plan.removedIds.has(lower), plan, lower)) continue;
     let doc;
-    try { doc = parseXml(t); } catch (error) { refuse(`${e.name} is not well-formed XML (${error.message}), so the document was left untouched.`); }
+    try { doc = parseXml(t); } catch (error) { refuse(error.limit ? `${e.name} is too large to clean safely, so the document was left untouched.` : `${e.name} is not well-formed XML (${error.message}), so the document was left untouched.`); }
     const s = sanitizePart(doc, { name: lower, family: fam }, plan);
     if (s.tracked && !options.acceptChanges) refuse(TRACKED);
     if (!s.changed) continue;

@@ -1,8 +1,8 @@
 // Office Open XML packages: the part and relationship model, the removal plan and the in-part rewrites.
 // The inspector and the cleaner both run these, so what the inspector reports is exactly what the
 // cleaner removes, and a cleaned file inspects as clean.
-import { parseXml, rootOf, serialize, all, walk, elements, get, set, dropAttrs, attrNs, attrLocal, attrValue, remove, unwrap, clear, text, is, kids } from './xml.js';
-import { DOC_LIMITS, budget, readPart, targetKind, bareName, isLeftover, usersIn } from './package.js';
+import { parseXml, rootOf, serialize, all, walk, elements, get, set, dropAttrs, attrNs, attrLocal, attrValue, remove, unwrap, clear, text } from './xml.js';
+import { DOC_LIMITS, budget, readPart, targetKind, bareName, isLeftover } from './package.js';
 import { utf8 } from '../bytes.js';
 
 export const NS = {
@@ -140,7 +140,7 @@ export function mainPart(pkg) {
 // remove: Map(part -> kind). dropRels: Set(rel). retarget: Map(rel -> new target). removedIds: Map(source part -> Set(id)).
 export async function planPackage(pkg, options = {}) {
   const remove = new Map(); const dropRels = new Set(); const retarget = new Map(); const external = [];
-  const macros = []; const revisions = []; const vmlNotes = new Set();
+  const macros = []; const revisions = []; const vmlNotes = new Set(); const keptXml = [];
   let customXmlRemoved = false;
   for (const [, list] of pkg.rels) {
     for (const rel of list) {
@@ -157,7 +157,9 @@ export async function planPackage(pkg, options = {}) {
       if (rel.kind === 'customXml') {
         let root = null;
         try { const t = await pkg.read(rel.part); root = t && rootOf(parseXml(t)); } catch { /* unreadable custom XML is dropped */ }
-        if (!(root && root.local === 'Sources' && root.ns === NS.BIB)) { kind = 'Custom XML'; customXmlRemoved = true; }
+        // Bibliography sources and Power Query definitions are needed by the document; other custom XML is not.
+        if (root && root.local === 'DataMashup') keptXml.push(rel.part);
+        else if (!(root && root.local === 'Sources' && root.ns === NS.BIB)) { kind = 'Custom XML'; customXmlRemoved = true; }
       }
       if (MACROS.has(rel.kind)) { macros.push(rel.part); if (options.removeMacros) kind = 'Macros'; }
       if (REVISIONS.has(rel.kind)) { revisions.push(rel.part); if (options.acceptChanges) kind = 'Tracked changes'; }
@@ -222,7 +224,7 @@ export async function planPackage(pkg, options = {}) {
       }
     }
   }
-  return { remove, dropRels, retarget, removedIds, external, macros, revisions, vmlNotes, customXmlRemoved, options };
+  return { remove, dropRels, retarget, removedIds, external, macros, revisions, vmlNotes, keptXml, customXmlRemoved, options };
 }
 
 export function isNoteShape(shape) {
@@ -437,4 +439,3 @@ export function mayNeedRewrite(textValue, family, hasRemovedIds, plan, lower) {
   return false;
 }
 
-export { usersIn, serialize, parseXml, rootOf, text, is, kids, get };

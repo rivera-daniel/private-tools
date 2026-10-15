@@ -1,7 +1,7 @@
 // Office Open XML: DOCX, XLSX and PPTX with their macro-enabled, template and show variants.
 import { parseXml, rootOf, elements, all, get, text, attrLocal, attrValue } from './xml.js';
 import { openPackage, planPackage, sanitizePart, partFamily, mayNeedRewrite, mainPart, contentType, MAIN_TYPES, familyOf, NS } from './opc.js';
-import { DOC_LIMITS, budget, entryBlock, rewriteBlock, flag, flagUsers, sample, printerName, usersInBinary, readPart } from './package.js';
+import { budget, entryBlock, rewriteBlock, flag, flagUsers, sample, printerName, usersInBinary, readPart } from './package.js';
 
 export async function ooxmlFormat(zip) {
   try {
@@ -63,6 +63,12 @@ export async function parseOoxml(zip, r, id) {
     flag(r, 'tracked', `The workbook keeps a change history${names.length ? ` with the names ${[...new Set(names)].slice(0, 3).join(', ')}` : ''}.`, e.name);
   }
 
+  for (const lower of plan.keptXml) {
+    const e = pkg.entries.get(lower);
+    entryBlock(r, 'Data connection', e, { removable: false, note: 'Power Query definitions, needed to refresh the data' });
+    flag(r, 'connection', 'Power Query definitions name the files, servers or web addresses the data comes from.', e.name);
+  }
+
   // Links that point outside the package.
   for (const { rel, where } of plan.external) {
     const relsEntry = pkg.entries.get(rel.relsName);
@@ -110,7 +116,7 @@ export async function parseOoxml(zip, r, id) {
     if (fam === 'ppt' && /^ppt\/slides\/slide\d+\.xml$/.test(lower) && /<p:sld\b[^>]*\sshow="(?:0|false)"/.test(t)) hidden.slides++;
     if (!needed && !detect) continue;
     let doc;
-    try { doc = parseXml(t); } catch { r.warn('Some XML parts are malformed.'); continue; }
+    try { doc = parseXml(t); } catch (error) { if (error.limit) skipped = true; else r.warn('Some XML parts are malformed.'); continue; }
     try {
       if (fam === 'core') describeCore(r, doc);
       else if (fam === 'app') describeApp(r, doc);

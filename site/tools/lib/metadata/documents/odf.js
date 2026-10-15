@@ -180,7 +180,7 @@ export async function parseOdf(zip, r, id) {
       const data = await readPart(zip, e, b);
       if (!data) { skipped = true; continue; }
       doc = parseXml(utf8.decode(data));
-    } catch { r.warn('Some XML parts are malformed or could not be read.'); continue; }
+    } catch (error) { if (error.limit) skipped = true; else r.warn('Some XML parts are malformed or could not be read.'); continue; }
     if (kind === 'meta') describeMeta(r, doc, e);
     if (kind === 'content') describeContent(doc, hidden, r, e);
     report(r, sanitizeOdf(doc, kind, plan), e);

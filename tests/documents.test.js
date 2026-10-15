@@ -191,6 +191,15 @@ test('XLSX: saved path, hidden sheet, comments, threaded comments, external link
   assert.match(text('xl/workbook.xml'), /state="veryHidden"/, 'hidden sheets are content and stay');
 });
 
+test('XLSX: Power Query definitions stay and are reported as kept', async () => {
+  const u8 = await xlsx({ powerQuery: true });
+  const r = await inspectFile(u8, 'query.xlsx');
+  assert.ok(r.blocks.some((b) => b.kind === 'Data connection' && b.container === 'customXml/item1.xml' && b.removable === false));
+  const { result } = await cleanAndCheck(u8, 'query.xlsx');
+  assert.ok((await entries(result.data)).files.has('customXml/item1.xml'));
+  await assertPackageValid(result.data);
+});
+
 test('PPTX: comment authors, modern comments, revision info, notes and hidden slides', async () => {
   const u8 = await pptx();
   const r = await inspectFile(u8, 'deck.pptx');

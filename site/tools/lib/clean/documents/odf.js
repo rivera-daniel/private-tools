@@ -31,7 +31,7 @@ export async function cleanOdf(zip, report, options) {
     const data = await readPart(zip, e, b);
     if (!data) refuse(`${e.name} is too large to clean safely, so the document was left untouched.`);
     let doc;
-    try { doc = parseXml(utf8.decode(data)); } catch (error) { refuse(`${e.name} is not well-formed XML (${error.message}), so the document was left untouched.`); }
+    try { doc = parseXml(utf8.decode(data)); } catch (error) { refuse(error.limit ? `${e.name} is too large to clean safely, so the document was left untouched.` : `${e.name} is not well-formed XML (${error.message}), so the document was left untouched.`); }
     const s = sanitizeOdf(doc, kind, plan);
     if (s.tracked && !options.acceptChanges) refuse(TRACKED);
     if (!s.changed) continue;
@@ -46,7 +46,8 @@ export async function cleanOdf(zip, report, options) {
   let manifestChanged = false;
   for (const fe of all(plan.manifest, (x) => x.ns === ODF.manifest && x.local === 'file-entry')) {
     const path = get(fe, 'full-path', ODF.manifest) ?? '';
-    const gone = path.endsWith('/') ? path !== '/' && ![...kept].some((n) => n.startsWith(path) && n !== path) && !kept.has(path) : !kept.has(path);
+    // A folder entry goes only when the cleaner emptied the folder.
+    const gone = path.endsWith('/') ? path !== '/' && [...plan.remove.keys()].some((n) => n.startsWith(path)) && ![...kept].some((n) => n.startsWith(path)) : !kept.has(path);
     if (gone) { remove(fe); manifestChanged = true; }
   }
   if (manifestChanged) out.set('META-INF/manifest.xml', serialize(plan.manifest));
@@ -59,16 +60,21 @@ export async function cleanOdf(zip, report, options) {
     entries.push(data === undefined ? copyEntry(zip, e) : { name: e.name, data: typeof data === 'string' ? enc.encode(data) : data });
   }
   const result = await writeZip(entries);
-  verify(result, out);
+  verify(result, out, plan.manifest);
   const keepMacros = !options.removeMacros && plan.macros.length > 0;
   const keptList = report.blocks.filter((x) => x.removable === false).map((x) => `${x.kind} (${x.container})${x.note ? `: ${x.note}` : ''}`);
   if (keepMacros) keptList.push('Macros (Basic): kept because removing them changes what the document does');
   return { data: result, removed, kept: keptList, allowed: (x) => keepMacros && x.kind === 'Macros' };
 }
 
-function verify(u8, out) {
+function verify(u8, out, manifest) {
   const zip = reopen(u8);
   if (zip.entries[0]?.name !== 'mimetype' || zip.entries[0].method !== 0) refuse('The cleaned file does not start with its type, so it was not produced.');
+  const names = new Set(zip.entries.map((e) => e.name));
+  for (const fe of all(manifest, (x) => x.ns === ODF.manifest && x.local === 'file-entry')) {
+    const path = get(fe, 'full-path', ODF.manifest) ?? '';
+    if (path !== '/' && !path.endsWith('/') && !names.has(path)) refuse('The cleaned manifest lists a missing file, so the file was not produced.');
+  }
   for (const [name, data] of out) {
     if (typeof data !== 'string') continue;
     try { parseXml(data); } catch { refuse(`The rewritten ${name} is not well-formed, so the file was not produced.`); }

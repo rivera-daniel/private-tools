@@ -2,7 +2,8 @@
 // cleaner needs to rewrite parts without disturbing bytes it does not touch: untouched attributes
 // and text are written back exactly as they were read.
 
-export class XmlError extends Error {}
+// limit marks parts refused for their size rather than for being malformed.
+export class XmlError extends Error { constructor(message, limit = false) { super(message); this.limit = limit; } }
 export const XML_LIMITS = { maxNodes: 500000, maxDepth: 256, maxChars: 32 * 1024 * 1024 };
 
 const NAME = /^[A-Za-z_:À-￿][\w.\-:·-￿]*$/;
@@ -32,12 +33,12 @@ export const escapeAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, 
 // Element: { type: 'el', name, prefix, local, ns, attrs: [{ name, raw, quote }], children, parent, scope }.
 // Text: { type: 'text', raw }. Anything else (declaration, comment, CDATA, PI, doctype): { type: 'raw', raw }.
 export function parseXml(text, { lenient = false, maxNodes = XML_LIMITS.maxNodes } = {}) {
-  if (text.length > XML_LIMITS.maxChars) throw new XmlError('part is too large to read');
+  if (text.length > XML_LIMITS.maxChars) throw new XmlError('part is too large to read', true);
   const doc = { type: 'doc', children: [], parent: null, scope: { xml: XML_NS } };
   let cur = doc; let i = 0; let nodes = 0; let depth = 0; let root = false;
   const n = text.length;
   if (text.charCodeAt(0) === 0xfeff) i = 1;
-  const push = (node) => { if (++nodes > maxNodes) throw new XmlError('more nodes than the limit'); node.parent = cur; cur.children.push(node); };
+  const push = (node) => { if (++nodes > maxNodes) throw new XmlError('more nodes than the limit', true); node.parent = cur; cur.children.push(node); };
   while (i < n) {
     const lt = text.indexOf('<', i);
     const end = lt < 0 ? n : lt;

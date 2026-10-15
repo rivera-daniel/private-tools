@@ -102,7 +102,8 @@ export async function docx({ tracked = false, macros = false, remote = true } = 
   ].map((e) => ({ ...e, modified: new Date(Date.UTC(2025, 2, 4, 17, 30, 0)) })));
 }
 
-export async function xlsx() {
+// options: powerQuery (a Power Query definition stored as custom XML, which must stay).
+export async function xlsx({ powerQuery = false } = {}) {
   const S = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:x15ac="http://schemas.microsoft.com/office/spreadsheetml/2010/11/ac" xmlns:xr="http://schemas.microsoft.com/office/spreadsheetml/2014/revision" mc:Ignorable="x15ac xr"';
   const workbook = xml(`<workbook ${S}><fileVersion appName="xl" lastEdited="7" lowestEdited="7" rupBuild="27425"/><workbookPr/><mc:AlternateContent><mc:Choice Requires="x15"><x15ac:absPath url="${winPath('Documents', 'Finance')}\\"/></mc:Choice></mc:AlternateContent><xr:revisionPtr revIDLastSave="0" documentId="8_{AAAABBBB-CCCC-DDDD-EEEE-FFFF00001111}" xr6:coauthVersionLast="47" xmlns:xr6="http://schemas.microsoft.com/office/spreadsheetml/2016/revision6"/><sheets><sheet name="Summary" sheetId="1" r:id="rId1"/><sheet name="Salaries" sheetId="2" state="veryHidden" r:id="rId2"/></sheets><externalReferences><externalReference r:id="rId3"/></externalReferences></workbook>`);
   const sheet = (rows) => xml(`<worksheet ${S} xr:uid="{12345678-1234-1234-1234-123456789ABC}"><sheetData>${rows}</sheetData><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/><pageSetup orientation="portrait" r:id="rIdP"/><legacyDrawing r:id="rIdV"/></worksheet>`);
@@ -113,7 +114,8 @@ export async function xlsx() {
     { name: 'docProps/core.xml', data: core() },
     { name: 'docProps/app.xml', data: app('Microsoft Excel', '<TitlesOfParts><vt:vector size="2" baseType="lpstr"><vt:lpstr>Summary</vt:lpstr><vt:lpstr>Salaries</vt:lpstr></vt:vector></TitlesOfParts>') },
     { name: 'xl/workbook.xml', data: workbook },
-    { name: 'xl/_rels/workbook.xml.rels', data: rels([['rId1', 'worksheet', 'worksheets/sheet1.xml'], ['rId2', 'worksheet', 'worksheets/sheet2.xml'], ['rId3', 'externalLink', 'externalLinks/externalLink1.xml'], ['rId4', 'connections', 'connections.xml'], ['rId5', 'http://schemas.microsoft.com/office/2017/10/relationships/person', 'persons/person.xml']]) },
+    { name: 'xl/_rels/workbook.xml.rels', data: rels([['rId1', 'worksheet', 'worksheets/sheet1.xml'], ['rId2', 'worksheet', 'worksheets/sheet2.xml'], ['rId3', 'externalLink', 'externalLinks/externalLink1.xml'], ['rId4', 'connections', 'connections.xml'], ['rId5', 'http://schemas.microsoft.com/office/2017/10/relationships/person', 'persons/person.xml'], ...(powerQuery ? [['rId6', 'customXml', '../customXml/item1.xml']] : [])]) },
+    ...(powerQuery ? [{ name: 'customXml/item1.xml', data: xml('<DataMashup xmlns="http://schemas.microsoft.com/DataMashup">AAAAAA==</DataMashup>') }] : []),
     { name: 'xl/worksheets/sheet1.xml', data: sheet('<row r="1"><c r="A1" t="inlineStr"><is><t>Total</t></is></c></row><row r="2" hidden="1"><c r="A2"><v>5</v></c></row>') },
     { name: 'xl/worksheets/sheet2.xml', data: sheet('<row r="1"><c r="A1"><v>90000</v></c></row>') },
     { name: 'xl/worksheets/_rels/sheet1.xml.rels', data: rels([['rIdC', 'comments', '../comments1.xml'], ['rIdV', 'vmlDrawing', '../drawings/vmlDrawing1.vml'], ['rIdP', 'printerSettings', '../printerSettings/printerSettings1.bin'], ['rIdT', 'http://schemas.microsoft.com/office/2017/10/relationships/threadedComment', '../threadedComments/threadedComment1.xml']]) },

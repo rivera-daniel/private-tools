@@ -78,6 +78,8 @@ Edits PDFs with [MuPDF](https://mupdf.com/) compiled to WebAssembly.
 | Archiver | Available | Creates and opens ZIP, 7z, tar and gzip archives and extracts RAR, xz, ISO and more, with AES-256 encryption. |
 | PDF Editor | Available | Merges, splits, reorders, rotates, protects and compresses PDFs and removes redacted content for real, using MuPDF in WebAssembly. Signing, annotations and forms are next. |
 | Photo Editor | Planned | A layered image editor with masks, adjustment layers, selections, filters and PSD support, based on the open-source PhotoCraft engine in WebAssembly. |
+| Audio Editor | Planned | Records, cuts, mixes and cleans up audio on the device, based on the open-source SoundCraft engine in WebAssembly. |
+| Office Viewer | Planned | Opens Word documents, spreadsheets and presentations without uploading them, based on the open-source WordCraft, GridCraft and DeckCraft engines. |
 | QR Code Generator | Planned | Creates static QR codes that never expire and never route through a tracking redirect. |
 | Image Redactor | Planned | Blurs, pixelates or blacks out faces, plates and account numbers by replacing the pixels, and strips metadata on save. |
 | File Encryptor | Planned | Encrypts and decrypts files with a passphrase or public key in the open age format, compatible with the age command-line tool. |
@@ -104,6 +106,8 @@ Planned improvements:
 
 - [ ] Metadata Cleaner support for HEIC, AVIF and TIFF
 - [ ] Offline support across page reloads (service worker)
+- [ ] PDF Editor: digital signatures with certificate files, signature verification, annotations, form filling and OCR
+- [ ] Smart card and USB token signing through a local companion program that is not part of the hosted site
 - [ ] Content Credentials signature and trust-chain verification
 - [ ] Decoding of Brotli-compressed JPEG XL metadata boxes
 

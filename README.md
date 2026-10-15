@@ -196,6 +196,10 @@ The site is deployed as a Cloudflare Worker with static assets:
 npm run deploy
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the privacy rules every change must keep, how to run the tests, and the commit and pull request conventions.
+
 ## License
 
 The code is licensed under the [GNU Affero General Public License v3.0](LICENSE). The Private Tools name and logo are not covered by that license.

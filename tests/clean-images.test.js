@@ -121,6 +121,18 @@ test('HEIF: iloc version 0 with the item table after the media data, and a Conte
   assert.ok(r.removed.some((x) => x.kind === 'C2PA'));
 });
 
+test('HEIF: metadata items listed after hundreds of tiles are still found and removed', async () => {
+  const tiles = Array.from({ length: 210 }, (_, i) => ({ id: i + 2, type: 'hvc1', data: coded(`T${i}`, 16) }));
+  const input = heif({
+    items: [{ id: 1, type: 'grid', data: grid(14, 15, 1680, 1120), method: 1 }, ...tiles, { id: 300, type: 'Exif', data: exifItem(exifTiff()) }, { id: 301, type: 'mime', contentType: 'application/rdf+xml', data: xmp }],
+    refs: [['dimg', 1, tiles.map((t) => t.id)], ['cdsc', 300, [1]], ['cdsc', 301, [1]]],
+    props: [ispe(1680, 1120), hvcC(), ispe(120, 80)], assoc: Object.fromEntries([[1, [1]], ...tiles.map((t) => [t.id, [-2, 3]])]),
+  });
+  const { r, items } = await cleanHeifAndCheck(input);
+  assert.equal(items.size, 211);
+  assert.deepEqual(r.removed.map((x) => x.kind).sort(), ['EXIF', 'XMP']);
+});
+
 test('HEIF: real files clean losslessly', async () => {
   for (const path of ['formats/pii.heic', 'formats/pii.avif', 'real/sample1.heif']) {
     const { r } = await cleanHeifAndCheck(fixture(path), path);
@@ -240,6 +252,17 @@ test('TIFF: DNG and other raw data, old-style JPEG and larger sub-images are ref
   const hidden = tiffFile([{ tags: [...RGB(8, 4), [0x013b, 2, 'Jane']], strips: [strip('SMALL', 96)], subIfds: [{ tags: RGB(64, 48), strips: [strip('BIG', 9216)] }] }]);
   const r4 = await cleanFile(hidden, 'odd.tif');
   assert.equal(r4.ok, false); assert.match(r4.reason, /larger image/);
+});
+
+test('TIFF: a damaged directory is reported and the file refused, not passed through as clean', async () => {
+  const input = tiffFile([{ tags: [...RGB(8, 4), [0x013b, 2, 'Jane Doe'], [0xc4a5, 7, Buffer.alloc(40, 7)]], strips: [strip('ROW', 96)], gps: { tags: gps } }]);
+  // Point the PrintIM value past the end of the file.
+  const entry = input.indexOf(Buffer.from([0xa5, 0xc4, 7, 0]));
+  input.writeUInt32LE(input.length + 100, entry + 8);
+  const report = await inspectFile(input, 'scan.tif');
+  assert.ok(report.warnings.some((w) => /damaged/.test(w)));
+  const r = await cleanFile(input, 'scan.tif');
+  assert.equal(r.ok, false); assert.match(r.reason, /damaged/);
 });
 
 test('TIFF and HEIF go through cleanImage too', async () => {

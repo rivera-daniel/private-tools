@@ -37,7 +37,7 @@ export async function parseTiffFile(b, r) {
   if (r.format === 'TIFF') r.within(dirs, () => tiffBlocks(b, r));
 }
 
-const KIND_BY_TAG = { 0x02bc: 'XMP', 0x83bb: 'IPTC', 0x8649: 'Photoshop', 0x927c: 'MakerNote', 0x8769: 'EXIF', 0x8825: 'EXIF', 0x014a: 'Thumbnail' };
+const KIND_BY_TAG = { 0x02bc: 'XMP', 0x83bb: 'IPTC', 0x8649: 'Photoshop', 0x935c: 'Photoshop', 0x927c: 'MakerNote', 0x8769: 'EXIF', 0x8825: 'EXIF', 0x014a: 'Thumbnail' };
 const GEO_TAGS = new Set([0x830e, 0x8482, 0x85d8, 0x87af, 0x87b0, 0x87b1]);
 
 // A plain TIFF's metadata is a set of tags among the image tags. Each tag outside the image tags, each
@@ -45,7 +45,8 @@ const GEO_TAGS = new Set([0x830e, 0x8482, 0x85d8, 0x87af, 0x87b0, 0x87b1]);
 // report says what the cleaner's rewrite drops.
 function tiffBlocks(b, r) {
   let layout;
-  try { layout = readLayout(b.u8); } catch { return; }
+  // The cleaner cannot follow what this cannot read, so a damaged layout is reported as such and the file is refused.
+  try { layout = readLayout(b.u8); } catch (error) { r.warn(`The TIFF directories are damaged (${error.message}).`); return; }
   const taken = r.blocks.filter((x) => x.removable !== false && Number.isInteger(x.offset)).map((x) => [x.offset, x.offset + x.length]);
   const add = (kind, at, length, container) => {
     if (!length || taken.some(([s, e]) => at < e && at + length > s)) return;

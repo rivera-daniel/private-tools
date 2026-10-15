@@ -4,8 +4,16 @@ import { clearFile, takeFile } from '/tools/lib/handoff.js';
 const $ = (id) => document.getElementById(id);
 const MAX_BYTES = 200 * 1024 * 1024;
 const TIMEOUT_MS = 120000;
-const MIME = { JPEG: 'image/jpeg', PNG: 'image/png', WebP: 'image/webp', GIF: 'image/gif' };
 const KINDS = { EXIF: 'EXIF', XMP: 'XMP', IPTC: 'IPTC', C2PA: 'Content Credentials', Comment: 'comments', Text: 'text chunks', Thumbnail: 'thumbnails', Photoshop: 'Photoshop data', Trailer: 'hidden trailing data', Time: 'timestamps' };
+// Refusals the user can lift with an option. The family cleaners state the reason in words, so it is
+// matched by pattern: [option, label, pattern].
+const OPTIONS = [
+  ['acceptChanges', 'Accept tracked changes in documents', /tracked change|revision/i],
+  ['removeMacros', 'Remove macros', /macro|VBA/i],
+  ['removeSignatures', 'Remove digital signatures from PDFs', /signature|signed/i],
+  ['clearForms', 'Clear filled-in form fields in PDFs', /form field|filled-in|form data|\bforms?\b/i],
+];
+const FILE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg>';
 
 // Jobs run one at a time. A spare worker stands by so a hung file can be cancelled offline.
 let worker = spawn(); let spare = spawn(); let next = 0; let running = null; let timer = null; const urls = [];
@@ -25,17 +33,26 @@ const size = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1
 const plural = (n, w) => `${n.toLocaleString('en-US')} ${w}${n === 1 ? '' : 's'}`;
 const cleanName = (name) => { const dot = name.lastIndexOf('.'); return dot > 0 ? `${name.slice(0, dot)}-clean${name.slice(dot)}` : `${name}-clean`; };
 const track = (blob) => { const url = URL.createObjectURL(blob); urls.push(url); return url; };
+const chosen = () => Object.fromEntries([...document.querySelectorAll('[data-option]')].map((box) => [box.dataset.option, box.checked]));
+
+function thumbnail(file) {
+  const thumb = el('span', 'job-thumb');
+  const icon = () => { thumb.innerHTML = FILE_ICON; thumb.classList.add('icon'); };
+  if (!file.type.startsWith('image/')) { icon(); return thumb; }
+  const img = el('img'); img.alt = ''; img.onerror = icon; img.src = track(file); thumb.append(img);
+  return thumb;
+}
 
 function add(files) {
   if (!files.length) return;
   $('dropzone').hidden = true; $('queue').hidden = false;
+  const options = chosen();
   for (const file of files) {
     const row = el('li', 'job'); row.dataset.state = 'waiting';
-    const thumb = el('span', 'job-thumb'); const body = el('div', 'job-body'); body.append(el('strong', '', file.name), el('p', '', 'Waiting…'));
-    const img = el('img'); img.alt = ''; img.onerror = () => img.remove(); img.src = track(file); thumb.append(img);
-    row.append(thumb, body, el('span', 'state', ''));
+    const body = el('div', 'job-body'); body.append(el('strong', '', file.name), el('p', '', 'Waiting…'));
+    row.append(thumbnail(file), body, el('span', 'state', ''));
     $('jobs').append(row);
-    waiting.push({ id: next++, file, row, body });
+    waiting.push({ id: next++, file, row, body, options });
   }
   title(); pump();
 }
@@ -43,38 +60,50 @@ function add(files) {
 function title() {
   const rows = [...$('jobs').children];
   const finished = rows.filter((r) => r.dataset.state === 'done').length;
-  $('queue-title').textContent = `${plural(rows.length, 'image')}, ${finished} cleaned`;
+  $('queue-title').textContent = `${plural(rows.length, 'file')}, ${finished} cleaned`;
 }
 
 function pump() {
   if (running || !waiting.length) return;
   running = waiting.shift();
-  const { file, row, body } = running;
+  const { file, row, body, options } = running;
   row.dataset.state = 'working';
   row.lastChild.replaceWith(el('span', 'spinner'));
-  body.lastChild.textContent = 'Cleaning…';
+  body.replaceChildren(body.firstChild, el('p', '', 'Cleaning…'));
   if (file.size > MAX_BYTES) { done({ id: running.id, ok: false, reason: 'This file is larger than 200 MB.' }); return; }
   timer = setTimeout(() => { restart(); done({ id: running.id, ok: false, reason: 'Cleaning took too long and was stopped.' }); }, TIMEOUT_MS);
-  worker.postMessage({ id: running.id, file });
+  worker.postMessage({ id: running.id, file, options });
 }
 
 function done(result) {
   clearTimeout(timer);
-  const { file, row, body } = running; running = null;
+  const job = running; running = null;
+  const { file, row, body } = job;
   const status = body.lastChild;
   if (!result.ok) {
-    row.dataset.state = 'error'; status.textContent = result.reason;
-    row.lastChild.replaceWith(el('span', 'state', 'Not cleaned'));
+    row.dataset.state = 'error';
+    const fix = OPTIONS.find(([option, , pattern]) => !job.options[option] && pattern.test(result.reason));
+    status.textContent = fix ? `${result.reason} Turn on “${fix[1]}” to clean it.` : result.reason;
+    if (fix) {
+      const retry = el('button', 'retry', 'Retry with option'); retry.type = 'button';
+      retry.setAttribute('aria-label', `Retry ${file.name} with “${fix[1]}”`);
+      retry.addEventListener('click', () => {
+        row.dataset.state = 'waiting'; status.textContent = 'Waiting…'; retry.replaceWith(el('span', 'state', ''));
+        waiting.push({ ...job, id: next++, options: { ...job.options, [fix[0]]: true } });
+        title(); pump();
+      });
+      row.lastChild.replaceWith(retry);
+    } else row.lastChild.replaceWith(el('span', 'state', 'Not cleaned'));
   } else {
     row.dataset.state = 'done';
     const found = result.removed.length;
     if (!found) status.textContent = 'No metadata found. The file is unchanged.';
     else {
-      const counts = new Map(); for (const b of result.removed) counts.set(KINDS[b.kind] ?? b.kind.toLowerCase(), (counts.get(KINDS[b.kind] ?? b.kind.toLowerCase()) ?? 0) + 1);
+      const counts = new Map(); for (const b of result.removed) { const k = KINDS[b.kind] ?? b.kind.toLowerCase(); counts.set(k, (counts.get(k) ?? 0) + 1); }
       status.textContent = `Removed ${plural(found, 'block')}: ${[...counts.keys()].join(', ')}. ${size(result.bytesBefore)} → ${size(result.bytesAfter)}.`;
     }
-    body.append(...(result.kept.length ? [el('p', 'kept', `Kept: ${result.kept.join(', ')}.`)] : []));
-    const save = el('a', 'save', 'Save'); save.href = track(new Blob([result.data], { type: MIME[result.format] })); save.download = cleanName(file.name);
+    if (result.kept?.length) body.append(el('p', 'kept', `Kept: ${result.kept.join(', ')}.`));
+    const save = el('a', 'save', 'Save'); save.href = track(new Blob([result.data], { type: file.type || 'application/octet-stream' })); save.download = cleanName(file.name);
     save.setAttribute('aria-label', `Save cleaned ${file.name}`);
     row.lastChild.replaceWith(save);
   }
@@ -89,6 +118,12 @@ function reset() {
   $('queue').hidden = true; $('dropzone').hidden = false; $('file').value = '';
 }
 
+function optionsState() {
+  const on = Object.values(chosen()).filter(Boolean).length;
+  $('options-state').textContent = on ? `${on} on` : 'All off';
+}
+
+for (const box of document.querySelectorAll('[data-option]')) box.addEventListener('change', optionsState);
 $('file').addEventListener('change', (e) => add([...e.target.files]));
 $('again').addEventListener('click', () => { reset(); $('file').click(); });
 const zone = $('dropzone');
@@ -98,7 +133,7 @@ zone.addEventListener('drop', (e) => { e.preventDefault(); add([...e.dataTransfe
 for (const type of ['dragover', 'drop']) window.addEventListener(type, (e) => e.preventDefault());
 window.addEventListener('pagehide', () => { for (const u of urls) URL.revokeObjectURL(u); });
 
-// Image Inspector hands over the image it just inspected.
+// The inspectors hand over the file they just inspected.
 if (location.hash === '#from-inspector') {
   history.replaceState(null, '', location.pathname);
   takeFile().then((file) => { if (file) add([file]); }, () => {});

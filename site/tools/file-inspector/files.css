@@ -1,0 +1,8 @@
+.preview-frame.icon-frame{background:linear-gradient(135deg,var(--surface-2),var(--surface-3))}
+.type-icon{display:grid;place-items:center;width:100%;min-height:180px;color:var(--muted)}
+.type-icon svg{width:72px;height:72px}
+.preview-frame img[hidden]{display:none}
+/* Paths, links and identifiers found in files are long unbroken strings. */
+.signal strong,.signal p,.preview-card>p{overflow-wrap:anywhere}
+@media(max-width:1000px){.type-icon{min-height:100px}.type-icon svg{width:48px;height:48px}}
+@media(max-width:650px){.type-icon{min-height:88px}.type-icon svg{width:40px;height:40px}}

@@ -6,6 +6,7 @@ import { enumValue } from '../metadata/tags.js';
 import * as documents from './families/documents.js';
 import * as pdf from './families/pdf.js';
 import * as media from './families/media.js';
+import * as text from './families/text.js';
 
 export const CLEANABLE = 'JPEG, PNG, WebP and GIF';
 const FORMATS = new Set(['JPEG', 'PNG', 'WebP', 'GIF']);
@@ -58,8 +59,10 @@ export async function cleanImage(input) {
 // clean(u8, report, ctx) => { data, removed: [{ kind, container, bytes }], kept: [string], allowed?: (block) => boolean }.
 // It throws a Refusal to leave the file untouched. allowed marks blocks deliberately kept, which the check
 // afterwards accepts. ctx: { name, options }.
-const FAMILIES = [documents, pdf, media];
+const FAMILIES = [documents, pdf, media, text];
 export class Refusal extends Error {}
+// Every format report.format can name that some cleaner rewrites.
+export const cleanableFormats = () => new Set([...FORMATS, ...FAMILIES.flatMap((f) => [...(f.formats ?? [])])]);
 
 // Any file the inspector can read. Images go through cleanImage. Other formats go through their family's
 // cleaner, and the result is inspected again before it is handed back.

@@ -6,7 +6,9 @@ const MAX_BYTES = 200 * 1024 * 1024;
 const TIMEOUT_MS = 60000;
 const HIGHLIGHT_ORDER = ['Provenance', 'Generation data', 'Location', 'Camera', 'People', 'Software', 'Dates', 'Description', 'Comments', 'Color profile', 'File'];
 const OPEN_HIGHLIGHTS = new Set(['Provenance', 'Generation data', 'Location', 'Camera', 'People']);
-const CLEANABLE = new Set(['JPEG', 'PNG', 'WebP', 'GIF']);
+// Which formats the cleaner rewrites comes from the clean module. It loads with the page so the check
+// needs no network access later.
+const formats = import('/tools/lib/clean/index.js').then((m) => m.cleanableFormats(), () => new Set());
 const PROVENANCE_ORDER = { declared: 0, clue: 1, credentials: 2 };
 const LABELS = { declared: 'Declared', clue: 'Clue', credentials: 'Credentials', privacy: 'Exposed' };
 const SUPPORTED = new Set(['JPEG', 'PNG', 'WebP', 'HEIC', 'HEIF', 'AVIF', 'JPEG XL', 'GIF', 'TIFF', 'DNG', 'CR2', 'CR3', 'NEF', 'ARW', 'ORF', 'RW2', 'PEF', 'RAF', 'PSD', 'PSB', 'BMP', 'SVG']);
@@ -81,12 +83,13 @@ function setCard(id, { level, title, detail }) {
   $(`${id}-detail`).textContent = detail;
 }
 
-function render(file, report) {
+async function render(file, report) {
+  const CLEANABLE = await formats;
   if (!SUPPORTED.has(report.format)) { showError(file, report.warnings[0] ?? 'This file is not a supported image.'); return; }
   showFrame(file, [report.format, report.width && `${report.width} × ${report.height}`, formatBytes(report.size)].filter(Boolean).join(' · '));
   setCard('summary', report.summary);
-  $('provenance').hidden = false;
-  setCard('provenance', report.provenance);
+  $('provenance').hidden = !report.provenance;
+  if (report.provenance) setCard('provenance', report.provenance);
 
   $('warnings').replaceChildren(...report.warnings.map((w) => el('p', '', w)));
   $('warnings').hidden = report.warnings.length === 0;
@@ -103,7 +106,7 @@ function render(file, report) {
   $('cleaner-title').textContent = `${plural(removable, 'metadata block')} (${formatBytes(removableBytes)}) can be removed`;
   $('cleaner-detail').textContent = cleanable
     ? `Open this image in Metadata Cleaner to remove ${removable === 1 ? 'it' : 'them'} on your device.`
-    : `Metadata Cleaner supports JPEG, PNG, WebP and GIF. ${report.format} support is planned.`;
+    : `Metadata Cleaner cannot rewrite ${report.format} files yet.`;
 
   const highlights = [...report.highlights].sort((a, b) => order(a.name) - order(b.name));
   $('highlights').replaceChildren(...highlights.map((g) => renderGroup(g, OPEN_HIGHLIGHTS.has(g.name))));

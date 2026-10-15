@@ -12,3 +12,19 @@
 .job .save{border:0;background:var(--red);color:var(--on-red);border-radius:10px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .2s}.job .save:hover{opacity:.88}
 .job .state{font-size:12px;font-weight:600;color:var(--muted)}
 @media(max-width:650px){.job{grid-template-columns:44px 1fr;padding:14px}.job-thumb{width:44px;height:44px}.job .save,.job .state,.job .spinner{grid-column:2;justify-self:start}}
+.job-thumb.icon{background:linear-gradient(135deg,var(--surface-2),var(--surface-3));color:var(--muted)}.job-thumb.icon svg{width:26px;height:26px}
+.job-body p{overflow-wrap:anywhere}
+.job .retry{border:1px solid var(--red-line);background:var(--red-soft);color:var(--red-text);border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;white-space:nowrap;transition:border-color .2s}.job .retry:hover{border-color:var(--red-text)}
+
+.options{max-width:810px;margin:16px auto 20px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.options>summary{display:flex;align-items:center;gap:12px;padding:15px 20px;font-size:15px;font-weight:600;cursor:pointer;list-style:none}
+.options>summary::-webkit-details-marker{display:none}
+.options>summary small{margin-left:auto;font-size:12px;font-weight:500;color:var(--muted)}
+.options>summary::after{content:'';width:8px;height:8px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg);margin:0 2px 3px 4px;transition:transform .2s}
+.options[open]>summary::after{transform:rotate(-135deg);margin-bottom:-3px}
+.option-list{display:grid;border-top:1px solid var(--line-soft)}
+.option-list label{display:flex;gap:14px;align-items:flex-start;padding:14px 20px;border-bottom:1px solid var(--line-soft);cursor:pointer}.option-list label:last-child{border:0}
+.option-list input{flex:none;width:18px;height:18px;margin:1px 0 0;accent-color:var(--red)}
+.option-list strong{display:block;font-size:14px;font-weight:600}
+.option-list small{display:block;font-size:13px;line-height:1.5;color:var(--muted);margin-top:3px}
+@media(max-width:650px){.job .retry{grid-column:2;justify-self:start}.options>summary{padding:14px 16px}.option-list label{padding:14px 16px}}

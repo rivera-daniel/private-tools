@@ -2,7 +2,12 @@ import { LIMITS, clip, inflate } from './bytes.js';
 
 // Sources that describe how the image is encoded rather than metadata about it.
 const TECHNICAL = /^(Container|Items|JPEG|JFIF|PNG|WebP|GIF|BMP|JPEG XL|Photoshop document|Adobe APP14|Multi-Picture|RAF|TIFF)$/;
-const metadataFields = (r) => [...r.sources].filter(([name]) => !TECHNICAL.test(name)).reduce((n, [, l]) => n + l.length, 0);
+// Structure of any file: its detected type and program headers, sections and segments.
+const TECHNICAL_ANY = /^File type$| (header|sections|segments|imports|libraries)$/;
+const technical = (name) => TECHNICAL.test(name) || TECHNICAL_ANY.test(name);
+const metadataFields = (r) => [...r.sources].filter(([name]) => !technical(name)).reduce((n, [, l]) => n + l.length, 0);
+// Image Inspector reports leave category unset. Any report with another category is not an image.
+const isImage = (r) => !r.category || r.category === 'Image';
 
 // One report per file. Three views of the same data:
 // - sources: every decoded field, grouped by where it lives (EXIF IFD0, XMP dc, PNG chunks…)
@@ -77,7 +82,7 @@ export class Report {
   toJSON() {
     return {
       format: this.format, category: this.category, width: this.width, height: this.height, size: this.size,
-      sources: [...this.sources].map(([name, fields]) => ({ name, fields, technical: TECHNICAL.test(name) })),
+      sources: [...this.sources].map(([name, fields]) => ({ name, fields, technical: technical(name) })),
       highlights: [...this.highlights].map(([name, fields]) => ({ name, fields })),
       blocks: this.blocks, structure: this.structure,
       signals: this.signals, warnings: this.warnings, c2pa: this.c2pa,
@@ -92,17 +97,20 @@ function summarize(r) {
   const exposures = r.signals.filter((s) => s.kind === 'privacy');
   const fields = metadataFields(r);
   const removable = r.cleanable();
-  const what = `${fields.toLocaleString('en-US')} metadata field${fields === 1 ? '' : 's'} in ${removable.length} block${removable.length === 1 ? '' : 's'}`;
+  const image = isImage(r);
+  const what = `${fields.toLocaleString('en-US')} metadata field${fields === 1 ? '' : 's'}${removable.length ? ` in ${removable.length} block${removable.length === 1 ? '' : 's'}` : ''}`;
   if (exposures.length) {
     const names = exposures.slice(0, 3).map((s) => s.short ?? s.title.toLowerCase());
     if (exposures.length > 3) names.push(`${exposures.length - 3} more`);
-    return { level: 'exposed', title: `${capitalize(listJoin(names))} found`, detail: `This file carries ${what}. Anyone you share it with can read them.` };
+    return { level: 'exposed', title: `${capitalize(listJoin(names))} found`, detail: fields ? `This file carries ${what}. Anyone you share it with can read them.` : 'Anyone you share this file with can find this.' };
   }
-  if (fields) return { level: 'some', title: 'No sensitive metadata found', detail: `This file carries ${what}, but none of it is location, names, serial numbers, prompts or hidden data.` };
-  return { level: 'clean', title: 'No metadata found', detail: 'This file carries no readable metadata beyond its basic image properties.' };
+  if (fields) return { level: 'some', title: 'No sensitive metadata found', detail: image ? `This file carries ${what}, but none of it is location, names, serial numbers, prompts or hidden data.` : `This file carries ${what}, but none of it was flagged as personal, identifying or hidden.` };
+  return { level: 'clean', title: 'No metadata found', detail: image ? 'This file carries no readable metadata beyond its basic image properties.' : 'No metadata, personal details or hidden data were found in this file.' };
 }
 
+// AI provenance describes images only.
 function provenance(r) {
+  if (!isImage(r)) return null;
   const declared = r.signals.filter((s) => s.kind === 'declared');
   const clues = r.signals.filter((s) => s.kind === 'clue');
   const hasCamera = r.highlights.get('Camera')?.some((f) => f.key === 'Make' || f.key === 'Model');

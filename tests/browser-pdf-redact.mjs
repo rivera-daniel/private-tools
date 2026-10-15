@@ -213,7 +213,7 @@ for (const [name, bytes, query] of [['editor', fx.personal(), 'Secretman'], ['ed
   try {
     await page.goto(`${base}/tools/pdf-editor/`);
     await page.setInputFiles('#file', file);
-    await page.waitForSelector('#pages li.page');
+    await page.waitForSelector('#pages li.page', { state: 'attached' });
     await page.click('#tab-redact');
     await page.waitForSelector('#rd-query');
     await page.fill('#rd-query', query);

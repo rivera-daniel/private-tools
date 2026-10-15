@@ -76,12 +76,21 @@ export function cleanMp4(u8, report, blocks) {
   // File offsets: chunk offset tables, absolute fragment base offsets and fragment random access entries.
   // Runs even when only a trailer goes: a chunk offset inside any cut means the cut holds media data.
   const move = (v) => { if (inCut(v)) throw new Refusal('Media data would have been removed, so the file was left untouched.'); return v - shift(before, v); };
+  const inData = (v) => mdats.some((m) => v >= m.start && v < m.end);
+  // Offsets into another file (external data references) or outside the media data cannot be moved safely.
+  for (const x of kept) if (x.parent?.type === 'dref' && !(b.u24(x.start + 1) & 1)) throw new Refusal('A track keeps its media in another file, so this file was left untouched.');
+  // Every kept sample must sit wholly inside the media data, or its tables are damaged.
+  for (const trak of kept.filter((x) => x.type === 'trak')) for (const [s, e] of sampleRanges(b, trak)) if (!mdats.some((m) => s >= m.start && e <= m.end)) throw new Refusal('A sample table points outside the media data, so the file was left untouched.');
   {
     for (const x of kept) {
       if (x.type === 'stco' || x.type === 'co64') {
         const wide = x.type === 'co64'; const n = b.u32(x.start + 4);
         if (x.start + 8 + n * (wide ? 8 : 4) > x.end) throw new Refusal('A chunk offset table is malformed, so the file was left untouched.');
-        for (let i = 0; i < n; i++) { const o = x.start + 8 + i * (wide ? 8 : 4); if (wide) setU64(view, o, move(b.u64(o))); else view.setUint32(o, move(b.u32(o))); }
+        for (let i = 0; i < n; i++) {
+          const o = x.start + 8 + i * (wide ? 8 : 4); const v = wide ? b.u64(o) : b.u32(o);
+          if (!inData(v)) throw new Refusal('A chunk offset points outside the media data, so the file was left untouched.');
+          if (wide) setU64(view, o, move(v)); else view.setUint32(o, move(v));
+        }
       } else if (x.type === 'tfhd' && b.u24(x.start + 1) & 1) setU64(view, x.start + 8, move(b.u64(x.start + 8)));
       else if (x.type === 'tfra') {
         const v1 = b.u8at(x.start) === 1; const sizes = b.u32(x.start + 8); const n = b.u32(x.start + 12);
@@ -95,7 +104,7 @@ export function cleanMp4(u8, report, blocks) {
   const parts = []; let from = 0;
   for (const [s, e] of cuts) { parts.push(out.subarray(from, s)); from = e; }
   parts.push(out.subarray(from));
-  return { data: concat(parts), removed: blocks.map((blk) => ({ kind: blk.kind, container: blk.container ?? '', bytes: blk.kind === 'Dates' || blk.kind === 'Padding' ? 0 : blk.length })), kept: keptList(b, kept, dropped) };
+  return { data: concat(parts), removed: blocks.map((blk) => ({ kind: blk.kind, container: blk.container ?? '', bytes: blk.kind === 'Dates' || blk.kind === 'Padding' ? 0 : blk.length })), kept: [...keptList(b, kept, dropped), ...report.blocks.filter((x) => x.kind === 'Metadata track' && x.removable === false).map((x) => `${x.container}: timed metadata${x.note ? ` (${x.note})` : ''}, kept because the file is fragmented`)] };
 }
 
 function keptList(b, kept, dropped) {

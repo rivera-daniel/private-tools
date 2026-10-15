@@ -24,7 +24,8 @@ export function parseWav(b, r, ctx) {
   r.field('Container', 'Variant', rf64 ? `${b.ascii(0, 4)} (64-bit sizes)` : 'RIFF');
   let o = 12; let byteRate = 0; let dataSize = 0; let ds64Data = 0;
   const end = rf64 ? b.length : riffEnd(b, b.u32(4, true), true, r);
-  for (let i = 0; o + 8 <= end && i < 10000; i++) {
+  for (let i = 0; o < end; i++) {
+    if (!readable(b, o, end, r, i)) break;
     const id = b.ascii(o, 4); let size = b.u32(o + 4, true);
     if (id === 'data' && size === 0xffffffff && ds64Data) size = ds64Data;
     const total = 8 + size + (size & 1);
@@ -44,7 +45,7 @@ export function parseWav(b, r, ctx) {
       else if (id === 'ds64' && size >= 24) { ds64Data = v.u64(8, true); r.field('Container', 'RF64 data size', fmtBytes(ds64Data)); }
       else if (id === 'cue ' && size >= 4) r.field('Container', 'Cue points', String(v.u32(0, true)));
       else if (id === 'smpl' && size >= 36) r.field('Container', 'Sampler loops', String(v.u32(28, true)));
-      else if (!WAV_KEEP.has(id)) wavChunk(id, d, o, total, r, ctx, b);
+      else if (!WAV_KEEP.has(id)) wavChunk(id, d, o, Math.min(total, b.length - o), r, ctx);
     } catch { r.field('RIFF', id, `${fmtBytes(size)}, could not be decoded`); }
     o += total;
   }
@@ -52,7 +53,7 @@ export function parseWav(b, r, ctx) {
   if (!rf64 && end < b.length) trailer(b, end, r);
 }
 
-function wavChunk(id, d, o, total, r, ctx, b) {
+function wavChunk(id, d, o, total, r, ctx) {
   const v = new Bytes(d); const where = { container: `RIFF ${clean(id)}` };
   if (PADS.has(id)) { if (d.some((x) => x)) { r.block('Padding', o, total, { ...where, decoded: false, note: 'Padding holding leftover data' }); r.field('RIFF', `Leftover data in ${clean(id)}`, fmtBytes(d.length)); } return; }
   if (id === 'LIST') {
@@ -111,6 +112,16 @@ function wavChunk(id, d, o, total, r, ctx, b) {
   r.field('RIFF', clean(id) || '(blank)', /^[0-9a-f]{2}( [0-9a-f]{2})*( …|$)/.test(shown) ? `${fmtBytes(d.length)}, not decoded` : shown);
 }
 
+// Chunk IDs are printable. Anything else is audio misread as chunks (an unfinalized recording, a wrong size),
+// so the walk stops, and only a run of zero bytes counts as removable padding.
+function readable(b, o, end, r, i) {
+  if (i >= 10000) { r.warn('Too many chunks. Inspection stopped early.'); return false; }
+  if (end - o >= 8 && /^[\x20-\x7e]{4}$/.test(b.ascii(o, 4))) return true;
+  if (b.u8.subarray(o, end).every((x) => x === 0)) r.block('Padding', o, end - o, { decoded: false, note: 'Zero bytes after the last chunk' });
+  else r.warn('Bytes that are not a chunk follow the last chunk. The file is damaged.');
+  return false;
+}
+
 // Where the chunks end. A size field that stops short of a valid chunk is wrong rather than a trailer.
 function riffEnd(b, declared, le, r) {
   const end = 8 + declared;
@@ -140,8 +151,9 @@ export function parseAiff(b, r, ctx) {
   const aifc = b.ascii(8, 4) === 'AIFC';
   r.field('Container', 'Variant', aifc ? 'AIFF-C' : 'AIFF');
   const end = riffEnd(b, b.u32(4), false, r); let o = 12; let frames = 0; let rate = 0;
-  for (let i = 0; o + 8 <= end && i < 10000; i++) {
-    const id = b.ascii(o, 4); const size = b.u32(o + 4); const total = 8 + size + (size & 1);
+  for (let i = 0; o < end; i++) {
+    if (!readable(b, o, end, r, i)) break;
+    const id = b.ascii(o, 4); const size = b.u32(o + 4); const total = Math.min(8 + size + (size & 1), b.length - o);
     if (o + 8 + size > b.length) { r.warn(`The ${latin1(b.slice(o, 4))} chunk runs past the end of the file. The file is truncated.`); break; }
     r.struct(id, o, Math.min(total, b.length - o));
     const d = b.slice(o + 8, size); const v = new Bytes(d); const where = { container: `AIFF ${clean(id)}` };

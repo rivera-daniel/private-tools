@@ -243,6 +243,17 @@ test('WAV: INFO, bext, iXML, XMP, id3 chunks and trailer removed; RIFF size fixe
   await assertClean(res.data, 'x.wav');
 });
 
+test('WAV: an unfinalized recording is refused rather than losing its audio; a missing final pad byte is fine', async () => {
+  const fmt = cat(Buffer.from([1, 0, 1, 0]), u32(8000, true), u32(16000, true), Buffer.from([2, 0, 16, 0]));
+  const audio = Buffer.from(Array.from({ length: 4000 }, (_, i) => (i * 37) & 255));
+  const open = cat('RIFF', u32(0, true), 'WAVE', 'fmt ', u32(16, true), fmt, 'LIST', u32(18, true), 'INFO', 'IART', u32(6, true), 'Jane\0\0', 'data', u32(0, true), audio);
+  assert.equal((await cleanFile(open, 'x.wav')).ok, false);
+  const odd = cat('RIFF', u32(4 + 24 + 8 + 16 + 8 + 11, true), 'WAVE', 'fmt ', u32(16, true), fmt, 'data', u32(16, true), Buffer.alloc(16, 9), 'LIST', u32(11, true), 'INFO', 'IART', u32(3, true), 'Ja\0');
+  const res = await cleanFile(odd, 'x.wav');
+  assert.ok(res.ok, res.reason);
+  await assertClean(res.data, 'x.wav');
+});
+
 test('AIFF: text, comment, ID3 and application chunks removed; FORM size fixed', async () => {
   const { file, ssnd } = aiff();
   const r = await inspectFile(file, 'x.aiff');

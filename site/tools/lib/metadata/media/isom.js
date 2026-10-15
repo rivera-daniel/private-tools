@@ -3,8 +3,9 @@
 const CONTAINERS = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl', 'edts', 'dinf', 'mvex', 'moof', 'traf', 'mfra', 'tref', 'gmhd', 'udta']);
 export const XMP_UUID = 'be7acfcb97a942e89c71999491e3afac';
 export const C2PA_UUID = 'd8fec3d61b0e483c92975828877ec481';
-// PIFF and Smooth Streaming boxes that playback needs (encryption, fragment timing).
-export const STRUCTURAL_UUIDS = new Set(['a2394f525a9b4f14a2446c427c648df4', '8974dbce7be74c5184f97148f9882554', 'd08a4f1810f34a82b6c832d8aba183d3', '6d1d9b0542d544e680e2141daff757b2', 'd4807ef2ca3946958e5426cb9e46a79f']);
+// PIFF and Smooth Streaming boxes that playback needs (encryption, fragment timing), and Spherical Video V1
+// projection data, without which a 360° video plays flat.
+export const STRUCTURAL_UUIDS = new Set(['ffcc8263f8554a938814587a02521fdd', 'a2394f525a9b4f14a2446c427c648df4', '8974dbce7be74c5184f97148f9882554', 'd08a4f1810f34a82b6c832d8aba183d3', '6d1d9b0542d544e680e2141daff757b2', 'd4807ef2ca3946958e5426cb9e46a79f']);
 // Top-level boxes that belong to the presentation itself.
 export const TOP_STRUCTURAL = new Set(['ftyp', 'moov', 'mdat', 'moof', 'mfra', 'sidx', 'ssix', 'styp', 'emsg', 'prft', 'pdin', 'wide', 'free', 'skip', 'pnot', 'PICT', 'jp2h', 'meco', 'bloc']);
 export const TIMED_METADATA = new Set(['gpmd', 'mebx', 'camm', 'mett', 'metx', 'urim', 'rtmd']);

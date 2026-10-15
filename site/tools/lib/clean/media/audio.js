@@ -21,8 +21,24 @@ export function cleanMpeg(u8, report, blocks) {
   return { data: cut(u8, blocks), removed: removedList(blocks), kept: ['Audio frames, including the encoder header frame'] };
 }
 
+// The audio payload must come out byte for byte, or the cut touched it.
+function payload(u8, id, le) {
+  const v = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  for (let o = 12, i = 0; o + 8 <= u8.length && i < 10000; i++) {
+    let size = v.getUint32(o + 4, le);
+    if (String.fromCharCode(...u8.subarray(o, o + 4)) === id) { if (size === 0xffffffff) size = u8.length - o - 8; return u8.subarray(o + 8, Math.min(u8.length, o + 8 + size)); }
+    o += 8 + size + (size & 1);
+  }
+  return null;
+}
+function sameAudio(a, b, id, le) {
+  const x = payload(a, id, le); const y = payload(b, id, le);
+  if (!x || !y || x.length !== y.length || x.some((v, i) => v !== y[i])) throw new Refusal('The audio data would not have survived unchanged, so the file was left untouched.');
+}
+
 export function cleanWav(u8, report, blocks) {
-  const out = cut(u8, blocks); const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
+  const out = cut(u8, blocks);
+  sameAudio(u8, out, 'data', true); const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
   if (String.fromCharCode(...out.subarray(0, 4)) === 'RIFF') view.setUint32(4, out.length - 8, true);
   else {
     // RF64 and BW64 keep the real file size in the ds64 chunk.
@@ -34,6 +50,7 @@ export function cleanWav(u8, report, blocks) {
 
 export function cleanAiff(u8, report, blocks) {
   const out = cut(u8, blocks);
+  sameAudio(u8, out, 'SSND', false);
   new DataView(out.buffer, out.byteOffset, out.byteLength).setUint32(4, out.length - 8);
   return { data: out, removed: removedList(blocks), kept: ['Common, sound data, marker and instrument chunks'] };
 }

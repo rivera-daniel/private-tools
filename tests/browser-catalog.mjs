@@ -1,0 +1,40 @@
+// Static content, real preview loading and catalog navigation. No real user files or external requests.
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import { TOOLS, DETAILS } from '../site/tools/assets/catalog-data.js';
+const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
+const base=process.env.BASE ?? 'http://127.0.0.1:4176';
+const shots=process.env.SHOTS ?? 'test-results/catalog';
+await mkdir(shots,{recursive:true});
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM ?? '/usr/sbin/chromium'});
+try {
+ const context=await browser.newContext({javaScriptEnabled:false});const page=await context.newPage();
+ await page.goto(`${base}/tools/`);
+ assert.equal(await page.locator('#cards .cat-card').count(),TOOLS.filter(t=>!t.stage).length);
+ for(const t of TOOLS.filter(t=>!t.stage)) {const card=page.locator('#cards article').filter({has:page.getByRole('heading',{name:t.name,exact:true})});assert.ok((await card.textContent()).includes(t.copy));assert.ok((await card.textContent()).includes(DETAILS[t.name]));assert.equal(await card.locator('a').getAttribute('href'),t.href);}
+ assert.ok(await page.getByRole('heading',{level:1}).isVisible());await context.close();
+ console.log('No-JavaScript static descriptions, headings and tool destinations passed');
+ for(const width of [320,390,820,1440]){
+  const context=await browser.newContext({viewport:{width,height:1000}}),page=await context.newPage(),errors=[],external=[];
+  page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(!r.url().startsWith(base)&&!r.url().startsWith('data:'))external.push(r.url());});
+  await page.goto(`${base}/tools/`,{waitUntil:'networkidle'});
+  for(const colorScheme of ['light','dark']){
+   await page.emulateMedia({colorScheme});
+   await page.locator('.cat-card:last-of-type').scrollIntoViewIfNeeded();
+   await page.waitForFunction(()=>[...document.querySelectorAll('.tool-preview img')].every(i=>i.complete&&i.naturalWidth>0));
+   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow ${width}/${colorScheme}`);
+   await page.evaluate(()=>window.scrollTo(0,0));
+   await page.screenshot({path:`${shots}/${width}-${colorScheme}.jpg`,type:'jpeg',quality:80,fullPage:true});
+  }
+  assert.equal(await page.locator('.app-shelf a').count(),5);
+  await page.locator('.app-shelf a').last().click();assert.match(page.url(),/#pdf-editor$/);
+  await page.locator('#search').fill('Office');assert.equal(await page.getByRole('button',{name:/Office Viewer/}).count(),1);assert.match(await page.getByRole('button',{name:/Office Viewer/}).locator('.cat-tag').textContent(),/Planned/);
+  await page.getByRole('button',{name:/Office Viewer/}).click();assert.ok(await page.locator('#tool-dialog').isVisible());await page.keyboard.press('Escape');assert.equal(await page.locator('#tool-dialog').isVisible(),false);
+  await page.locator('#search').fill('<img src=x onerror=alert(1)>');assert.match(await page.locator('#results-note').textContent(),/No tools found/);assert.equal(await page.locator('#results img').count(),0);
+  await page.locator('#search').press('Escape');await page.locator('#group-select').selectOption('forensics');assert.ok(await page.locator('#catalog-empty').isVisible());assert.equal(await page.locator('.cat-card:visible').count(),0);
+  await page.locator('.app-shelf a').first().click();assert.ok(await page.locator('#image-inspector').isVisible());assert.equal(await page.locator('#group-select').inputValue(),'all');await page.locator('body').click({position:{x:3,y:3}});await page.keyboard.press('/');assert.ok(await page.locator('#search').evaluate(e=>e===document.activeElement));
+  await page.locator('.cat-teaser').click();await page.waitForURL(`${base}/tools/roadmap/`);assert.equal(await page.locator('#cards .cat-row').count(),24);
+  await page.locator('#group-select').selectOption('forensics');assert.equal(await page.locator('#cards .cat-row:visible').count(),8);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();console.log(`${width}px: light/dark, real images, search, filters, dialog, keyboard and roadmap passed`);
+ }
+}finally{await browser.close();}

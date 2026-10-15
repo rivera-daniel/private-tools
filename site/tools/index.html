@@ -1,87 +1,57 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow,noarchive">
-<meta name="description" content="Browser-based file tools that run on your device. Inspect image metadata and more without uploading anything.">
-<meta name="color-scheme" content="light dark">
-<title>Private Tools</title>
-<link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml">
-<link rel="preload" href="/tools/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/tools/assets/site.css">
-<link rel="stylesheet" href="/tools/assets/catalog.css">
-<script src="/tools/assets/theme.js"></script>
-</head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="description" content="Inspect image and file metadata, remove hidden personal data, create encrypted archives, and view, edit or redact PDFs. Private browser tools with no file uploads or accounts."><meta name="color-scheme" content="light dark"><title>Private Tools — Private browser tools for your files</title><link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml"><link rel="preload" href="/tools/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/tools/assets/site.css"><link rel="stylesheet" href="/tools/assets/catalog.css"><script src="/tools/assets/theme.js"></script></head>
 <body class="catalog" data-page="catalog">
-<header class="header wrap">
-  <a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
-  <nav aria-label="Primary">
-    <a class="nav-text" href="/tools/roadmap/">Roadmap</a>
-    <a class="nav-text" href="https://github.com/rivera-daniel/private-tools">GitHub</a>
-    <button type="button" class="icon-button" id="theme-toggle" aria-label="Change theme"></button>
-  </nav>
-</header>
-
+<header class="header wrap"><a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a><nav aria-label="Primary"><a href="#available">Tools</a><a href="/tools/roadmap/">Roadmap</a><a href="https://github.com/rivera-daniel/private-tools">Source</a><button type="button" class="icon-button" id="theme-toggle" aria-label="Change theme"></button></nav></header>
 <main>
-  <section class="cat-intro wrap" aria-labelledby="catalog-title">
-    <h1 id="catalog-title">Your files. Your device. <span>Your tools.</span></h1>
-    <p>Browser tools that run on your device. No uploads. No accounts.</p>
-  </section>
-
-  <div class="cat-body">
-    <div class="cat-sentinel" id="bar-sentinel"></div>
-    <div class="cat-bar" id="bar">
-      <div class="cat-bar-inner wrap">
-        <label class="cat-search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
-          <span class="visually-hidden">Search all tools, including planned ones</span>
-          <input type="search" id="search" placeholder="Search tools" autocomplete="off" aria-controls="available results">
-          <button type="button" class="cat-clear" id="clear" aria-label="Clear search" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
-          <kbd>/</kbd>
-        </label>
-        <select class="cat-group-select" id="group-select" aria-label="Filter tools by category"></select>
-      </div>
-      <p class="visually-hidden" id="search-status" role="status" aria-live="polite"></p>
+<section class="cat-intro wrap" aria-labelledby="catalog-title"><div class="hero-copy"><h1 id="catalog-title">Your files.<br><span>Your tools.</span></h1><p>On your device. No uploads. No accounts.</p><div class="hero-actions"><a class="hero-primary" href="#available">Explore tools <span aria-hidden="true">↓</span></a><a class="hero-secondary" href="/tools/roadmap/">See the roadmap <span aria-hidden="true">→</span></a></div></div>
+<nav class="app-shelf" aria-label="Tools in this collection"><a href="#image-inspector"><span class="app-icon  tone-inspector" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><rect class="art-soft-fill" x="17" y="21" width="30" height="23" rx="3"/><path class="art-mid-fill" d="m19 41 8-11 6 7 5-8 7 12"/><circle class="art-mid-fill" cx="40" cy="25" r="2.3"/></svg></span><span>Image Inspector</span></a><a href="#file-inspector"><span class="app-icon  tone-files" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><path class="art-ink" d="M21 15h15l8 8v26H21zM36 15v8h8" stroke-width="1.8"/><path class="art-mid" d="M26 29h10M26 34h7" stroke-width="1.8"/><circle class="art-red" cx="39" cy="40" r="5.5" stroke-width="2.2"/><path class="art-red" d="m43 44 5 5" stroke-width="2.2"/></svg></span><span>File Inspector</span></a><a href="#metadata-cleaner"><span class="app-icon  tone-cleaner" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-ink" d="M17 7h23l10 10v40H17zM40 7v11h10M23 28h19M23 35h19M23 42h14" stroke-width="1.8"/><circle class="art-red-fill art-surface" cx="49" cy="49" r="11" stroke-width="2"/><path class="art-on-red" d="M44 49h10" stroke-width="1.7"/></svg></span><span>Metadata Cleaner</span></a><a href="#archiver"><span class="app-icon  tone-archiver" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><rect class="art-soft-fill" x="18" y="18" width="28" height="30" rx="3"/><path class="art-mid" d="M32 18v4m0 4v4m0 4v4" stroke-width="2.4"/><rect class="art-ink" x="28.5" y="38" width="7" height="6" rx="1.5" stroke-width="1.8"/></svg></span><span>Archiver</span></a><a href="#pdf-editor"><span class="app-icon  tone-pdfedit" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-ink" d="M14 7h24l10 10v39H14zM38 7v11h10" stroke-width="1.8"/><path class="art-mid" d="M20 26h20M20 32h12" stroke-width="1.8"/><rect class="art-ink-fill" x="20" y="37" width="16" height="5" rx="1"/><path class="art-red" d="m50 30 6 6-16 16h-6v-6z" stroke-width="2.4"/></svg></span><span>PDF Editor</span></a></nav></section>
+<div class="cat-body"><div class="cat-sentinel" id="bar-sentinel"></div><div class="cat-bar" id="bar"><div class="cat-bar-inner wrap"><div class="cat-head"><h2 id="available-title">The tools</h2><p id="available-note">5 available</p></div><div class="catalog-controls"><label class="cat-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span class="visually-hidden">Search all tools, including planned ones</span><input type="search" id="search" placeholder="Search tools" autocomplete="off" aria-controls="available results"><button type="button" class="cat-clear" id="clear" aria-label="Clear search" hidden>×</button></label><select class="cat-group-select" id="group-select" aria-label="Filter tools by category"><option value="all">All categories</option><option value="inspect">Inspect and clean</option><option value="documents">Documents</option><option value="images">Images</option><option value="files">Files</option><option value="security">Security</option><option value="forensics">Forensics</option><option value="media">Media</option></select></div></div><p class="visually-hidden" id="search-status" role="status" aria-live="polite"></p></div>
+<section class="cat-section wrap" id="available" aria-labelledby="available-title"><div class="cat-grid" id="cards"><article class="cat-card" data-tool="Image Inspector" data-group="inspect" id="image-inspector">
+  <a class="cat-card-link" href="/tools/image-inspector/">
+    <div class="tool-preview"><img src="/tools/assets/previews/image-inspector.webp" alt="Image Inspector showing sample file results in the actual tool interface" width="1100" height="700" loading="lazy" decoding="async"></div>
+    <div class="tool-body"><div class="tool-heading"><span class="app-icon  tone-inspector" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><rect class="art-soft-fill" x="17" y="21" width="30" height="23" rx="3"/><path class="art-mid-fill" d="m19 41 8-11 6 7 5-8 7 12"/><circle class="art-mid-fill" cx="40" cy="25" r="2.3"/></svg></span><h3>Image Inspector</h3></div>
+      <p class="tool-copy">See every piece of metadata in an image: location, camera, people, software and AI provenance.</p><p class="tool-details">Inspect EXIF, XMP, IPTC and Content Credentials in JPEG, PNG, WebP, HEIC and other image formats.</p>
+      <span class="tool-action">Open tool <span aria-hidden="true">↗</span></span>
     </div>
-
-    <section class="cat-section wrap" id="available" aria-labelledby="available-title" hidden>
-      <div class="cat-head">
-        <h2 id="available-title">Tools</h2>
-        <p id="available-note"></p>
-      </div>
-      <div class="cat-grid" id="cards"></div>
-    </section>
-
-    <section class="cat-section wrap" id="results" aria-labelledby="results-title" hidden>
-      <div class="cat-head">
-        <h2 id="results-title">Results</h2>
-        <p id="results-note"></p>
-      </div>
-      <div class="cat-rows" id="result-rows"></div>
-    </section>
-  </div>
-  <p class="catalog-next wrap">More on the way. <a href="/tools/roadmap/">See what’s coming <span aria-hidden="true">↗</span></a></p>
+  </a>
+</article>
+<article class="cat-card" data-tool="File Inspector" data-group="inspect" id="file-inspector">
+  <a class="cat-card-link" href="/tools/file-inspector/">
+    <div class="tool-preview"><img src="/tools/assets/previews/file-inspector.webp" alt="File Inspector showing sample file results in the actual tool interface" width="1100" height="700" loading="lazy" decoding="async"></div>
+    <div class="tool-body"><div class="tool-heading"><span class="app-icon  tone-files" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><path class="art-ink" d="M21 15h15l8 8v26H21zM36 15v8h8" stroke-width="1.8"/><path class="art-mid" d="M26 29h10M26 34h7" stroke-width="1.8"/><circle class="art-red" cx="39" cy="40" r="5.5" stroke-width="2.2"/><path class="art-red" d="m43 44 5 5" stroke-width="2.2"/></svg></span><h3>File Inspector</h3></div>
+      <p class="tool-copy">See what any file reveals: its true type, hidden text, user names, build paths, signatures and metadata.</p><p class="tool-details">Examine documents, PDFs, media, archives and executables for authors, comments, hidden content, embedded files and external references.</p>
+      <span class="tool-action">Open tool <span aria-hidden="true">↗</span></span>
+    </div>
+  </a>
+</article>
+<article class="cat-card" data-tool="Metadata Cleaner" data-group="inspect" id="metadata-cleaner">
+  <a class="cat-card-link" href="/tools/metadata-cleaner/">
+    <div class="tool-preview"><img src="/tools/assets/previews/metadata-cleaner.webp" alt="Metadata Cleaner showing sample file results in the actual tool interface" width="1100" height="700" loading="lazy" decoding="async"></div>
+    <div class="tool-body"><div class="tool-heading"><span class="app-icon  tone-cleaner" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-ink" d="M17 7h23l10 10v40H17zM40 7v11h10M23 28h19M23 35h19M23 42h14" stroke-width="1.8"/><circle class="art-red-fill art-surface" cx="49" cy="49" r="11" stroke-width="2"/><path class="art-on-red" d="M44 49h10" stroke-width="1.7"/></svg></span><h3>Metadata Cleaner</h3></div>
+      <p class="tool-copy">Remove location, names, hidden text and other sensitive metadata from photos, documents, PDFs, audio and video.</p><p class="tool-details">Supported files are inspected again before saving, while image, audio and video content is copied without re-encoding.</p>
+      <span class="tool-action">Open tool <span aria-hidden="true">↗</span></span>
+    </div>
+  </a>
+</article>
+<article class="cat-card" data-tool="Archiver" data-group="files" id="archiver">
+  <a class="cat-card-link" href="/tools/archiver/">
+    <div class="tool-preview"><img src="/tools/assets/previews/archiver.webp" alt="Archiver showing sample file results in the actual tool interface" width="1100" height="700" loading="lazy" decoding="async"></div>
+    <div class="tool-body"><div class="tool-heading"><span class="app-icon  tone-archiver" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><rect class="art-soft-fill" x="18" y="18" width="28" height="30" rx="3"/><path class="art-mid" d="M32 18v4m0 4v4m0 4v4" stroke-width="2.4"/><rect class="art-ink" x="28.5" y="38" width="7" height="6" rx="1.5" stroke-width="1.8"/></svg></span><h3>Archiver</h3></div>
+      <p class="tool-copy">Create and open ZIP, 7z, tar and gzip archives, extract RAR, xz, ISO and more, with AES-256 passwords and hidden data removed.</p><p class="tool-details">Add files or whole folders, inspect individual archive entries, and remove hidden metadata before creating a shareable archive.</p>
+      <span class="tool-action">Open tool <span aria-hidden="true">↗</span></span>
+    </div>
+  </a>
+</article>
+<article class="cat-card" data-tool="PDF Editor" data-group="documents" id="pdf-editor">
+  <a class="cat-card-link" href="/tools/pdf-editor/">
+    <div class="tool-preview"><img src="/tools/assets/previews/pdf-editor.webp" alt="PDF Editor showing sample file results in the actual tool interface" width="1100" height="700" loading="lazy" decoding="async"></div>
+    <div class="tool-body"><div class="tool-heading"><span class="app-icon  tone-pdfedit" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-ink" d="M14 7h24l10 10v39H14zM38 7v11h10" stroke-width="1.8"/><path class="art-mid" d="M20 26h20M20 32h12" stroke-width="1.8"/><rect class="art-ink-fill" x="20" y="37" width="16" height="5" rx="1"/><path class="art-red" d="m50 30 6 6-16 16h-6v-6z" stroke-width="2.4"/></svg></span><h3>PDF Editor</h3></div>
+      <p class="tool-copy">View, merge, split, reorder, compress, password-protect, redact and digitally sign PDFs, all on your device.</p><p class="tool-details">Rotate pages, add watermarks and page numbers, and turn images into PDFs or export PDF pages as images.</p>
+      <span class="tool-action">Open tool <span aria-hidden="true">↗</span></span>
+    </div>
+  </a>
+</article><a class="cat-teaser" href="/tools/roadmap/"><span class="teaser-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span><h3>More tools.<br>Same privacy.</h3><p>24 more tools on the roadmap, from private OCR to file encryption.</p><span class="tool-action">Explore the roadmap <span aria-hidden="true">↗</span></span></a></div><p id="catalog-empty" class="catalog-empty" hidden>No available tools in this category yet. <a href="/tools/roadmap/">See what’s coming on the roadmap.</a></p></section>
+<section class="cat-section wrap" id="results" aria-labelledby="results-title" hidden><div class="results-heading"><h2 id="results-title">Search results</h2><p id="results-note"></p></div><div class="cat-rows" id="result-rows"></div></section></div>
 </main>
-
-<footer class="catalog-footer wrap">
-  <span>© 2026 Daniel Rivera</span>
-  <nav aria-label="Footer">
-    <a href="/tools/roadmap/">Roadmap</a>
-    <a href="https://github.com/rivera-daniel/private-tools">Source</a>
-    <a href="https://github.com/rivera-daniel/private-tools#privacy-model">Privacy</a>
-  </nav>
-</footer>
-
-<dialog id="tool-dialog" aria-labelledby="dialog-title">
-  <form method="dialog"><button class="close" aria-label="Close">×</button></form>
-  <p class="eyebrow" id="dialog-status"></p>
-  <h2 id="dialog-title"></h2>
-  <p id="dialog-copy"></p>
-  <p>Not available yet. Follow its progress on the <a href="/tools/roadmap/"><u>roadmap</u></a>.</p>
-  <form method="dialog"><button class="button">Back to tools</button></form>
-</dialog>
-
-<script type="module" src="/tools/assets/app.js"></script>
-</body>
-</html>
+<footer class="catalog-footer wrap"><div><a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a><p>Your files stay yours.</p></div><nav aria-label="Footer"><a href="https://github.com/rivera-daniel/private-tools#privacy-model">Privacy</a><a href="https://github.com/rivera-daniel/private-tools">GitHub</a><span>© 2026 Daniel Rivera</span></nav></footer>
+<dialog id="tool-dialog" aria-labelledby="dialog-title"><form method="dialog"><button class="close" aria-label="Close">×</button></form><p class="eyebrow" id="dialog-status"></p><h2 id="dialog-title"></h2><p id="dialog-copy"></p><p>Not available yet. Follow its progress on the <a href="/tools/roadmap/">roadmap</a>.</p><form method="dialog"><button class="button">Back to tools</button></form></dialog><script type="module" src="/tools/assets/app.js"></script></body></html>

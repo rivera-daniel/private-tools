@@ -48,6 +48,17 @@ test('a name that contradicts the content is flagged', async () => {
   assert.ok(!titles(await inspectFile(base.png, 'image.png')).includes('File type does not match its name'));
 });
 
+test('text that starts like a signature stays text', async () => {
+  for (const [text, name] of [['true story\n', 'a.txt'], ['MAC list\n', 'a.txt'], ['// reads %PDF-1.7 headers\n', 'pdf.js'], ['<svg xmlns="http://www.w3.org/2000/svg"><!-- %PDF-1.4 --></svg>', 'x.svg']]) {
+    const r = await inspectFile(enc(text), name);
+    assert.ok(r.format === 'Text' || r.format === 'SVG', `${text}: ${r.format}`);
+    assert.ok(!titles(r).includes('File type does not match its name'), text);
+    assert.ok(!titles(r).includes('A file is hidden inside'), text);
+  }
+  const cleaned = await cleanFile(enc('true\u200b'), 'x.txt');
+  assert.ok(cleaned.ok, cleaned.reason); assert.equal(dec(cleaned.data), 'true');
+});
+
 test('keys and certificates: private keys are a privacy finding', async () => {
   const pem = cat('-----BEGIN ', 'PRIVATE KEY-----\nMIIBVQIBADANBgkqhkiG9w0BAQEFAASCAT8wggE7AgEAAkEA\n-----END ', 'PRIVATE KEY-----\n');
   const r = await inspectFile(enc(pem), 'server.key');

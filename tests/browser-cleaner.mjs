@@ -81,7 +81,34 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   const leftover = await page.evaluate(() => new Promise((resolve) => { const r = indexedDB.open('private-tools'); r.onsuccess = () => { const g = r.result.transaction('handoff').objectStore('handoff').count(); g.onsuccess = () => resolve(g.result); }; }));
   assert.equal(leftover, 0, 'handed-off file left in IndexedDB');
   assert.deepEqual(problems, [], 'console problems after handoff');
-  console.log(`${label}: ok`);
   await page.close();
+
+  // A refusal that an option can lift offers a retry with that option. No cleaner refuses for these
+  // reasons on its own here, so a stand-in worker refuses .docx files until acceptChanges is set.
+  const retryPage = await browser.newPage({ viewport });
+  await retryPage.addInitScript(() => {
+    const Real = window.Worker;
+    window.Worker = class extends Real {
+      postMessage(message, ...rest) {
+        if (message?.file?.name?.endsWith('.docx')) {
+          const reply = message.options?.acceptChanges ? { id: message.id, ok: true, data: new Uint8Array([1]), removed: [{ kind: 'Tracked changes' }], kept: [], bytesBefore: 2, bytesAfter: 1 } : { id: message.id, ok: false, reason: 'The document has tracked changes, so it was left untouched.' };
+          setTimeout(() => this.onmessage?.({ data: reply }), 10);
+          return;
+        }
+        super.postMessage(message, ...rest);
+      }
+    };
+  });
+  await retryPage.goto(`${base}/tools/metadata-cleaner/`, { waitUntil: 'networkidle' });
+  writeFileSync(`${dir}/report.docx`, 'not really a document');
+  await retryPage.setInputFiles('#file', `${dir}/report.docx`);
+  await retryPage.waitForSelector('.job .retry');
+  assert.match(await retryPage.textContent('.job-body p'), /Turn on “Accept tracked changes in documents” to clean it\./);
+  await retryPage.screenshot({ path: `${shots}/cleaner-${label}-retry.png`, fullPage: true });
+  await retryPage.click('.job .retry');
+  await retryPage.waitForFunction(() => document.querySelector('.job')?.dataset.state === 'done');
+  assert.equal(await retryPage.getAttribute('.job .save', 'download'), 'report-clean.docx');
+  await retryPage.close();
+  console.log(`${label}: ok`);
 }
 await browser.close();

@@ -2,7 +2,7 @@
 // readable personal details.
 // Blocks added here are never removable, except hidden characters in plain text, which the text cleaner
 // removes. Other families' cleaners must not be asked to remove what they did not report.
-import { fmtBytes, hexPreview } from '../bytes.js';
+import { fmtBytes, hexPreview, startsWith } from '../bytes.js';
 import { TEXT_EXT, expectedFor, extension, logicalEnd, sniff } from '../scan/magic.js';
 import { HIDDEN_KINDS, decodeHidden, decodeText, hiddenRuns, lineCol, mixedScriptWords, textKind } from '../scan/text.js';
 import { entropy, extractStrings, findDetails } from '../scan/strings.js';
@@ -10,6 +10,7 @@ import { findEmbedded } from '../scan/embedded.js';
 import { certificate, tlv } from '../scan/der.js';
 
 const TYPE = 'File type';
+const TEXTUAL = new Set(['PostScript', 'RTF document']);
 const FOUND = 'Text found in the file';
 const GENERIC_EXT = new Set(['bin', 'dat', 'db', 'dmp', 'img', 'out', 'cap', 'key', 'raw', 'pkg', 'a', 'lib', 'o', 'tmp', 'bak', 'data', 'core']);
 const AN = /^([AEIOaeio]|X\.|MP|xz|LZ|RPM|ar |ICO|ICNS|ISO|SQL|HTML|MIDI)/;
@@ -36,8 +37,14 @@ export async function scanFile(b, r, ctx = {}) {
   if (!u8.length) { r.category ??= 'Other'; r.field(TYPE, 'Detected type', 'Empty file'); return; }
   // A byte order mark marks text even when the next bytes happen to look like a signature.
   const bom = (u8[0] === 0xff && u8[1] === 0xfe) || (u8[0] === 0xfe && u8[1] === 0xff) || (u8[0] === 0xef && u8[1] === 0xbb && u8[2] === 0xbf);
-  const early = bom ? decodeText(u8) : null;
-  const type = early ? null : sniff(u8);
+  let early = bom ? decodeText(u8) : null;
+  let type = early ? null : sniff(u8);
+  // Some signatures are plain words ("true", "MAC ", "%PDF-" anywhere in the head). When such a match
+  // reads as text, it is text, unless the format itself is textual.
+  if (type && !TEXTUAL.has(type.name) && !(type.name === 'PDF document' && startsWith(u8, '%PDF-')) && [...u8.subarray(0, 4)].every((x) => x === 9 || x === 10 || x === 13 || (x >= 0x20 && x < 0x7f))) {
+    early = decodeText(u8);
+    if (early) type = null;
+  }
   const decoded = early ?? (type ? null : decodeText(u8));
   const kind = decoded ? textKind(decoded.text, ext) : null;
 
@@ -54,7 +61,7 @@ export async function scanFile(b, r, ctx = {}) {
   if (!type && !decoded && u8.length >= 4096 && entropy(u8, 0, Math.min(u8.length, 1048576)) > 7.5) r.field(TYPE, 'Content', 'Looks compressed or encrypted');
 
   const trailers = appended(r, u8, type);
-  embedded(r, u8, type, trailers);
+  embedded(r, u8, type, trailers, decoded);
   if (decoded) textFile(r, decoded, kind);
   details(r, u8, type, decoded, trailers);
 }
@@ -123,13 +130,13 @@ function appended(r, u8, type) {
   return existing.map((t) => [t.offset, t.offset + t.length]);
 }
 
-function embedded(r, u8, type, trailers) {
+function embedded(r, u8, type, trailers, decoded) {
   const category = type?.category ?? null;
   const pictures = new Set(['JPEG image', 'PNG image']);
   // Pictures inside images and programs are normal (previews, icons) unless they sit in a trailer.
   let ranges; let ignore = new Set();
   if (category === 'Image' || category === 'Program') { ranges = [[1, u8.length]]; ignore = pictures; }
-  else if (!type) ranges = r.format === 'Text' ? [] : [[1, u8.length]];
+  else if (!type) ranges = decoded ? [] : [[1, u8.length]];
   else ranges = trailers;
   const hits = findEmbedded(u8, ranges, { ignore });
   if (ignore.size) hits.push(...findEmbedded(u8, trailers, { max: 5 }).filter((h) => pictures.has(h.type)));

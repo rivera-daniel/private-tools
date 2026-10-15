@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="description" content="Create and open ZIP, tar and gzip archives in your browser, with AES-256 passwords and hidden data removed before archiving. Nothing is uploaded."><meta name="color-scheme" content="light dark"><title>Archiver — Private Tools</title><link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/tools/assets/site.css"><link rel="stylesheet" href="/tools/image-inspector/inspector.css"><link rel="stylesheet" href="/tools/archiver/archiver.css"><script src="/tools/assets/theme.js"></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="description" content="Create and open ZIP, 7z, tar and gzip archives and extract RAR, xz, ISO and more in your browser, with AES-256 passwords and hidden data removed before archiving. Nothing is uploaded."><meta name="color-scheme" content="light dark"><title>Archiver — Private Tools</title><link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/tools/assets/site.css"><link rel="stylesheet" href="/tools/image-inspector/inspector.css"><link rel="stylesheet" href="/tools/archiver/archiver.css"><script src="/tools/assets/theme.js"></script></head>
 <body>
 <header class="header wrap">
   <a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
@@ -13,7 +13,7 @@
 <section class="tool-hero wrap">
   <p class="crumbs"><a href="/tools/">All tools</a><span aria-hidden="true">/</span>Archiver</p>
   <h1 class="tool-title">Archiver</h1>
-  <p class="tool-intro">Create and open ZIP, tar and gzip archives, with AES-256 passwords. Your files never leave this device.</p>
+  <p class="tool-intro">Create and open ZIP, 7z, tar and gzip archives, extract RAR, ISO and more, and protect ZIPs with AES-256. Your files never leave this device.</p>
 </section>
 
 <section class="wrap workbench archiver" aria-live="polite">
@@ -29,7 +29,7 @@
       <span class="drop-art" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><rect class="art-soft-fill" x="18" y="18" width="28" height="30" rx="3"/><path class="art-mid" d="M32 18v4m0 4v4m0 4v4" stroke-width="2.4"/><rect class="art-ink" x="28.5" y="38" width="7" height="6" rx="1.5" stroke-width="1.8"/></svg></span>
       <strong>Drop files or folders here</strong>
       <span class="drop-sub"><button type="button" class="link" id="pick-files">Choose files</button> or <button type="button" class="link" id="pick-folder">choose a folder</button></span>
-      <small>ZIP, tar, tar.gz and gzip. Folders keep their structure.</small>
+      <small>ZIP, 7z, tar, tar.gz and gzip. Folders keep their structure.</small>
       <span class="local-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg>Archived on this device. Nothing is uploaded.</span>
     </div>
 
@@ -51,6 +51,7 @@
             <label><input type="radio" name="format" value="tar.gz"><span>tar.gz</span></label>
             <label><input type="radio" name="format" value="tar"><span>tar</span></label>
             <label><input type="radio" name="format" value="gz"><span>gz</span></label>
+            <label><input type="radio" name="format" value="7z"><span>7z</span></label>
           </div>
           <p class="hint" id="format-hint"></p>
         </fieldset>
@@ -91,11 +92,11 @@
 
   <div id="open" role="tabpanel" aria-labelledby="tab-open" hidden>
     <label class="dropzone" id="open-drop">
-      <input type="file" id="open-file" class="visually-hidden" accept=".zip,.tar,.tgz,.gz,.tar.gz,.jar,.epub,.docx,.xlsx,.pptx,.odt,.ods,.odp,.apk,application/zip,application/gzip,application/x-tar">
+      <input type="file" id="open-file" class="visually-hidden">
       <span class="drop-art" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><path class="art-soft-fill" d="M16 26h32v20a3 3 0 0 1-3 3H19a3 3 0 0 1-3-3z"/><path class="art-ink" d="M16 26l5-9h22l5 9M26 34h12" stroke-width="1.8"/></svg></span>
       <strong>Drop an archive here</strong>
       <span class="drop-sub">or <span class="link">choose a file</span></span>
-      <small>ZIP (including AES and legacy encrypted), tar, tar.gz and gzip.</small>
+      <small>ZIP (including encrypted), 7z, RAR, tar, gzip, xz, bzip2, zstd, ISO and CAB.</small>
       <span class="local-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg>Opened on this device. Nothing is uploaded.</span>
     </label>
 
@@ -114,7 +115,7 @@
           <div class="password"><input type="password" id="unlock-password" autocomplete="off" spellcheck="false" placeholder="Password"><button type="submit" class="primary small">Use password</button></div>
         </div>
       </form>
-      <div class="list-card">
+      <div class="list-card" id="list-card">
         <div class="list-head">
           <label class="check-all"><input type="checkbox" id="select-all" checked><span id="selection"></span></label>
           <label class="filter"><span class="visually-hidden">Filter entries</span><input type="search" id="entry-filter" placeholder="Filter by name…" autocomplete="off"></label>
@@ -122,7 +123,7 @@
         <div class="table-scroll"><table class="entries open-entries"><thead><tr><th scope="col" class="pick"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col" class="num">Size</th><th scope="col" class="num packed">Packed</th><th scope="col" class="date">Modified</th><th scope="col" class="act"><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="open-list"></tbody></table></div>
         <p class="more" id="open-more" hidden></p>
       </div>
-      <div class="run extract-run">
+      <div class="run extract-run" id="extract-run">
         <button type="button" class="primary" id="extract-folder" hidden>Extract to folder</button>
         <button type="button" class="ghost" id="extract-zip">Download as ZIP</button>
       </div>
@@ -147,8 +148,8 @@
     <p>Archiver packs files and folders into archives and unpacks them, entirely in your browser. Files are read from your disk and written back to it. Nothing is uploaded, and the page keeps working with your network turned off.</p>
   </div>
   <div class="about-grid">
-    <div><h3>Formats</h3><p>Create ZIP, tar, tar.gz and gzip. Open ZIP (including ZIP64, AES and legacy encrypted entries), tar, tar.gz and gzip. Large archives are streamed rather than held in memory where the browser can write to disk.</p></div>
-    <div><h3>Passwords</h3><p>Password-protected ZIPs use WinZip AES-256 with an authentication code, so a wrong password or altered data is detected. Legacy ZipCrypto archives can be opened but never created, because that scheme is broken.</p></div>
+    <div><h3>Formats</h3><p>Create ZIP, 7z, tar, tar.gz and gzip. Open ZIP (including ZIP64, AES and legacy encrypted entries), 7z, RAR, tar with any compression, gzip, xz, bzip2, zstd, lzma, ISO 9660, CAB, cpio and ar. Large archives are streamed rather than held in memory where the browser can write to disk.</p></div>
+    <div><h3>Passwords</h3><p>Password-protected ZIPs use WinZip AES-256 with an authentication code, so a wrong password or altered data is detected. AES-256 encrypted 7z archives open with their password, including ones that hide their file names. Legacy ZipCrypto archives can be opened but never created, because that scheme is broken.</p></div>
     <div><h3>Remove hidden data</h3><p>With this on, every file the Metadata Cleaner supports is cleaned before it is added, and the rest are listed. Entries never carry an owner, comments, extra timestamps or extra fields, and with Hide file dates every date is 1 January 1980.</p></div>
   </div>
   <div class="limits">
@@ -158,7 +159,8 @@
       <li>AES-encrypted ZIPs open in 7-Zip, Keka, The Unarchiver, WinZip and this page, but not in Windows Explorer or macOS Archive Utility. File names inside an encrypted ZIP are not hidden.</li>
       <li>Files that the Metadata Cleaner cannot read are added unchanged and listed after the archive is created. Files over 200 MB are not cleaned.</li>
       <li>Archives that expand more than 1,000 times their size are stopped, as are entries that would land outside the chosen folder. Links inside archives are listed but never extracted.</li>
-      <li>7z, RAR, xz, bzip2 and zstd archives cannot be opened yet.</li>
+      <li>7z, RAR, ISO, CAB and the compressed formats other than gzip are read by libarchive, compiled to WebAssembly and loaded from this site. Encrypted RAR archives cannot be opened, and RAR archives cannot be created. Encrypted 7z archives that combine AES with the BCJ2 filter are not supported.</li>
+      <li>7z archives are limited to 1 GB of files when creating, because the compressed data stays in memory until the archive is finished. 7z archives cannot be given a password here.</li>
     </ul>
   </div>
 </section>

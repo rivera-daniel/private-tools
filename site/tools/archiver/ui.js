@@ -134,7 +134,7 @@ function renderCreate() {
 }
 
 const formatOf = () => document.querySelector('input[name=format]:checked').value;
-const EXT = { zip: '.zip', 'tar.gz': '.tar.gz', tar: '.tar', gz: '.gz' };
+const EXT = { zip: '.zip', 'tar.gz': '.tar.gz', tar: '.tar', gz: '.gz', '7z': '.7z' };
 
 function defaultName() {
   const tops = new Set(items.map((i) => i.path.split('/')[0]));
@@ -152,7 +152,7 @@ function updateOptions() {
   $('password').disabled = format !== 'zip'; $('reveal').disabled = format !== 'zip';
   $('password').placeholder = format === 'zip' ? 'No password' : 'Only ZIP archives can have a password';
   $('archive-ext').textContent = EXT[format];
-  $('format-hint').textContent = { zip: 'Opens everywhere. Supports passwords.', 'tar.gz': 'Common on Linux and macOS. Compresses all files together.', tar: 'Uncompressed. Common on Linux and macOS.', gz: 'A single compressed file.' }[format];
+  $('format-hint').textContent = { zip: 'Opens everywhere. Supports passwords.', 'tar.gz': 'Common on Linux and macOS. Compresses all files together.', tar: 'Uncompressed. Common on Linux and macOS.', gz: 'A single compressed file.', '7z': 'Usually the smallest. Opens in 7-Zip, Keka and most archive apps. Up to 1 GB.' }[format];
   if (!nameEdited) {
     let base = defaultName();
     if (format === 'gz' && files.length === 1) base = files[0].path.split('/').pop();
@@ -246,7 +246,7 @@ $('result-back').addEventListener('click', () => { $('create-result').hidden = t
 $('result-new').addEventListener('click', () => { $('create-result').hidden = true; items = []; nameEdited = false; $('password').value = ''; renderCreate(); });
 
 /* Open */
-let listing = null; let selected = new Set(); let password = null;
+let listing = null; let selected = new Set(); let password = null; let lockedFile = null;
 const extractable = (e) => e.kind === 'file' && e.path;
 
 dropTarget($('open-drop'), (transfer) => { const file = transfer.files[0]; if (file) openArchive(file); });
@@ -255,21 +255,43 @@ $('open-another').addEventListener('click', () => { if (job) return; resetOpen()
 $('open-cancel').addEventListener('click', cancelJob);
 
 function resetOpen() {
-  listing = null; openFile = null; password = null; selected = new Set();
+  listing = null; openFile = null; password = null; selected = new Set(); lockedFile = null;
+  $('list-card').hidden = false; $('extract-run').hidden = false; $('unlock').dataset.state = '';
+  $('unlock-detail').textContent = 'Enter the password to extract its files.';
+  $('unlock-password').value = '';
   $('open-panel').hidden = true; $('open-drop').hidden = false; $('unlock').hidden = true; $('open-done').hidden = true; showError('open-error', null);
 }
 
-function openArchive(file) {
+function openArchive(file, withPassword = null) {
   if (job) return;
-  resetOpen();
-  $('open-drop').hidden = true; setBusy('open', 'Reading archive…'); $('open-busy-detail').textContent = file.name;
-  run({ type: 'open', file }, {
-    done: (r) => { setBusy('open', null); openFile = file; listing = r; selected = new Set(r.entries.filter(extractable).map((e) => e.id)); renderOpen(); },
-    error: (r) => { setBusy('open', null); $('open-drop').hidden = false; if (!r.cancelled) showError('open-error', r.message); },
+  if (!withPassword) resetOpen();
+  $('open-drop').hidden = true; $('open-panel').hidden = true; setBusy('open', 'Reading archive…'); $('open-busy-detail').textContent = file.name;
+  run({ type: 'open', file, password: withPassword }, {
+    done: (r) => {
+      setBusy('open', null); openFile = file; listing = r; lockedFile = null; password = withPassword;
+      $('list-card').hidden = false; $('extract-run').hidden = false;
+      selected = new Set(r.entries.filter(extractable).map((e) => e.id)); renderOpen();
+    },
+    error: (r) => {
+      setBusy('open', null);
+      if (r.needsPassword) { showLocked(file, r.wrongPassword); return; }
+      $('open-drop').hidden = false; if (!r.cancelled) showError('open-error', r.message);
+    },
   });
 }
 
-const FORMAT_LABEL = { zip: 'ZIP archive', tar: 'tar archive', 'tar.gz': 'tar.gz archive', gz: 'gzip file' };
+// Archives that encrypt their file names cannot be listed before the password is known.
+function showLocked(file, wrong) {
+  lockedFile = file; openFile = file;
+  $('open-panel').hidden = false; $('list-card').hidden = true; $('extract-run').hidden = true; $('open-warnings').hidden = true; done(null);
+  $('archive-name-out').textContent = file.name;
+  $('archive-facts').textContent = 'Encrypted archive · file names are hidden';
+  $('unlock').hidden = false;
+  if (wrong) wrongPassword();
+  else { $('unlock-detail').textContent = 'This archive encrypts its file names too. Enter the password to open it.'; $('unlock-password').focus(); }
+}
+
+const FORMAT_LABEL = { zip: 'ZIP archive', tar: 'tar archive', 'tar.gz': 'tar.gz archive', gz: 'gzip file', '7z': '7z archive' };
 
 function renderOpen() {
   $('open-panel').hidden = false;
@@ -277,17 +299,19 @@ function renderOpen() {
   const files = listing.entries.filter((e) => e.kind === 'file');
   const total = files.reduce((n, e) => n + (e.size ?? 0), 0);
   const encrypted = files.filter((e) => e.encrypted);
-  const facts = [listing.label ?? FORMAT_LABEL[listing.format] ?? listing.format, plural(files.length, 'file'), `${size(total)} unpacked`, `${size(listing.size)} packed`];
-  if (encrypted.length) facts.push(encrypted.some((e) => e.weak) && encrypted.every((e) => e.weak) ? 'legacy ZipCrypto encryption' : encrypted.some((e) => e.weak) ? 'mixed encryption' : 'AES encrypted');
+  const unknown = files.some((e) => e.size === null);
+  const facts = [listing.label ?? FORMAT_LABEL[listing.format] ?? listing.format, plural(files.length, 'file'), unknown ? 'unpacked size unknown' : `${size(total)} unpacked`, `${size(listing.size)} packed`];
+  if (encrypted.length && !listing.decrypts) facts.push('encrypted');
+  else if (encrypted.length) facts.push(encrypted.some((e) => e.weak) && encrypted.every((e) => e.weak) ? 'legacy ZipCrypto encryption' : encrypted.some((e) => e.weak) ? 'mixed encryption' : 'AES encrypted');
   $('archive-facts').textContent = facts.join(' · ');
   const warnings = [...listing.warnings];
-  const blocked = listing.entries.filter((e) => !e.path).length; const links = listing.entries.filter((e) => e.kind === 'symlink' || e.kind === 'hardlink').length;
+  const blocked = listing.entries.filter((e) => !e.path && e.kind !== 'directory').length; const links = listing.entries.filter((e) => e.kind === 'symlink' || e.kind === 'hardlink').length;
   if (blocked) warnings.push(`${plural(blocked, 'entry', 'entries')} would be written outside the chosen folder and will be skipped.`);
   if (links) warnings.push(`${plural(links, 'link')} in this archive will not be extracted. Links can point anywhere on your disk.`);
   if (encrypted.some((e) => e.weak)) warnings.push('Some files use legacy ZipCrypto encryption, which is easy to break. Do not rely on it to protect anything.');
   $('open-warnings').hidden = !warnings.length;
   $('open-warnings').replaceChildren(...warnings.map((w) => el('p', '', w)));
-  $('unlock').hidden = !encrypted.length || password !== null;
+  $('unlock').hidden = !encrypted.length || password !== null || !listing.decrypts;
   $('extract-folder').hidden = !canPickFolder;
   $('extract-zip').className = canPickFolder ? 'ghost' : 'primary';
   renderEntries();
@@ -295,7 +319,7 @@ function renderOpen() {
 
 function renderEntries() {
   const query = $('entry-filter').value.trim().toLowerCase();
-  const shown = listing.entries.filter((e) => !query || e.name.toLowerCase().includes(query));
+  const shown = listing.entries.filter((e) => (e.path || e.kind !== 'directory') && (!query || e.name.toLowerCase().includes(query)));
   const rows = shown.slice(0, MAX_ROWS).map((e) => {
     const tr = el('tr'); if (!e.path || e.kind === 'symlink' || e.kind === 'hardlink' || e.kind === 'other') tr.className = 'blocked';
     const pick = el('td', 'pick');
@@ -351,6 +375,7 @@ $('unlock').addEventListener('submit', (e) => {
   if (job) return;
   const value = $('unlock-password').value;
   if (!value) return;
+  if (lockedFile) { openArchive(lockedFile, value); return; }
   setBusy('open', 'Checking password…');
   run({ type: 'check', password: value }, {
     done: () => { setBusy('open', null); password = value; $('unlock').hidden = true; $('unlock').dataset.state = ''; done(`Password accepted.`); },
@@ -385,7 +410,7 @@ function extractJob(message, title, onDone) {
   });
 }
 
-const baseName = () => openFile.name.replace(/\.(zip|tar\.gz|tgz|tar|gz)$/i, '') || 'archive';
+const baseName = () => openFile.name.replace(/\.(zip|tar\.(gz|xz|bz2|zst)|tgz|txz|tbz2|tar|gz|7z|rar|xz|bz2|zst|iso|cab)$/i, '') || 'archive';
 
 $('extract-folder').addEventListener('click', async () => {
   if (job) return;

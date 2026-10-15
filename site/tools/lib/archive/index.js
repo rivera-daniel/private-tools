@@ -63,7 +63,7 @@ export function alreadyCompressed(name, head) {
 // Wall-clock time read through UTC fields, which is how ZIP's DOS dates are written (see zip/index.js toDos).
 const wallClock = (ms) => new Date(ms - new Date(ms).getTimezoneOffset() * 60000);
 
-// items: [{ file, path, directory }]. format: 'zip', 'tar', 'tar.gz' or 'gz'. method: 'deflate' or 'store'
+// items: [{ file, path, directory }]. format: 'zip', 'tar', 'tar.gz', 'gz' or '7z' (7z needs the worker's libarchive). method: 'deflate' or 'store'
 // (ZIP only). clean: run the Metadata Cleaner on each file first. hideDates: write 1980-01-01 instead of the
 // file dates. sink: a MemorySink or WritableSink. onProgress(done, total, name). cancelled() returns true to stop.
 // Returns { result, cleaned: [{ path, removed }], kept: [{ path, reason }], entries }.
@@ -125,6 +125,7 @@ export async function createArchive({ items, format, method = 'deflate', passwor
       if (format === 'gz') { const c = await contents(list[0]); entries.push({ name: list[0].path, size: c.size }); stream = compress(c.source, 'gzip'); }
       else if (format === 'tar') stream = tarStream(tarEntries());
       else if (format === 'tar.gz') stream = compress(tarStream(tarEntries()), 'gzip');
+      else if (format === '7z') { const { write7z } = await import('./libarchive.js'); await write7z(tarEntries(), sink, { cancelled }); stream = []; }
       else throw new Error(`Cannot create ${format} archives.`);
       for await (const chunk of stream) await sink.write(chunk);
       result = await sink.close();
@@ -157,7 +158,8 @@ export async function listArchive(file, format, { cancelled = () => false } = {}
   const add = (e) => {
     if (entries.length >= LIMITS.maxEntries) throw new LimitError(`This archive has more than ${LIMITS.maxEntries.toLocaleString('en-US')} entries, which is more than the Archiver opens.`);
     const { path, note } = safePath(e.name);
-    entries.push({ id: entries.length, path, note, ...e });
+    // The archive's own root ("./") is harmless and simply not shown.
+    entries.push({ id: entries.length, path, note: e.kind === 'directory' && note === 'empty' ? null : note, ...e });
   };
   if (format === 'zip') {
     const zip = await openZipBlob(file);

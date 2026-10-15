@@ -48,3 +48,15 @@ export async function understatedZip() {
   new DataView(u8.buffer).setUint32(e.centralOffset + 24, 100, true);
   return u8;
 }
+
+// Small archives from libarchive's test suite (libarchive/test/test_read_format_*.uu), distributed under
+// libarchive's BSD-2-Clause license by the libarchive authors. They cover formats no tool here can write.
+// The two 7z archives are AES-256 encrypted with the password "12345678"; the second also hides its names.
+const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+export const LIBARCHIVE_SAMPLES = {
+  sevenZipEncrypted: b64('N3q8ryccAAOCr+qIEAAAAAAAAABhAAAAAAAAAFj/bGq5DYjQrC1ro1q75TXf0UHZAQQGAAEJEAAHCwEAAiQG8QcBClMH2WRtZJq/DtUjAwEBBV0AAAEAAQAMCAQACAoBqGUyfgAABQEREQBiAGEAcgAuAHQAeAB0AAAAFAoBAACGNqh5sM4BFQYBACCAtIEAAA=='),
+  sevenZipEncryptedHeader: b64('N3q8ryccAANRIXJ9gAAAAAAAAAAmAAAAAAAAABpax2mOWrqfd7a1ZaNBMYhQiWvQGsnBfkkay/HQXBOBu2bPs5JKmpm341p7Jd0wnGCbVjFcomL/ZlXY03qBVxd6mIOYY9Q5Tc1UwpeKFzLslyn3LOkF4rKHeVOmxeXUqu9CFAVF00x7gs+D622Asq0Cc25+Dpc1cvDJXakl4KDJRM9kxhcGEAEJcAAHCwEAASQG8QcBClMHTxry5UUdLtIMYQoB+2PQJgAA'),
+  rar5: b64('UmFyIRoHAQAzkrXlCgEFBgAFAQGAgAA4MAZjLAIDC50ABJ0ApIMCtEOglYAAAQ5oZWxsb3dvcmxkLnR4dAoDE34Oq1tW6Q4aaGVsbG8gbGliYXJjaGl2ZSB0ZXN0IHN1aXRlIQodd1ZRAwUEAA=='),
+  rar4: b64('UmFyIRoHAM+QcwAADQAAAAAAAACEUnQgkDIAFAAAABQAAAADQqLIvrd22j4UMAgApIEAAHRlc3QudHh0gAi3dto+t3baPnRlc3QgdGV4dCBkb2N1bWVudA0KnS90IJAyAAgAAAAIAAAAA3tEybbRTNg+FDAIAP+hAAB0ZXN0bGlua8AI0UzYPlBf2j50ZXN0LnR4dM3gdCCQOgAUAAAAFAAAAANCosi+Y3faPhQwEACkgQAAdGVzdGRpclx0ZXN0LnR4dMDMY3faPmN32j50ZXN0IHRleHQgZG9jdW1lbnQNCqHIdOCQMQAAAAAAAAAAAAMAAAAAY3faPhQwBwDtQQAAdGVzdGRpcsDMY3faPmR32j7m53TgkDYAAAAAAAAAAAADAAAAAJ2r1T4UMAwA7UEAAHRlc3RlbXB0eWRpcoDMnavVPsVd2j7EPXsAQAcA'),
+  cab: b64('TVNDRgAAAAAKAQAAAAAAACwAAAAAAAAAAwEBAAMAAABrCQAAeAAAAAEAAAAAAAAAAAAAAAAAkT1GpSAAZW1wdHkAPAAAAAAAAAAAAJE9RqUgAGRpcjFcZmlsZTEATgAAADwAAAAAAJE9RqUgAGRpcjJcZmlsZTIAgwmNbIoAigAgICAgICAgICAgICAgICAgICAgICAgICAgIGZpbGUgMSBjb250ZW50cwpoZWxsbwpoZWxsbwpoZWxsbwogICAgICAgICAgICAgICAgICAgICAgICAgIGZpbGUgMiBjb250ZW50cwpoZWxsbwpoZWxsbwpoZWxsbwpoZWxsbwpoZWxsbwpoZWxsbwo='),
+};

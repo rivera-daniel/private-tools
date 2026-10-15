@@ -13,6 +13,7 @@ import { tarStream } from '../site/tools/lib/archive/tar.js';
 import { createArchive } from '../site/tools/lib/archive/index.js';
 import { MemorySink, collect } from '../site/tools/lib/archive/streams.js';
 import { inspectImage } from '../site/tools/lib/metadata/index.js';
+import { LIBARCHIVE_SAMPLES } from './fixtures/archive.js';
 const playwright = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 const chromium = playwright.chromium ?? playwright.default.chromium;
 const base = process.env.BASE ?? 'http://127.0.0.1:4176';
@@ -38,6 +39,17 @@ writeFileSync(`${dir}/hostile.tar`, await collect(tarStream([
   { name: 'safe.txt', size: 4, source: [enc.encode('safe')], mtime: 0 },
 ])));
 
+// Formats read through libarchive. 7z and tar.xz come from the 7z/7zz, bsdtar or xz tools when installed;
+// encrypted 7z and RAR come from libarchive's own test archives.
+const sevenZip = ['7zz', '7z'].find(has);
+const tool = (cmd, args) => cmd && spawnSync(cmd, args, { cwd: dir }).status === 0;
+const have7z = tool(sevenZip, ['a', '-bso0', 'files.7z', 'notes.txt', 'folder']) || tool(has('bsdtar') && 'bsdtar', ['--format', '7zip', '-cf', 'files.7z', 'notes.txt', 'folder']);
+const plainTar = await collect(tarStream([{ name: 'xz/inside.txt', size: 9, source: [enc.encode('xz inside')], mtime: 0 }]));
+writeFileSync(`${dir}/plain.tar`, plainTar);
+const haveXz = tool(has('xz') && 'xz', ['-kf', 'plain.tar']);
+for (const [name, bytes] of Object.entries(LIBARCHIVE_SAMPLES)) writeFileSync(`${dir}/${name}`, bytes);
+if (!have7z || !haveXz) console.log(`skipping ${[!have7z && '7z', !haveXz && 'tar.xz'].filter(Boolean).join(' and ')} fixtures: no tool installed`);
+
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/usr/sbin/chromium' });
 for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mobile', { width: 390, height: 800 }]]) {
   const page = await browser.newPage({ viewport, acceptDownloads: true });
@@ -45,8 +57,12 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   const expected = (t) => process.env.ALLOW_CF_JSD && /Executing inline script violates the following Content Security Policy|static\.cloudflareinsights\.com\/beacon/.test(t);
   page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) && !expected(m.text())) problems.push(m.text()); });
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  const loaded = []; page.on('request', (r) => loaded.push(r.url()));
   await page.goto(`${base}/tools/archiver/`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(300);
+  // Everything, the WebAssembly archive reader included, comes from this origin.
+  assert.deepEqual(loaded.filter((u) => !u.startsWith(base)), [], 'requests to other origins');
+  assert.ok(loaded.includes(`${base}/tools/vendor/libarchive/libarchive.wasm`), 'libarchive preloaded');
   await page.screenshot({ path: `${shots}/archiver-${label}-empty.png` });
   await page.context().setOffline(true);
   const requests = []; page.on('request', (r) => requests.push(r.url()));
@@ -149,6 +165,56 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   assert.match(await page.textContent('#open-list tr.blocked'), /Blocked/);
   await page.screenshot({ path: `${shots}/archiver-${label}-hostile.png`, fullPage: true });
 
+  // 7z, tar.xz, encrypted 7z (data, and data plus names), RAR 5, all through libarchive.
+  const openAndWait = async (path) => { await page.click('#open-another').catch(() => {}); await page.setInputFiles('#open-file', path); await page.waitForSelector('#open-panel:not([hidden]), #open-error:not([hidden])'); assert.equal(await page.isVisible('#open-error'), false, await page.textContent('#open-error')); };
+  if (have7z) {
+    await openAndWait(`${dir}/files.7z`);
+    assert.match(await page.textContent('#archive-facts'), /^7z archive · 3 files/);
+    const two = await save(() => page.click('button[aria-label="Save folder/sub/two.txt"]'));
+    assert.equal(two.bytes.toString(), 'two');
+    await page.screenshot({ path: `${shots}/archiver-${label}-7z.png`, fullPage: true });
+  }
+  if (haveXz) {
+    await openAndWait(`${dir}/plain.tar.xz`);
+    assert.match(await page.textContent('#archive-facts'), /^tar\.xz archive · 1 file/);
+    const inside = await save(() => page.click('button[aria-label="Save xz/inside.txt"]'));
+    assert.equal(inside.bytes.toString(), 'xz inside');
+  }
+  await openAndWait(`${dir}/sevenZipEncrypted`);
+  assert.match(await page.textContent('#archive-facts'), /7z archive · 1 file .* AES encrypted/);
+  await page.fill('#unlock-password', 'not it'); await page.click('#unlock button[type=submit]');
+  await page.waitForSelector('#unlock[data-state=wrong]');
+  await page.fill('#unlock-password', '12345678'); await page.click('#unlock button[type=submit]');
+  await page.waitForSelector('#unlock', { state: 'hidden' });
+  assert.equal((await save(() => page.click('button[aria-label="Save bar.txt"]'))).bytes.toString(), 'foo\n');
+  await page.click('#open-another'); await page.setInputFiles('#open-file', `${dir}/sevenZipEncryptedHeader`);
+  await page.waitForSelector('#unlock:not([hidden])');
+  assert.match(await page.textContent('#archive-facts'), /file names are hidden/);
+  await page.screenshot({ path: `${shots}/archiver-${label}-7z-locked.png` });
+  await page.fill('#unlock-password', '12345678'); await page.click('#unlock button[type=submit]');
+  await page.waitForSelector('#list-card:not([hidden])');
+  assert.equal((await save(() => page.click('button[aria-label="Save bar.txt"]'))).bytes.toString(), 'foo\n');
+  await openAndWait(`${dir}/rar5`);
+  assert.match(await page.textContent('#archive-facts'), /^RAR 5 archive/);
+  assert.equal((await save(() => page.click('button[aria-label="Save helloworld.txt"]'))).bytes.toString(), 'hello libarchive test suite!\n');
+  await openAndWait(`${dir}/rar4`);
+  assert.match(await page.textContent('#open-warnings'), /1 link/);
+
+  // Create a 7z archive.
+  await page.click('#tab-create');
+  await page.click('#result-new');
+  await page.setInputFiles('#create-files', ['notes.txt', 'data.csv'].map((f) => `${dir}/${f}`));
+  await page.click('#format label:has(input[value="7z"]) span');
+  assert.equal(await page.isDisabled('#password'), true);
+  await page.click('#create-run');
+  await page.waitForSelector('#create-result:not([hidden])', { timeout: 20000 });
+  const made = await save(() => page.click('#result-save'));
+  assert.equal(made.name, 'archive.7z');
+  assert.deepEqual([...made.bytes.subarray(0, 6)], [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]);
+  if (has('bsdtar')) assert.equal(spawnSync('bsdtar', ['-xOf', made.path, 'data.csv']).stdout.toString(), 'a,b,c\n'.repeat(200));
+  if (sevenZip) assert.match(spawnSync(sevenZip, ['t', made.path]).stdout.toString(), /Everything is Ok/);
+  await page.click('#tab-open');
+
   // Inspect contents of the plain ZIP's photo, then hand it to the File Inspector.
   await page.click('#open-another');
   await page.setInputFiles('#open-file', plain.path);
@@ -164,7 +230,10 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   assert.deepEqual(problems, [], 'console problems');
 
   await page.context().setOffline(false);
+  // The File Inspector is its own page; a stand-in answers here so only the handoff is tested.
+  await page.route(`${base}/tools/file-inspector/`, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>File Inspector</title>' }));
   await Promise.all([page.waitForURL(`${base}/tools/file-inspector/#from-inspector`), page.click('#inspect-open')]);
+  await page.unroute(`${base}/tools/file-inspector/`);
   const handed = await page.evaluate(() => new Promise((resolve) => { const r = indexedDB.open('private-tools'); r.onsuccess = () => { const g = r.result.transaction('handoff').objectStore('handoff').get('file'); g.onsuccess = () => resolve(g.result?.file?.name ?? null); }; }));
   assert.equal(handed, 'photo.jpg', 'photo handed to the File Inspector');
 

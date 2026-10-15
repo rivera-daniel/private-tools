@@ -6,7 +6,10 @@ import { ZipStreamWriter, NeedsPassword } from '/tools/lib/zip/stream.js';
 import { WrongPassword } from '/tools/lib/zip/aes.js';
 import { inspectFile } from '/tools/lib/metadata/index.js';
 
-let current = null; // { file, listing }
+let current = null;
+let libarchive = null;
+// libarchive (7z, RAR, xz and more) is loaded right away so it is ready even if the network goes away.
+import('/tools/lib/archive/libarchive.js').then((m) => { libarchive ??= m; m.preload(); }, () => {}); // { file, listing }
 let cancel = false;
 const cancelled = () => cancel;
 let lastProgress = 0;
@@ -32,7 +35,7 @@ async function sinkFor(handle, type) {
   return handle ? new WritableSink(await handle.createWritable()) : new MemorySink(type);
 }
 
-const TYPES = { zip: 'application/zip', tar: 'application/x-tar', 'tar.gz': 'application/gzip', gz: 'application/gzip' };
+const TYPES = { '7z': 'application/x-7z-compressed', zip: 'application/zip', tar: 'application/x-tar', 'tar.gz': 'application/gzip', gz: 'application/gzip' };
 
 async function create({ id, items, options, handle }) {
   const sink = await sinkFor(handle, TYPES[options.format]);
@@ -46,18 +49,24 @@ const local = (d, wall) => (!d ? null : wall ? new Date(d.getUTCFullYear(), d.ge
 // The listing sent to the page leaves out the parsed ZIP records.
 const light = (e, format) => ({ id: e.id, name: e.name, path: e.path, note: e.note, kind: e.kind, size: e.size, compressedSize: e.compressedSize, modified: local(e.modified, format === 'zip'), encrypted: e.encrypted, weak: e.weak, method: e.method });
 
-async function open({ id, file }) {
+async function open({ id, file, password = null }) {
   current = null;
   const format = await detectFormat(file);
   if (!format) throw new Error('This file is not an archive the Archiver recognizes.');
-  if (!NATIVE.has(format)) throw new Error(`${format.toUpperCase()} archives cannot be opened yet. ZIP, tar, tar.gz and gzip are supported.`);
-  const listing = await listArchive(file, format, { cancelled });
+  let listing = NATIVE.has(format) ? await listArchive(file, format, { cancelled }) : null;
+  // ZIP entries compressed with bzip2, LZMA, XZ or Zstandard are read by libarchive instead.
+  const foreign = listing?.format === 'zip' && listing.entries.some((e) => e.kind === 'file' && e.method !== 0 && e.method !== 8 && !e.encrypted);
+  if (!listing || foreign) {
+    libarchive ??= await import('/tools/lib/archive/libarchive.js');
+    listing = await libarchive.listArchive(file, format, { cancelled, password });
+  }
   current = { file, listing };
-  self.postMessage({ type: 'listing', id, format: listing.format, label: listing.label ?? null, entries: listing.entries.map((e) => light(e, listing.format)), warnings: listing.warnings, size: file.size });
+  self.postMessage({ type: 'listing', id, format: listing.format, label: listing.label ?? null, entries: listing.entries.map((e) => light(e, listing.format)), warnings: listing.warnings, size: file.size, decrypts: listing.native !== false || listing.decrypts === true, headerPassword: Boolean(password) });
 }
 
 function chunksOf(ids, password, cap) {
-  return extractEntries(current.file, current.listing, ids, { password, cap });
+  const { file, listing } = current;
+  return listing.native === false ? libarchive.extractEntries(file, listing, ids, { password, cap, cancelled }) : extractEntries(file, listing, ids, { password, cap });
 }
 
 function totalOf(ids) {
@@ -143,10 +152,12 @@ async function inspect({ id, entryId, password }) {
   self.postMessage({ type: 'inspected', id, entryId, name, blob, report: { format: report.format, category: report.category, summary: report.summary, signals: report.signals.filter((s) => s.kind === 'privacy' || s.kind === 'declared').map((s) => s.title), warnings: report.warnings.length, fields: report.fieldCount } });
 }
 
-// Checks a password against the first encrypted file without extracting it.
+// Checks a password on the smallest encrypted file. ZIP checks a verifier before any data; 7z has none,
+// so its smallest file is decoded (its first megabyte when it is larger) to see whether that succeeds.
 async function check({ id, password }) {
-  const entry = current.listing.entries.find((e) => e.encrypted && e.kind === 'file' && e.path);
-  if (entry) for await (const { chunks } of chunksOf([entry.id], password, LIMITS.memoryTotal)) for await (const chunk of chunks) { void chunk; break; }
+  const entry = current.listing.entries.filter((e) => e.encrypted && e.kind === 'file' && e.path).sort((x, y) => (x.size ?? 0) - (y.size ?? 0))[0];
+  const whole = current.listing.native === false && (entry?.size ?? 0) <= 1024 * 1024;
+  if (entry) for await (const { chunks } of chunksOf([entry.id], password, LIMITS.memoryTotal)) for await (const chunk of chunks) { if (!whole) break; void chunk; }
   self.postMessage({ type: 'checked', id });
 }
 

@@ -273,6 +273,18 @@ test('cross-check: other tools read our archives and we read theirs', { skip: !h
       assert.equal(await detectFormat(tgz), 'tar.gz');
       assert.equal(dec.decode((await extractAll(tgz, 'tar.gz')).files['in.txt']), 'made by bsdtar '.repeat(50));
     }
+    const sevenZip = ['7zz', '7z'].find(has);
+    if (sevenZip) {
+      // 7-Zip reads our AES-256 ZIP and makes one we read.
+      const aes = await make(sample(), { format: 'zip', password: 'seven pw' });
+      writeFileSync(join(dir, 'aes7.zip'), aes.bytes);
+      assert.match(execFileSync(sevenZip, ['t', '-pseven pw', join(dir, 'aes7.zip')]).toString(), /Everything is Ok/);
+      assert.notEqual(spawnSync(sevenZip, ['t', '-pwrong', join(dir, 'aes7.zip')]).status, 0);
+      writeFileSync(join(dir, 'in7.txt'), 'made by 7-Zip '.repeat(5000));
+      execFileSync(sevenZip, ['a', '-bso0', '-tzip', '-mem=AES256', '-pzz top', join(dir, 'theirs7.zip'), join(dir, 'in7.txt')]);
+      const t7 = await extractAll(new Blob([readFileSync(join(dir, 'theirs7.zip'))]), 'zip', { password: 'zz top' });
+      assert.equal(dec.decode(t7.files['in7.txt']), 'made by 7-Zip '.repeat(5000));
+    }
     if (has('zip')) {
       writeFileSync(join(dir, 'z.txt'), 'info-zip text');
       execFileSync('zip', ['-q', '-P', 'izpw', join(dir, 'iz.zip'), 'z.txt'], { cwd: dir });

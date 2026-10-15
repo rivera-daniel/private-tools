@@ -1,34 +1,46 @@
-// Tool catalog: renders cards, search and category filters. Tool data is static.
+// Tool catalog: available tools as cards, planned ones as compact roadmap rows grouped by job, plus search
+// across everything. TOOLS is the single source of truth. stage is null for available tools.
+const GROUPS = [
+  { id: 'inspect', name: 'Inspect and clean', short: 'Inspect and clean' },
+  { id: 'documents', name: 'Documents and PDF', short: 'Documents' },
+  { id: 'images', name: 'Images', short: 'Images' },
+  { id: 'files', name: 'Files and archives', short: 'Files' },
+  { id: 'security', name: 'Security', short: 'Security' },
+  { id: 'forensics', name: 'Forensics', short: 'Forensics' },
+  { id: 'media', name: 'Media', short: 'Media' },
+];
+const STAGES = { Next: 'Next', Then: 'Soon', Later: 'Later', Last: 'Further out' };
+const STAGE_ORDER = Object.keys(STAGES);
 const TOOLS = [
-  { name: 'Image Inspector', copy: 'See every piece of metadata in an image: location, camera, people, software and AI provenance.', category: ['images', 'privacy'], art: 'inspector', status: 'Available', href: '/tools/image-inspector/' },
-  { name: 'File Inspector', copy: 'See what any file reveals: its true type, hidden text, user names, build paths, signatures and metadata.', category: ['images', 'documents', 'privacy'], art: 'files', status: 'Available', href: '/tools/file-inspector/' },
-  { name: 'Metadata Cleaner', copy: 'Remove location, names, hidden text and other sensitive metadata from photos, documents, PDFs, audio and video.', category: ['images', 'documents', 'privacy'], art: 'cleaner', status: 'Available', href: '/tools/metadata-cleaner/' },
-  { name: 'Archiver', copy: 'Create and open ZIP, 7z, tar and gzip archives, extract RAR, xz, ISO and more, with AES-256 passwords and hidden data removed.', category: ['documents', 'privacy'], art: 'archiver', status: 'Available', href: '/tools/archiver/' },
-  { name: 'PDF Editor', copy: 'View, merge, split, reorder, compress, password-protect, redact and digitally sign PDFs, all on your device.', category: ['documents', 'privacy'], art: 'pdfedit', status: 'Available', href: '/tools/pdf-editor/' },
-  { name: 'Photo Editor', copy: 'A full layered image editor in your browser: layers, masks, adjustment layers, selections, filters and PSD files.', category: ['images'], art: 'photo', status: 'Planned' },
-  { name: 'Audio Editor', copy: 'Record, cut, mix and clean up audio in your browser, without uploading your recordings.', category: ['privacy'], art: 'wave', status: 'Planned' },
-  { name: 'Office Viewer', copy: 'Open Word documents, spreadsheets and slide decks privately, without uploading them to an online office suite.', category: ['documents', 'privacy'], art: 'office', status: 'Planned' },
-  { name: 'QR Code Generator', copy: 'Make static QR codes that never expire and never route through a tracking server.', category: ['privacy'], art: 'qr', status: 'Planned' },
-  { name: 'Image Redactor', copy: 'Blur, pixelate or black out faces, plates and account numbers. The pixels are replaced, not covered.', category: ['images', 'privacy'], art: 'imgredact', status: 'Planned' },
-  { name: 'File Encryptor', copy: 'Encrypt any file with a passphrase or public key before you share it, in the open age format.', category: ['privacy'], art: 'lock', status: 'Planned' },
-  { name: 'Background Remover', copy: 'Cut out the subject of a photo with a model that runs on your device.', category: ['images'], art: 'cutout', status: 'Planned' },
-  { name: 'Data Anonymizer', copy: 'Find names, emails, phone numbers and IDs in CSV, Excel and JSON files, then mask, hash or remove them.', category: ['documents', 'privacy'], art: 'table', status: 'Planned' },
-  { name: 'Developer Tools', copy: 'Format JSON and YAML, diff text, encode Base64 and URLs and test regular expressions without pasting secrets into a website.', category: ['privacy'], art: 'code', status: 'Planned' },
-  { name: 'Password Generator', copy: 'Generate strong passwords and passphrases with your browser’s secure random generator and check their strength.', category: ['privacy'], art: 'key', status: 'Planned' },
-  { name: 'PGP Tool', copy: 'Encrypt, decrypt, sign and verify messages and files with OpenPGP keys.', category: ['privacy', 'forensics'], art: 'pgp', status: 'Planned' },
-  { name: '2FA Backup Decoder', copy: 'Read authenticator export QR codes and otpauth links to move or back up your two-factor accounts.', category: ['privacy'], art: 'otp', status: 'Planned' },
-  { name: 'Private OCR', copy: 'Extract text from images and scanned documents on your device.', category: ['images', 'documents'], art: 'ocr', status: 'Planned' },
-  { name: 'Resume ATS Preview', copy: 'Preview the text an applicant tracking system extracts from your resume and spot formatting it cannot read.', category: ['documents', 'careers'], art: 'resume', status: 'Planned' },
-  { name: 'Image Converter', copy: 'Convert HEIC to JPG and between other formats, resize and compress images without uploading them.', category: ['images'], art: 'converter', status: 'Planned' },
-  { name: 'Hash & Verify', copy: 'Calculate MD5, SHA-1, SHA-256 and SHA-512 hashes of any file and check them against an expected value.', category: ['forensics'], art: 'hash', status: 'Planned' },
-  { name: 'Timestamp Decoder', copy: 'Read a raw number as every common timestamp format: Unix, Windows, Apple, Chrome, DOS and GPS time.', category: ['forensics'], art: 'clock', status: 'Planned' },
-  { name: 'Email Header Analyzer', copy: 'Trace the servers an email passed through and check SPF, DKIM and DMARC results for signs of spoofing.', category: ['forensics', 'privacy'], art: 'mail', status: 'Planned' },
-  { name: 'Link & QR Inspector', copy: 'Decode QR codes, unwrap redirect links, spot look-alike domains and remove tracking without opening the link.', category: ['privacy', 'forensics'], art: 'link', status: 'Planned' },
-  { name: 'Hex Viewer', copy: 'View the raw bytes of a file with its metadata, hidden data and structures marked on them.', category: ['forensics'], art: 'hex', status: 'Planned' },
-  { name: 'Windows Artifact Viewer', copy: 'Read shortcut files, Jump Lists, Prefetch, event logs, registry hives, thumbnail caches and browser history.', category: ['forensics'], art: 'artifacts', status: 'Planned' },
-  { name: 'Packet Capture Viewer', copy: 'Explore PCAP files: hosts, DNS queries, visited sites, HTTP requests and files carried in the traffic.', category: ['forensics'], art: 'network', status: 'Planned' },
-  { name: 'Certificate & Token Decoder', copy: 'Decode certificates, certificate requests and JSON Web Tokens, with expiry and weak-key warnings.', category: ['forensics'], art: 'certificate', status: 'Planned' },
-  { name: 'Image Forensics', copy: 'Examine JPEG compression traces, resave clues, error levels and noise. Shows evidence, never a verdict.', category: ['images', 'forensics'], art: 'lens', status: 'Planned' },
+  { name: 'Image Inspector', copy: 'See every piece of metadata in an image: location, camera, people, software and AI provenance.', group: 'inspect', stage: null, art: 'inspector', href: '/tools/image-inspector/' },
+  { name: 'File Inspector', copy: 'See what any file reveals: its true type, hidden text, user names, build paths, signatures and metadata.', group: 'inspect', stage: null, art: 'files', href: '/tools/file-inspector/' },
+  { name: 'Metadata Cleaner', copy: 'Remove location, names, hidden text and other sensitive metadata from photos, documents, PDFs, audio and video.', group: 'inspect', stage: null, art: 'cleaner', href: '/tools/metadata-cleaner/' },
+  { name: 'Archiver', copy: 'Create and open ZIP, 7z, tar and gzip archives, extract RAR, xz, ISO and more, with AES-256 passwords and hidden data removed.', group: 'files', stage: null, art: 'archiver', href: '/tools/archiver/' },
+  { name: 'PDF Editor', copy: 'View, merge, split, reorder, compress, password-protect, redact and digitally sign PDFs, all on your device.', group: 'documents', stage: null, art: 'pdfedit', href: '/tools/pdf-editor/' },
+  { name: 'Photo Editor', copy: 'A full layered image editor in your browser: layers, masks, adjustment layers, selections, filters and PSD files.', group: 'images', stage: 'Last', art: 'photo', beta: true },
+  { name: 'Audio Editor', copy: 'Record, cut, mix and clean up audio in your browser, without uploading your recordings.', group: 'media', stage: 'Last', art: 'wave' },
+  { name: 'Office Viewer', copy: 'Open Word documents, spreadsheets and slide decks privately, without uploading them to an online office suite.', group: 'documents', stage: 'Next', art: 'office' },
+  { name: 'QR Code Generator', copy: 'Make static QR codes that never expire and never route through a tracking server.', group: 'security', stage: 'Then', art: 'qr' },
+  { name: 'Image Redactor', copy: 'Blur, pixelate or black out faces, plates and account numbers. The pixels are replaced, not covered.', group: 'images', stage: 'Next', art: 'imgredact' },
+  { name: 'File Encryptor', copy: 'Encrypt any file with a passphrase or public key before you share it, in the open age format.', group: 'files', stage: 'Then', art: 'lock' },
+  { name: 'Background Remover', copy: 'Cut out the subject of a photo with a model that runs on your device.', group: 'images', stage: 'Later', art: 'cutout' },
+  { name: 'Data Anonymizer', copy: 'Find names, emails, phone numbers and IDs in CSV, Excel and JSON files, then mask, hash or remove them.', group: 'security', stage: 'Then', art: 'table' },
+  { name: 'Developer Tools', copy: 'Format JSON and YAML, diff text, encode Base64 and URLs and test regular expressions without pasting secrets into a website.', group: 'security', stage: 'Then', art: 'code' },
+  { name: 'Password Generator', copy: 'Generate strong passwords and passphrases with your browser’s secure random generator and check their strength.', group: 'security', stage: 'Then', art: 'key' },
+  { name: 'PGP Tool', copy: 'Encrypt, decrypt, sign and verify messages and files with OpenPGP keys.', group: 'security', stage: 'Then', art: 'pgp' },
+  { name: '2FA Backup Decoder', copy: 'Read authenticator export QR codes and otpauth links to move or back up your two-factor accounts.', group: 'security', stage: 'Then', art: 'otp' },
+  { name: 'Private OCR', copy: 'Extract text from images and scanned documents on your device.', group: 'documents', stage: 'Next', art: 'ocr' },
+  { name: 'Resume ATS Preview', copy: 'Preview the text an applicant tracking system extracts from your resume and spot formatting it cannot read.', group: 'documents', stage: 'Later', art: 'resume' },
+  { name: 'Image Converter', copy: 'Convert HEIC to JPG and between other formats, resize and compress images without uploading them.', group: 'images', stage: 'Next', art: 'converter' },
+  { name: 'Hash & Verify', copy: 'Calculate MD5, SHA-1, SHA-256 and SHA-512 hashes of any file and check them against an expected value.', group: 'forensics', stage: 'Later', art: 'hash' },
+  { name: 'Timestamp Decoder', copy: 'Read a raw number as every common timestamp format: Unix, Windows, Apple, Chrome, DOS and GPS time.', group: 'forensics', stage: 'Later', art: 'clock' },
+  { name: 'Email Header Analyzer', copy: 'Trace the servers an email passed through and check SPF, DKIM and DMARC results for signs of spoofing.', group: 'forensics', stage: 'Later', art: 'mail' },
+  { name: 'Link & QR Inspector', copy: 'Decode QR codes, unwrap redirect links, spot look-alike domains and remove tracking without opening the link.', group: 'security', stage: 'Then', art: 'link' },
+  { name: 'Hex Viewer', copy: 'View the raw bytes of a file with its metadata, hidden data and structures marked on them.', group: 'forensics', stage: 'Later', art: 'hex' },
+  { name: 'Windows Artifact Viewer', copy: 'Read shortcut files, Jump Lists, Prefetch, event logs, registry hives, thumbnail caches and browser history.', group: 'forensics', stage: 'Later', art: 'artifacts' },
+  { name: 'Packet Capture Viewer', copy: 'Explore PCAP files: hosts, DNS queries, visited sites, HTTP requests and files carried in the traffic.', group: 'forensics', stage: 'Later', art: 'network' },
+  { name: 'Certificate & Token Decoder', copy: 'Decode certificates, certificate requests and JSON Web Tokens, with expiry and weak-key warnings.', group: 'forensics', stage: 'Later', art: 'certificate' },
+  { name: 'Image Forensics', copy: 'Examine JPEG compression traces, resave clues, error levels and noise. Shows evidence, never a verdict.', group: 'forensics', stage: 'Later', art: 'lens' },
 ];
 
 // Artwork uses theme classes from site.css so it follows light and dark mode.
@@ -67,57 +79,187 @@ const ART = {
 };
 const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
 
-const cards = document.getElementById('cards');
-const search = document.getElementById('search');
-const dialog = document.getElementById('tool-dialog');
-let category = 'all';
+const $ = (id) => document.getElementById(id);
+const search = $('search');
+const dialog = $('tool-dialog');
+const bar = $('bar');
+const sentinel = $('bar-sentinel');
+const groupName = Object.fromEntries(GROUPS.map((g) => [g.id, g.name]));
+const byStage = (a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage);
+const available = TOOLS.filter((t) => !t.stage);
+const planned = TOOLS.filter((t) => t.stage).sort(byStage);
+const plannedTools = planned.filter((t) => !t.update);
+const usedGroups = GROUPS.filter((g) => TOOLS.some((t) => t.group === g.id));
+let group = 'all';
 
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const statusLabel = (tool) => (tool.stage ? `${STAGES[tool.stage]}${tool.beta ? ' · Beta' : ''}` : 'Available');
+const describe = (tool) => (tool.update ? `Coming to the ${tool.update}. ${tool.copy}` : tool.copy);
+
+function node(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function icon(tool, className) {
+  const el = node('span', className);
+  el.innerHTML = `<svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ART[tool.art]}</svg>`;
+  return el;
+}
+
+function arrow() {
+  const el = node('span', 'cat-arrow');
+  el.innerHTML = ARROW;
+  return el;
+}
+
+// Available tool: a large card linking to the tool.
 function card(tool) {
-  const el = document.createElement(tool.href ? 'a' : 'button');
-  el.className = 'card';
-  if (tool.href) el.href = tool.href; else el.type = 'button';
-  const art = `<svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ART[tool.art]}</svg>`;
-  el.innerHTML = `<span class="icon">${art}</span><span><h3></h3><p></p><span class="status"></span></span><span class="arrow">${ARROW}</span>`;
-  el.querySelector('h3').textContent = tool.name;
-  el.querySelector('p').textContent = tool.copy;
-  const status = el.querySelector('.status');
-  status.textContent = tool.status;
-  status.classList.toggle('available', Boolean(tool.href));
-  if (!tool.href) el.addEventListener('click', () => {
-    document.getElementById('dialog-status').textContent = tool.status;
-    document.getElementById('dialog-title').textContent = tool.name;
-    document.getElementById('dialog-copy').textContent = tool.copy;
-    dialog.showModal();
-  });
+  const el = node('a', 'cat-card');
+  el.href = tool.href;
+  el.dataset.status = 'available';
+  el.dataset.group = tool.group;
+  const body = node('span', 'cat-card-body');
+  body.append(node('span', 'cat-eyebrow', groupName[tool.group]), node('h3', '', tool.name), node('span', 'cat-card-copy', tool.copy));
+  el.append(icon(tool, 'cat-icon'), body, arrow());
+  return el;
+}
+
+// Compact row, used for the roadmap and for search results. Planned rows open the details dialog.
+function row(tool, withGroup) {
+  const el = node(tool.href ? 'a' : 'button', 'cat-row');
+  el.dataset.status = tool.stage ? 'planned' : 'available';
+  el.dataset.group = tool.group;
+  if (tool.href) el.href = tool.href;
+  else {
+    el.type = 'button';
+    el.setAttribute('aria-haspopup', 'dialog');
+    el.addEventListener('click', () => openDialog(tool));
+  }
+  const body = node('span', 'cat-row-body');
+  if (withGroup) body.append(node('span', 'cat-eyebrow', groupName[tool.group]));
+  const tag = node('span', 'cat-tag', statusLabel(tool));
+  if (!tool.stage) tag.classList.add('live');
+  else if (tool.stage === 'Next') tag.classList.add('next');
+  const top = node('span', 'cat-row-top');
+  top.append(node('span', 'cat-row-title', tool.name), tag);
+  body.append(top, node('span', 'cat-row-copy', describe(tool)));
+  el.append(icon(tool, 'cat-row-icon'), body);
   el.tool = tool;
   return el;
 }
 
-cards.append(...TOOLS.map(card));
-
-function filter() {
-  const query = search.value.toLowerCase().trim();
-  let shown = 0;
-  for (const el of cards.children) {
-    const { tool } = el;
-    const visible = (category === 'all' || tool.category.includes(category)) && `${tool.name} ${tool.copy}`.toLowerCase().includes(query);
-    el.hidden = !visible;
-    if (visible) shown++;
-  }
-  document.getElementById('empty').hidden = shown > 0;
+function openDialog(tool) {
+  $('dialog-status').textContent = [tool.update ? `${tool.update} update` : groupName[tool.group], statusLabel(tool)].join(' · ');
+  $('dialog-title').textContent = tool.name;
+  $('dialog-copy').textContent = tool.beta ? `${tool.copy} It arrives as a beta first.` : tool.copy;
+  dialog.showModal();
 }
 
-search.addEventListener('input', filter);
-for (const button of document.querySelectorAll('[data-filter]')) {
-  button.addEventListener('click', () => {
-    category = button.dataset.filter;
-    for (const other of document.querySelectorAll('[data-filter]')) {
-      other.classList.toggle('active', other === button);
-      other.setAttribute('aria-pressed', String(other === button));
-    }
-    filter();
-  });
+// Static build: everything is created once and filtering only toggles hidden.
+const chips = usedGroups.map((g) => ({ id: g.id, label: g.short }));
+chips.unshift({ id: 'all', label: 'All tools' });
+for (const chip of chips) {
+  const button = node('button', '', chip.label);
+  button.type = 'button';
+  button.dataset.group = chip.id;
+  button.setAttribute('aria-pressed', String(chip.id === group));
+  button.addEventListener('click', () => setGroup(chip.id));
+  $('groups').append(button);
 }
-document.addEventListener('keydown', (event) => {
-  if (event.key === '/' && !dialog.open && document.activeElement.tagName !== 'INPUT') { event.preventDefault(); search.focus(); }
+
+const cards = available.map(card);
+const more = node('a', 'cat-more');
+more.href = '#roadmap';
+more.append(node('span', 'cat-more-count', `${plannedTools.length} more on the way`), node('span', 'cat-more-link', 'See the roadmap'), arrow());
+$('cards').append(...cards, more);
+
+const roadmapGroups = usedGroups.filter((g) => planned.some((t) => t.group === g.id)).map((g) => {
+  const items = planned.filter((t) => t.group === g.id);
+  const section = node('section', 'cat-group');
+  section.dataset.group = g.id;
+  section.dataset.size = String(Math.min(items.length, 4));
+  section.setAttribute('aria-labelledby', `group-${g.id}`);
+  const heading = node('h3', '', g.name);
+  heading.id = `group-${g.id}`;
+  const count = node('span', 'cat-count', String(items.length));
+  count.append(node('span', 'visually-hidden', ' planned'));
+  heading.append(count);
+  const rows = node('div', 'cat-rows');
+  rows.append(...items.map((t) => row(t, false)));
+  section.append(heading, rows);
+  return section;
 });
+$('roadmap-groups').append(...roadmapGroups);
+
+const results = [...available, ...planned].map((t) => row(t, true));
+$('result-rows').append(...results);
+
+function matches(tool, query) {
+  return [tool.name, tool.copy, groupName[tool.group], statusLabel(tool), tool.update ?? ''].join(' ').toLowerCase().includes(query);
+}
+
+function render() {
+  const query = search.value.trim().toLowerCase();
+  const inGroup = (el) => group === 'all' || el.dataset.group === group;
+  let status = '';
+  if (query) {
+    let shown = 0;
+    for (const el of results) { el.hidden = !matches(el.tool, query); if (!el.hidden) shown++; }
+    $('results-note').textContent = shown ? `${plural(shown, 'tool')} for “${search.value.trim()}”` : `No tools match “${search.value.trim()}”.`;
+    status = shown ? `${plural(shown, 'tool')} found` : 'No tools found';
+  } else {
+    let live = 0;
+    for (const el of cards) { el.hidden = !inGroup(el); if (!el.hidden) live++; }
+    more.hidden = group !== 'all';
+    let soon = 0;
+    for (const section of roadmapGroups) {
+      section.hidden = !inGroup(section);
+      if (!section.hidden) soon += planned.filter((t) => t.group === section.dataset.group && !t.update).length;
+    }
+    $('available').hidden = live === 0;
+    $('roadmap').hidden = !roadmapGroups.some((s) => !s.hidden);
+    $('available-note').textContent = `${plural(live, 'tool')} you can use today. Everything runs in your browser.`;
+    $('roadmap-note').textContent = group === 'all' ? `${plural(soon, 'tool')} in development, grouped by job. Select one for details.` : `${plural(soon, 'tool')} in development. Select one for details.`;
+    if (group !== 'all') status = `${groupName[group]}: ${live} available, ${soon} planned`;
+  }
+  if (query) { $('available').hidden = true; $('roadmap').hidden = true; }
+  $('results').hidden = !query;
+  $('clear').hidden = !query;
+  $('search-status').textContent = status;
+}
+
+// When the bar is stuck to the top, bring the start of the list back into view after the content changes.
+function toListTop() {
+  const top = sentinel.getBoundingClientRect().top;
+  if (top < 0) window.scrollTo(0, top + window.scrollY);
+}
+
+function setGroup(id) {
+  group = id;
+  for (const button of $('groups').children) button.setAttribute('aria-pressed', String(button.dataset.group === id));
+  if (search.value) search.value = '';
+  render();
+  toListTop();
+}
+
+search.addEventListener('input', () => { render(); toListTop(); });
+$('clear').addEventListener('click', () => { search.value = ''; render(); search.focus(); });
+search.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && search.value) { event.preventDefault(); search.value = ''; render(); }
+});
+document.addEventListener('keydown', (event) => {
+  const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+  if (event.key === '/' && !dialog.open && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) { event.preventDefault(); search.focus(); }
+});
+// Roadmap links show the whole roadmap, whatever was filtered before.
+document.addEventListener('click', (event) => {
+  if (event.target.closest('a[href="#roadmap"]') && (group !== 'all' || search.value)) setGroup('all');
+});
+new IntersectionObserver(([entry]) => {
+  bar.classList.toggle('stuck', !entry.isIntersecting && entry.boundingClientRect.top < 0);
+}).observe(sentinel);
+
+render();

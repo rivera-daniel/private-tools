@@ -18,7 +18,10 @@ const rules = (await readFile(path.join(root, '_headers'), 'utf8')).split(/\n(?=
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/' || url.pathname === '/tools') { res.writeHead(302, { Location: '/tools/' }); res.end(); return; }
-  const filename = path.resolve(root, '.' + decodeURIComponent(url.pathname.endsWith('/') ? url.pathname + 'index.html' : url.pathname));
+  let decoded;
+  try { decoded = decodeURIComponent(url.pathname.endsWith('/') ? url.pathname + 'index.html' : url.pathname); }
+  catch { res.writeHead(400); res.end('Bad request'); return; }
+  const filename = path.resolve(root, '.' + decoded);
   if (!filename.startsWith(root + path.sep) || path.basename(filename) === '_headers') { res.writeHead(404); res.end(); return; }
   try {
     const body = await readFile(filename);

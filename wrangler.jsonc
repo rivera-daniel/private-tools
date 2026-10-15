@@ -1,9 +1,12 @@
-// Cloudflare Worker serving site/ as static assets. Response headers are declared in site/_headers.
+// Cloudflare Worker serving site/ as static assets on tools.danielrivera.ai. Response headers are declared in site/_headers.
+// The worker runs first so requests to the old danielrivera.ai/tools address are redirected instead of served.
 {
   "name": "private-tools",
   "compatibility_date": "2026-10-01",
-  "assets": { "directory": "./site", "html_handling": "auto-trailing-slash", "not_found_handling": "none" },
+  "main": "worker/index.js",
+  "assets": { "directory": "./site", "binding": "ASSETS", "html_handling": "auto-trailing-slash", "not_found_handling": "none", "run_worker_first": true },
   "routes": [
+    { "pattern": "tools.danielrivera.ai", "custom_domain": true },
     { "pattern": "danielrivera.ai/tools", "zone_name": "danielrivera.ai" },
     { "pattern": "danielrivera.ai/tools/*", "zone_name": "danielrivera.ai" }
   ],

@@ -2,6 +2,7 @@
 const TOOLS = [
   { name: 'Image Inspector', copy: 'See every piece of metadata in an image: location, camera, people, software and AI provenance.', category: ['images', 'privacy'], art: 'inspector', status: 'Available', href: '/tools/image-inspector/' },
   { name: 'Metadata Cleaner', copy: 'Remove location, camera details and other sensitive metadata from images.', category: ['images', 'privacy'], art: 'cleaner', status: 'Available', href: '/tools/metadata-cleaner/' },
+  { name: 'Archiver', copy: 'Create and open ZIP, tar and gzip archives, with AES-256 passwords and hidden data removed.', category: ['documents', 'privacy'], art: 'archiver', status: 'Available', href: '/tools/archiver/' },
   { name: 'Private OCR', copy: 'Extract text from images and scanned documents on your device.', category: ['images', 'documents'], art: 'ocr', status: 'Planned' },
   { name: 'Resume ATS Preview', copy: 'Preview the text an applicant tracking system extracts from your resume and spot formatting it cannot read.', category: ['documents', 'careers'], art: 'resume', status: 'Planned' },
   { name: 'Image Converter', copy: 'Convert, resize and compress images without uploading them.', category: ['images'], art: 'converter', status: 'Planned' },
@@ -14,6 +15,7 @@ const page = '<path class="art-ink" d="M17 7h23l10 10v40H17zM40 7v11h10M23 28h19
 const ART = {
   inspector: `${corners}<rect class="art-soft-fill" x="17" y="21" width="30" height="23" rx="3"/><path class="art-mid-fill" d="m19 41 8-11 6 7 5-8 7 12"/><circle class="art-mid-fill" cx="40" cy="25" r="2.3"/>`,
   cleaner: `${page}<circle class="art-red-fill art-surface" cx="49" cy="49" r="11" stroke-width="2"/><path class="art-on-red" d="M44 49h10" stroke-width="1.7"/>`,
+  archiver: `${corners}<rect class="art-soft-fill" x="18" y="18" width="28" height="30" rx="3"/><path class="art-mid" d="M32 18v4m0 4v4m0 4v4" stroke-width="2.4"/><rect class="art-ink" x="28.5" y="38" width="7" height="6" rx="1.5" stroke-width="1.8"/>`,
   ocr: `${corners}<path class="art-mid" d="M23 25v-4h19v4M32.5 21v23M27 44h11" stroke-width="4"/>`,
   resume: `${page}<path class="art-red" d="M47 55v-8m6 8V40m6 15V34" stroke-width="4"/>`,
   converter: '<g class="art-mid" stroke-width="1.6"><rect x="9" y="19" width="29" height="29" rx="3"/><path d="m12 43 8-10 6 8 4-4 5 7"/></g><rect class="art-paper-fill art-ink" x="31" y="9" width="27" height="28" rx="3" stroke-width="1.7"/><path class="art-mid-fill" d="m34 33 7-10 6 6 5-6 4 10"/><circle class="art-mid-fill" cx="49" cy="16" r="2"/><path class="art-red" d="M40 47a8 8 0 0 0-14-3l-2 3m0-5v5h5M25 53a8 8 0 0 0 14 2l2-3m0 5v-5h-5" stroke-width="2.4"/>',

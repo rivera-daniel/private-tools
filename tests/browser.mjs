@@ -29,8 +29,7 @@ async function run(viewport, label) {
   const requests = [];
   const methods = [];
   page.on('request', (r) => { requests.push(r.url()); methods.push(r.method()); });
-  // Files the offline service worker answers from its cache never reach the network.
-  const fromCache = new Set(); page.on('response', (r) => { if (r.fromServiceWorker()) fromCache.add(r.url()); });
+  const failed = []; page.on('requestfailed', (r) => { if (!/ERR_ABORTED/.test(r.failure()?.errorText ?? '')) failed.push(`${r.url()} ${r.failure()?.errorText}`); });
   const results = {};
   for (const f of ['camera-gps.jpg', 'comfyui.png', 'content-credentials.jpg', 'clean.png', 'xss.png', 'notes.pdf', 'pii.heic', 'pii.tif', 'pii.svg', 'pii.jxl']) {
     await page.setInputFiles('#file', `${files}/${f}`);
@@ -57,8 +56,11 @@ async function run(viewport, label) {
       assert.match(xss.prompt, /^<img src=x onerror=/);
     }
   }
-  const external = requests.filter((u) => !u.startsWith('blob:'));
-  assert.deepEqual(external, [], `network requests during processing: ${external.join(', ')}`);
+  // The network is cut, so a request that reached for it fails. Files the offline service worker serves from its
+  // cache are same-origin and succeed. Nothing may go to another origin or fail.
+  const foreign = requests.filter((u) => !u.startsWith('blob:') && !u.startsWith('data:') && !u.startsWith(base));
+  assert.deepEqual(foreign, [], `requests to other origins during processing: ${foreign.join(', ')}`);
+  assert.deepEqual(failed, [], `requests that tried to reach the network: ${failed.join(', ')}`);
   assert.deepEqual(problems, [], `console problems: ${problems.join(' | ')}`);
   assert.equal(results['camera-gps.jpg'].level, 'exposed');
   assert.equal(results['camera-gps.jpg'].provenance, 'camera');
@@ -86,13 +88,12 @@ async function run(viewport, label) {
   await page.setInputFiles('#file', `${files}/camera-gps.jpg`);
   await page.waitForSelector('#results:not([hidden])', { timeout: 5000 });
   assert.equal(await page.evaluate(() => document.getElementById('provenance').dataset.level), 'camera');
-  // Replacing the spare re-requests only the worker's own code, from the offline cache once it is stored.
-  // File data never leaves the page.
-  const afterCancel = requests.filter((u) => !u.startsWith('blob:') && !fromCache.has(u) && u !== `${base}/image-inspector/worker.js`);
-  assert.deepEqual(afterCancel, [], `unexpected requests after cancel: ${afterCancel.join(', ')}`);
+  // Replacing the spare loads the worker's code again, from the offline cache. File data never leaves the page.
+  assert.deepEqual(requests.filter((u) => !u.startsWith('blob:') && !u.startsWith('data:') && !u.startsWith(base)), [], 'requests to other origins after cancel');
+  assert.deepEqual(failed, [], `requests that tried to reach the network after cancel: ${failed.join(', ')}`);
   assert.deepEqual(methods.filter((m) => m !== 'GET'), [], 'a non-GET request was sent');
   await page.close();
-  return { label, requestsDuringProcessing: requests.length, external: external.length, results };
+  return { label, requestsDuringProcessing: requests.length, external: foreign.length, results };
 }
 
 async function reachByTab(page) {

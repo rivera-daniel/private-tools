@@ -79,6 +79,8 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   await page.screenshot({ path: `${shots}/pdf-editor-${label}-empty.png`, fullPage: label === 'mobile' });
 
   const save = async (click) => { const [d] = await Promise.all([page.waitForEvent('download'), click()]); const p = join(dir, `${label}-${d.suggestedFilename()}`); await d.saveAs(p); return { name: d.suggestedFilename(), bytes: readFileSync(p) }; };
+  // The live region is cleared and refilled on the next frame, so wait for the text instead of reading it at once.
+  const announced = (pattern) => page.waitForFunction(([source, flags]) => new RegExp(source, flags).test(document.getElementById('announce').textContent), [pattern.source, pattern.flags], { timeout: 5000 });
   const labels = () => page.$$eval('#pages li.page', (lis) => lis.map((li) => li.getAttribute('aria-label')));
   const drawn = () => page.$$eval('#pages li.page', (lis) => lis.filter((li) => li.dataset.drawn?.startsWith('b')).length);
 
@@ -99,7 +101,7 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   await page.keyboard.press('Alt+ArrowRight');
   await page.keyboard.press('Alt+ArrowRight');
   assert.match((await labels())[2], /^Page 3, from alpha\.pdf/);
-  assert.match(await page.textContent('#announce'), /position 3/);
+  await announced(/position 3/);
   // Rotate it with R, undo and redo.
   await page.keyboard.press('r');
   assert.match((await labels())[2], /turned 90°/);
@@ -222,7 +224,7 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
       await page.waitForSelector('#retained-dialog', { state: 'hidden' });
       await page.waitForTimeout(400);
       assert.equal(downloads, before, 'nothing downloaded before the retained data is accepted');
-      assert.match(await page.textContent('#announce'), /Nothing was saved/);
+      await announced(/Nothing was saved/);
       return listed;
     };
     const accepted = (click) => save(async () => { await click(); await page.waitForSelector('#retained-dialog[open]'); await page.click('#retained-accept'); });

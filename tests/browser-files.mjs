@@ -47,8 +47,7 @@ try {
       await page.waitForSelector('html[data-offline-ready]', { state: 'attached', timeout: 60000 });
       await page.context().setOffline(true);
       const requests = []; page.on('request', (r) => requests.push(r.url()));
-      // Files the offline service worker answers from its cache never reach the network.
-      const fromCache = new Set(); page.on('response', (r) => { if (r.fromServiceWorker()) fromCache.add(r.url()); });
+      const failed = []; page.on('requestfailed', (r) => { if (!/ERR_ABORTED/.test(r.failure()?.errorText ?? '')) failed.push(`${r.url()} ${r.failure()?.errorText}`); });
 
       const results = {};
       for (const f of ['hidden.txt', 'widget.exe', 'clean.png', 'photo.jpg', 'holiday.jpg', 'blob.bin', 'report.docx', 'paper.pdf', 'song.mp3']) {
@@ -91,7 +90,9 @@ try {
         assert.match(r[f].cleaner, /Open this file in Metadata Cleaner/, f);
       }
 
-      assert.deepEqual(requests.filter((u) => !u.startsWith('blob:') && !u.startsWith('data:')), [], 'inspecting made network requests');
+      // The network is cut: a request that reached for it fails. Files the service worker serves from its cache succeed.
+      assert.deepEqual(requests.filter((u) => !u.startsWith('blob:') && !u.startsWith('data:') && !u.startsWith(base)), [], 'inspecting made requests to other origins');
+      assert.deepEqual(failed, [], `inspecting tried to reach the network: ${failed.join(', ')}`);
       assert.deepEqual(problems, [], `console problems: ${problems.join(' | ')}`);
       // Cancel mid-inspection while offline: the spare worker takes over without a network fetch.
       await page.evaluate(() => {
@@ -104,8 +105,9 @@ try {
       await page.setInputFiles('#file', `${dir}/clean.png`);
       await page.waitForSelector('#results:not([hidden])', { timeout: 15000 });
 
-      // Replacing the spare re-requests only the worker's own code. File data never leaves the page.
-      assert.deepEqual(requests.filter((u) => !u.startsWith('blob:') && !fromCache.has(u) && u !== `${base}/file-inspector/worker.js`), [], 'unexpected requests after cancel');
+      // Replacing the spare loads the worker's code again, from the offline cache. File data never leaves the page.
+      assert.deepEqual(requests.filter((u) => !u.startsWith('blob:') && !u.startsWith('data:') && !u.startsWith(base)), [], 'requests to other origins after cancel');
+      assert.deepEqual(failed, [], `tried to reach the network after cancel: ${failed.join(', ')}`);
 
       // The cleaner card queues the inspected text file in Metadata Cleaner, then the stored copy is gone.
       if (scheme === 'light') {

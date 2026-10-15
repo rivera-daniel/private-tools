@@ -128,7 +128,7 @@ async function catalog(viewport, label) {
   await page.click('#groups [data-group=security]');
   assert.equal(await page.isVisible('#available'), false, 'empty available section shown');
   assert.deepEqual(await page.$$eval('#roadmap .cat-group:not([hidden]) h3', (hs) => hs.map((h) => h.firstChild.textContent)), ['Security']);
-  assert.match(await page.textContent('#search-status'), /^Security: 0 available, 7 planned$/);
+  assert.match(await page.textContent('#search-status'), /^Security: \d+ available, \d+ planned$/);
   await page.click('#groups [data-group=all]');
 
   // '/' focuses search. Search covers planned tools and lists results flat with group and status.

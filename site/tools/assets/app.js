@@ -186,7 +186,9 @@ const roadmapGroups = usedGroups.filter((g) => planned.some((t) => t.group === g
   section.setAttribute('aria-labelledby', `group-${g.id}`);
   const heading = node('h3', '', g.name);
   heading.id = `group-${g.id}`;
-  heading.append(node('span', 'cat-count', String(items.length)));
+  const count = node('span', 'cat-count', String(items.length));
+  count.append(node('span', 'visually-hidden', ' planned'));
+  heading.append(count);
   const rows = node('div', 'cat-rows');
   rows.append(...items.map((t) => row(t, false)));
   section.append(heading, rows);

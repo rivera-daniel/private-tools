@@ -518,7 +518,7 @@ func TestHandlerRouting(t *testing.T) {
 	if rec := apiRequest(h, http.MethodGet, "/local-signer/status", "", nil); rec.Code != 200 {
 		t.Errorf("api: %d", rec.Code)
 	}
-	if rec := apiRequest(h, http.MethodGet, "/tools/", "", nil); rec.Code != 200 || !strings.Contains(rec.Body.String(), "local-signer-token") {
+	if rec := apiRequest(h, http.MethodGet, "/", "", nil); rec.Code != 200 || !strings.Contains(rec.Body.String(), "local-signer-token") {
 		t.Errorf("static: %d", rec.Code)
 	}
 }

@@ -5,11 +5,11 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { signPdf, verifyPdf, readCertificates, displayedPageSizes, SignError } from '../site/tools/lib/pdf-editor/sign.js';
-import { p12Signer, readPkcs12, ciphers, sha1, sha256, P12Error } from '../site/tools/lib/pdf-editor/pkcs12.js';
-import { parseCertificate, buildChain } from '../site/tools/lib/pdf-editor/cms.js';
-import { parse, oidOf, seq, int, oid, ecdsaRawToDer, ecdsaDerToRaw, time, timeOf, fromHex, toHex } from '../site/tools/lib/pdf-editor/asn1.js';
-import { PdfDocument } from '../site/tools/lib/metadata/pdf/document.js';
+import { signPdf, verifyPdf, readCertificates, displayedPageSizes, SignError } from '../site/lib/pdf-editor/sign.js';
+import { p12Signer, readPkcs12, ciphers, sha1, sha256, P12Error } from '../site/lib/pdf-editor/pkcs12.js';
+import { parseCertificate, buildChain } from '../site/lib/pdf-editor/cms.js';
+import { parse, oidOf, seq, int, oid, ecdsaRawToDer, ecdsaDerToRaw, time, timeOf, fromHex, toHex } from '../site/lib/pdf-editor/asn1.js';
+import { PdfDocument } from '../site/lib/metadata/pdf/document.js';
 import { makeIdentity, keySigner, classicPdf, streamPdf, pem } from './fixtures/pdf-sign.js';
 import { pdf, basic, update, stream } from './fixtures/pdf.js';
 
@@ -214,7 +214,7 @@ test('opens .p12 files: AES with HMAC-SHA-256, PBMAC1 and legacy 3DES/RC2', { sk
 });
 
 test('signs files rebuilt by MuPDF (as the editor saves them) and hybrid cross-reference files', async () => {
-  const mupdf = await import('../site/tools/vendor/mupdf/mupdf.js');
+  const mupdf = await import('../site/vendor/mupdf/mupdf.js');
   const id = await identity('p256');
   const inputs = [['hybrid', pdf(basic(), { trailer: '/Root 1 0 R', hybrid: true, packed: [3] })]];
   for (const opts of ['', 'garbage,compress', 'garbage=deduplicate,compress,objstms']) {

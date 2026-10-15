@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as mupdf from '../site/tools/vendor/mupdf/mupdf.js';
-import { openPdf, findText, redact, checkRedactions, verifyRedaction, normalizeMarks, planRedaction, otherOccurrences, documentInfo, pageInfo, showAllLayers, PRESETS } from '../site/tools/lib/pdf-editor/redact.js';
+import * as mupdf from '../site/vendor/mupdf/mupdf.js';
+import { openPdf, findText, redact, checkRedactions, verifyRedaction, normalizeMarks, planRedaction, otherOccurrences, documentInfo, pageInfo, showAllLayers, PRESETS } from '../site/lib/pdf-editor/redact.js';
 import * as fx from './fixtures/pdf-redact.js';
 import { deflateSync } from 'node:zlib';
 import { pdf as pdfOf, basic, stream } from './fixtures/pdf.js';

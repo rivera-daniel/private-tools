@@ -10,7 +10,7 @@ import * as fx from './fixtures/build.js';
 import { docx } from './fixtures/documents.js';
 import { pdf, basic } from './fixtures/pdf.js';
 import { id3v2, id3Frames, mp3Frames, cat } from './fixtures/media.js';
-import { inspectFile, inspectImage } from '../site/tools/lib/metadata/index.js';
+import { inspectFile, inspectImage } from '../site/lib/metadata/index.js';
 const playwright = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 const chromium = playwright.chromium ?? playwright.default.chromium;
 const base = process.env.BASE ?? 'http://127.0.0.1:4176';
@@ -36,7 +36,7 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   const expected = (t) => process.env.ALLOW_CF_JSD && /Executing inline script violates the following Content Security Policy|static\.cloudflareinsights\.com\/beacon/.test(t);
   page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) && !expected(m.text())) problems.push(m.text()); });
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  await page.goto(`${base}/tools/metadata-cleaner/`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/metadata-cleaner/`, { waitUntil: 'networkidle' });
   await page.screenshot({ path: `${shots}/cleaner-${label}-empty.png` });
   await page.context().setOffline(true);
   const requests = []; page.on('request', (r) => requests.push(r.url()));
@@ -91,10 +91,10 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
 
   // The inspector's cleaner card opens the cleaner with the inspected image queued, then the stored copy is gone.
   await page.context().setOffline(false);
-  await page.goto(`${base}/tools/image-inspector/`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/image-inspector/`, { waitUntil: 'networkidle' });
   await page.setInputFiles('#file', `${dir}/photo.jpg`);
   await page.waitForSelector('#cleaner:not([hidden])');
-  await Promise.all([page.waitForURL(`${base}/tools/metadata-cleaner/`), page.click('#cleaner')]);
+  await Promise.all([page.waitForURL(`${base}/metadata-cleaner/`), page.click('#cleaner')]);
   await page.waitForFunction(() => document.querySelector('.job')?.dataset.state === 'done', null, { timeout: 15000 });
   assert.equal(await page.$eval('.job strong', (n) => n.textContent), 'photo.jpg');
   const leftover = await page.evaluate(() => new Promise((resolve) => { const r = indexedDB.open('private-tools'); r.onsuccess = () => { const g = r.result.transaction('handoff').objectStore('handoff').count(); g.onsuccess = () => resolve(g.result); }; }));
@@ -120,7 +120,7 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
       }
     };
   });
-  await retryPage.goto(`${base}/tools/metadata-cleaner/`, { waitUntil: 'networkidle' });
+  await retryPage.goto(`${base}/metadata-cleaner/`, { waitUntil: 'networkidle' });
   writeFileSync(`${dir}/changes.docx`, 'not really a document');
   await retryPage.setInputFiles('#file', `${dir}/changes.docx`);
   await retryPage.waitForSelector('.job .retry');

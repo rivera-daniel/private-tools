@@ -116,14 +116,14 @@ echo "== Start signer on port $PORT"
 SIGNER_PID=$!
 for _ in $(seq 1 50); do
   kill -0 "$SIGNER_PID" 2>/dev/null || fail "signer exited"
-  if curl -sf -o /dev/null "$BASE/tools/"; then break; fi
+  if curl -sf -o /dev/null "$BASE/"; then break; fi
   sleep 0.2
 done
-curl -sf -o /dev/null "$BASE/tools/" || fail "signer did not start"
+curl -sf -o /dev/null "$BASE/" || fail "signer did not start"
 
 echo "== Curl smoke test"
-page="$BASE/tools/pdf-editor/"
-curl -sf -o /dev/null "$page" || page="$BASE/tools/"
+page="$BASE/pdf-editor/"
+curl -sf -o /dev/null "$page" || page="$BASE/"
 TOKEN="$(curl -sf "$page" | grep -o 'name="local-signer-token" content="[0-9a-f]*"' | sed 's/.*content="//; s/"$//')"
 [ "${#TOKEN}" -eq 64 ] || fail "no signer token in $page"
 echo "ok   token injected into $page"

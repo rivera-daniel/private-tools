@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { inspectFile } from '../site/tools/lib/metadata/index.js';
-import { cleanFile } from '../site/tools/lib/clean/index.js';
+import { inspectFile } from '../site/lib/metadata/index.js';
+import { cleanFile } from '../site/lib/clean/index.js';
 import * as fx from './fixtures/programs.js';
 
 const src = (r, source, key) => r.sources.find((s) => s.name === source)?.fields.find((f) => f.key === key)?.value;

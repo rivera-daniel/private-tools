@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="description" content="View, merge, split, reorder, rotate, compress, watermark, password-protect, redact and digitally sign PDFs, and turn images into PDFs, in your browser. Nothing is uploaded."><meta name="color-scheme" content="light dark"><title>PDF Editor — Private Tools</title><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"><link rel="stylesheet" href="/image-inspector/inspector.css"><link rel="stylesheet" href="/archiver/archiver.css"><link rel="stylesheet" href="/pdf-editor/editor.css"><script src="/assets/theme.js"></script></head>
+<body>
+<header class="header wrap">
+  <a class="brand" href="/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
+  <nav aria-label="Primary">
+    <a class="nav-text" href="/">All tools</a>
+    <a class="nav-text" href="https://github.com/rivera-daniel/private-tools">GitHub</a>
+    <button type="button" class="icon-button" id="theme-toggle" aria-label="Change theme"></button>
+  </nav>
+</header>
+<main>
+<section class="tool-hero wrap">
+  <p class="crumbs"><a href="/">All tools</a><span aria-hidden="true">/</span>PDF Editor</p>
+  <h1 class="tool-title">PDF Editor</h1>
+  <p class="tool-intro">View, merge, split, reorder, compress, watermark and password-protect PDFs, redact them for real, sign them digitally, and turn images into PDFs. Your files never leave this device.</p>
+</section>
+
+<section class="wrap workbench editor">
+  <p class="visually-hidden" id="announce" aria-live="polite"></p>
+  <label class="dropzone" id="dropzone">
+    <input type="file" id="file" class="visually-hidden" multiple accept=".pdf,application/pdf,image/jpeg,image/png,image/webp,image/gif,image/avif">
+    <span class="drop-art" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><path class="art-ink" d="M20 14h16l8 8v28H20zM36 14v8h8" stroke-width="1.8"/><path class="art-mid" d="M25 29h14M25 35h14M25 41h9" stroke-width="1.8"/></svg></span>
+    <strong>Drop PDFs or images here</strong>
+    <span class="drop-sub">or <span class="link">choose files</span></span>
+    <small>Several PDFs are merged into one. JPEG, PNG and WebP images become pages. Up to 500 MB in total.</small>
+    <span class="local-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg>Edited on this device. Nothing is uploaded.</span>
+  </label>
+
+  <div class="busy job-busy" id="busy" hidden><span class="spinner" aria-hidden="true"></span><span class="busy-text"><strong id="busy-title">Loading the PDF engine…</strong><small id="busy-detail"></small></span></div>
+
+  <form class="unlock" id="unlock" hidden>
+    <span class="unlock-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg></span>
+    <div class="unlock-body"><label for="unlock-password"><strong id="unlock-title">This PDF is password protected</strong><small id="unlock-detail">Enter its password to open it.</small></label>
+      <div class="password"><input type="password" id="unlock-password" autocomplete="off" spellcheck="false" placeholder="Password"><button type="submit" class="primary small">Open</button></div>
+      <button type="button" class="link-button" id="unlock-skip">Skip this file</button>
+    </div>
+  </form>
+  <p class="error-note" id="error" role="alert" hidden></p>
+
+  <div id="editor" hidden>
+    <div class="doc-bar">
+      <span class="archive-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v14H7zM14 3v4h4M10 12h5M10 16h5"/></svg></span>
+      <div class="doc-info"><strong id="doc-name"></strong><p id="doc-facts"></p><ul class="doc-files" id="doc-files"></ul></div>
+      <div class="doc-actions">
+        <button type="button" class="tool-button" id="undo" aria-keyshortcuts="Control+Z" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3"/></svg><span class="label">Undo</span></button>
+        <button type="button" class="tool-button" id="redo" aria-keyshortcuts="Control+Shift+Z" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5M20 9H9a5 5 0 0 0 0 10h3"/></svg><span class="label">Redo</span></button>
+        <button type="button" class="ghost" id="add-files">Add files</button>
+        <button type="button" class="ghost" id="reset">Reset</button>
+        <button type="button" class="ghost" id="close">Close</button>
+      </div>
+    </div>
+    <div class="warnings" id="notes" hidden></div>
+
+    <div class="segmented modes" role="tablist" aria-label="Mode">
+      <button type="button" role="tab" id="tab-view" aria-controls="view-panel" aria-selected="false" tabindex="-1">View</button>
+      <button type="button" role="tab" id="tab-organize" aria-controls="panel-organize" aria-selected="true">Organize</button>
+      <button type="button" role="tab" id="tab-convert" aria-controls="panel-convert" aria-selected="false" tabindex="-1">Convert</button>
+      <button type="button" role="tab" id="tab-protect" aria-controls="panel-protect" aria-selected="false" tabindex="-1">Protect</button>
+      <button type="button" role="tab" id="tab-compress" aria-controls="panel-compress" aria-selected="false" tabindex="-1">Compress</button>
+      <button type="button" role="tab" id="tab-watermark" aria-controls="panel-watermark" aria-selected="false" tabindex="-1">Watermark</button>
+      <button type="button" role="tab" id="tab-redact" aria-controls="redact-panel" aria-selected="false" tabindex="-1">Redact</button>
+      <button type="button" role="tab" id="tab-sign" aria-controls="sign-panel" aria-selected="false" tabindex="-1">Sign</button>
+    </div>
+
+    <div class="layout" id="layout">
+      <div class="pages-card">
+        <div class="select-bar">
+          <label class="check-all"><input type="checkbox" id="select-all"><span id="selection"></span></label>
+          <div class="page-tools" id="page-tools" role="toolbar" aria-label="Page actions">
+            <button type="button" class="tool-button" id="rotate-left" data-needs="selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.6-5.9L4 8.5M4 3.5v5h5"/></svg><span class="label">Rotate left</span></button>
+            <button type="button" class="tool-button" id="rotate-right" data-needs="selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9L20 8.5M20 3.5v5h-5"/></svg><span class="label">Rotate right</span></button>
+            <button type="button" class="tool-button" id="move-earlier" data-needs="selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg><span class="label">Earlier</span></button>
+            <button type="button" class="tool-button" id="move-later" data-needs="selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg><span class="label">Later</span></button>
+            <button type="button" class="tool-button" id="duplicate" data-needs="selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 9h11v11H9zM15 9V4H4v11h5"/></svg><span class="label">Duplicate</span></button>
+            <button type="button" class="tool-button" id="insert-blank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v14H7zM14 3v4h4M12.5 11v6M9.5 14h6"/></svg><span class="label">Blank page</span></button>
+            <button type="button" class="tool-button danger" id="delete" data-needs="selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span class="label">Delete</span></button>
+          </div>
+        </div>
+        <ol class="pages" id="pages" role="listbox" aria-label="Pages" aria-multiselectable="true" aria-describedby="pages-help"></ol>
+        <p class="pages-help" id="pages-help">Click pages to select them. Drag to reorder. Keyboard: arrows to move between pages, Space to select, Alt and an arrow to move the selected pages, R to rotate, Delete to remove.</p>
+      </div>
+
+      <aside class="side">
+        <div class="mode-panel" id="panel-organize" role="tabpanel" aria-labelledby="tab-organize">
+          <h2>Split</h2>
+          <form id="split-form" novalidate>
+            <fieldset class="field">
+              <legend class="visually-hidden">Split method</legend>
+              <div class="choices">
+                <label><input type="radio" name="split" value="ranges" checked><span>Ranges</span></label>
+                <label><input type="radio" name="split" value="every"><span>Every N pages</span></label>
+                <label><input type="radio" name="split" value="each"><span>Each page</span></label>
+              </div>
+            </fieldset>
+            <div class="field" id="split-ranges-field"><label class="field-label" for="split-ranges">Pages</label><input type="text" class="text-input" id="split-ranges" placeholder="1-3, 5, 8-" spellcheck="false" autocomplete="off"><p class="hint">One file for each range, in the order written. Page numbers are as shown here.</p></div>
+            <div class="field" id="split-every-field" hidden><label class="field-label" for="split-every">Pages per file</label><input type="number" class="text-input narrow" id="split-every" min="1" value="2"></div>
+            <div class="run"><button type="submit" class="ghost">Split into files</button></div>
+          </form>
+          <h2>Extract</h2>
+          <p class="hint">Save the selected pages as a new PDF. The pages here stay as they are.</p>
+          <div class="run"><button type="button" class="ghost" id="extract" data-needs="selection">Extract selected pages</button></div>
+          <ul class="report organize-report" id="organize-report" hidden></ul>
+        </div>
+
+        <div class="mode-panel" id="panel-convert" role="tabpanel" aria-labelledby="tab-convert" hidden>
+          <h2>Images to PDF</h2>
+          <fieldset class="field"><legend>Page size</legend>
+            <div class="choices"><label><input type="radio" name="img-size" value="fit" checked><span>Fit image</span></label><label><input type="radio" name="img-size" value="a4"><span>A4</span></label><label><input type="radio" name="img-size" value="letter"><span>Letter</span></label></div>
+          </fieldset>
+          <fieldset class="field"><legend>Margin</legend>
+            <div class="choices"><label><input type="radio" name="img-margin" value="0" checked><span>None</span></label><label><input type="radio" name="img-margin" value="18"><span>Small</span></label><label><input type="radio" name="img-margin" value="36"><span>Large</span></label></div>
+            <p class="hint">Applies to images you add next. JPEG photos are embedded without recompression, with their metadata removed and their orientation kept.</p>
+          </fieldset>
+          <div class="run"><input type="file" id="image-files" class="visually-hidden" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif" tabindex="-1"><button type="button" class="ghost" id="add-images">Add images</button></div>
+          <h2>Pages to images</h2>
+          <fieldset class="field"><legend>Format</legend>
+            <div class="choices"><label><input type="radio" name="out-format" value="png" checked><span>PNG</span></label><label><input type="radio" name="out-format" value="jpeg"><span>JPEG</span></label></div>
+          </fieldset>
+          <fieldset class="field"><legend>Resolution</legend>
+            <div class="choices"><label><input type="radio" name="out-dpi" value="72"><span>72 dpi</span></label><label><input type="radio" name="out-dpi" value="150" checked><span>150 dpi</span></label><label><input type="radio" name="out-dpi" value="300"><span>300 dpi</span></label></div>
+          </fieldset>
+          <div class="field" id="out-quality-field" hidden><label class="field-label" for="out-quality">JPEG quality <span class="optional" id="out-quality-value">85</span></label><input type="range" id="out-quality" min="40" max="100" value="85"></div>
+          <p class="hint" id="out-scope"></p>
+          <div class="run"><button type="button" class="ghost" id="export-images">Export images</button></div>
+          <p class="hint warn" id="export-note" role="status" hidden></p>
+        </div>
+
+        <div class="mode-panel" id="panel-protect" role="tabpanel" aria-labelledby="tab-protect" hidden>
+          <h2>Password</h2>
+          <p class="hint" id="protect-status"></p>
+          <div class="field"><label class="field-label" for="pw">Password <span class="optional">to open the PDF</span></label>
+            <div class="password"><input type="password" id="pw" autocomplete="new-password" spellcheck="false" placeholder="No password"><button type="button" class="reveal" id="pw-reveal" aria-pressed="false">Show</button></div></div>
+          <div class="field"><label class="field-label" for="pw2">Repeat password</label>
+            <div class="password"><input type="password" id="pw2" autocomplete="new-password" spellcheck="false"></div></div>
+          <fieldset class="field"><legend>Allow</legend>
+            <div class="toggles">
+              <label class="check-line"><input type="checkbox" id="allow-print" checked><span>Printing</span></label>
+              <label class="check-line"><input type="checkbox" id="allow-copy" checked><span>Copying text and images</span></label>
+              <label class="check-line"><input type="checkbox" id="allow-edit" checked><span>Editing, comments and forms</span></label>
+            </div>
+            <p class="hint">Permissions are honored by most PDF apps but are not enforced by encryption.</p>
+          </fieldset>
+          <details class="more-options"><summary>Owner password</summary>
+            <div class="field"><label class="field-label" for="owner-pw">Owner password <span class="optional">optional</span></label>
+              <div class="password"><input type="password" id="owner-pw" autocomplete="new-password" spellcheck="false"></div>
+              <p class="hint">Lets its holder change the permissions. Left empty, a restricted file gets a random owner password nobody knows, so its restrictions cannot be lifted.</p></div>
+          </details>
+          <p class="hint">AES-256 encryption, applied when you save. Passwords cannot contain commas.</p>
+        </div>
+
+        <div class="mode-panel" id="panel-compress" role="tabpanel" aria-labelledby="tab-compress" hidden>
+          <h2>Compress</h2>
+          <p class="hint">Saving always rewrites the PDF losslessly: unused and duplicate objects are dropped and everything is compressed.</p>
+          <label class="check-line"><input type="checkbox" id="lossy"><span><strong>Downsample images</strong> <span class="optional">lossy</span></span></label>
+          <div id="lossy-options" hidden>
+            <fieldset class="field"><legend>Image resolution</legend>
+              <div class="choices"><label><input type="radio" name="lossy-dpi" value="96"><span>96 dpi</span></label><label><input type="radio" name="lossy-dpi" value="150" checked><span>150 dpi</span></label><label><input type="radio" name="lossy-dpi" value="220"><span>220 dpi</span></label></div>
+            </fieldset>
+            <div class="field"><label class="field-label" for="lossy-quality">JPEG quality <span class="optional" id="lossy-quality-value">75</span></label><input type="range" id="lossy-quality" min="30" max="95" value="75"></div>
+            <p class="hint">Images sharper than this resolution are scaled down and photos are recompressed as JPEG. Images with transparency are left alone.</p>
+          </div>
+          <div class="run"><button type="button" class="ghost" id="compress-run">Compress now</button></div>
+          <p class="done-note" id="compress-result" role="status" hidden></p>
+        </div>
+
+        <div class="mode-panel" id="panel-watermark" role="tabpanel" aria-labelledby="tab-watermark" hidden>
+          <h2>Watermark</h2>
+          <form id="watermark-form" novalidate>
+            <div class="field"><label class="field-label" for="wm-text">Text</label><input type="text" class="text-input" id="wm-text" value="CONFIDENTIAL" maxlength="200" autocomplete="off"></div>
+            <div class="field-row">
+              <div class="field"><label class="field-label" for="wm-position">Position</label><select id="wm-position" class="select"><option value="center" selected>Center</option><option value="top-left">Top left</option><option value="top-center">Top</option><option value="top-right">Top right</option><option value="middle-left">Left</option><option value="middle-right">Right</option><option value="bottom-left">Bottom left</option><option value="bottom-center">Bottom</option><option value="bottom-right">Bottom right</option></select></div>
+              <div class="field"><label class="field-label" for="wm-size">Size <span class="optional">points</span></label><input type="number" class="text-input" id="wm-size" min="6" max="300" placeholder="Auto"></div>
+            </div>
+            <fieldset class="field"><legend>Rotation</legend>
+              <div class="choices"><label><input type="radio" name="wm-rotation" value="0"><span>0°</span></label><label><input type="radio" name="wm-rotation" value="45" checked><span>45°</span></label><label><input type="radio" name="wm-rotation" value="90"><span>90°</span></label></div>
+            </fieldset>
+            <fieldset class="field"><legend>Color</legend>
+              <div class="choices"><label><input type="radio" name="wm-color" value="gray" checked><span>Gray</span></label><label><input type="radio" name="wm-color" value="black"><span>Black</span></label><label><input type="radio" name="wm-color" value="red"><span>Red</span></label></div>
+            </fieldset>
+            <div class="field"><label class="field-label" for="wm-opacity">Opacity <span class="optional" id="wm-opacity-value">25%</span></label><input type="range" id="wm-opacity" min="5" max="100" value="25"></div>
+            <fieldset class="field"><legend>Pages</legend>
+              <div class="choices"><label><input type="radio" name="wm-pages" value="all" checked><span>All pages</span></label><label><input type="radio" name="wm-pages" value="selected"><span>Selected pages</span></label></div>
+            </fieldset>
+            <p class="hint" id="wm-latin" hidden>Characters outside Western European alphabets show as question marks, because the standard PDF font is used.</p>
+            <div class="run"><button type="submit" class="ghost">Add watermark</button></div>
+          </form>
+          <h2>Page numbers</h2>
+          <form id="numbers-form" novalidate>
+            <div class="field"><label class="field-label" for="pn-format">Text</label><input type="text" class="text-input" id="pn-format" value="Page {n} of {total}" maxlength="200" autocomplete="off"><p class="hint">{n} is the page number and {total} the last number. Use it for header and footer text too.</p></div>
+            <div class="field-row">
+              <div class="field"><label class="field-label" for="pn-position">Position</label><select id="pn-position" class="select"><option value="top-left">Top left</option><option value="top-center">Top</option><option value="top-right">Top right</option><option value="bottom-left">Bottom left</option><option value="bottom-center" selected>Bottom</option><option value="bottom-right">Bottom right</option></select></div>
+              <div class="field"><label class="field-label" for="pn-size">Size <span class="optional">points</span></label><input type="number" class="text-input" id="pn-size" min="6" max="72" value="10"></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label class="field-label" for="pn-start">First number</label><input type="number" class="text-input" id="pn-start" value="1"></div>
+              <div class="field"><label class="field-label" for="pn-from">Start on page</label><input type="number" class="text-input" id="pn-from" min="1" value="1"></div>
+            </div>
+            <p class="hint" id="pn-latin" hidden>Characters outside Western European alphabets show as question marks, because the standard PDF font is used.</p>
+            <div class="run"><button type="submit" class="ghost">Add page numbers</button></div>
+          </form>
+        </div>
+
+        <form class="save-card" id="save-form" novalidate>
+          <div class="field"><label class="field-label" for="save-name">File name</label><div class="name-row"><input type="text" id="save-name" spellcheck="false" autocomplete="off"><span class="ext">.pdf</span></div></div>
+          <label class="check"><input type="checkbox" id="clean" checked><span><strong>Remove hidden data before saving</strong><small>Runs the Metadata Cleaner: document properties, XMP, scripts, attachments, comments and earlier versions are removed.</small></span></label>
+          <p class="save-note" id="sign-note" hidden></p>
+          <p class="save-note" id="protect-note"></p>
+          <div class="run"><button type="submit" class="primary" id="save">Save PDF</button></div>
+          <div class="result" id="save-result" hidden>
+            <div class="result-head"><span class="result-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><div><h3 id="save-title"></h3><p id="save-detail"></p></div></div>
+            <ul class="report" id="save-report"></ul>
+          </div>
+        </form>
+      </aside>
+    </div>
+
+    <section id="view-panel" role="tabpanel" aria-labelledby="tab-view" hidden></section>
+    <section id="redact-panel" role="tabpanel" aria-labelledby="tab-redact" hidden></section>
+    <section id="sign-panel" role="tabpanel" aria-labelledby="tab-sign" hidden></section>
+  </div>
+</section>
+
+<dialog id="retained-dialog" aria-labelledby="retained-title" aria-describedby="retained-detail">
+  <p class="eyebrow">Hidden data</p>
+  <h2 id="retained-title">Some hidden data would stay in the file</h2>
+  <p id="retained-detail">Remove hidden data is on, but this could not be removed. Nothing has been saved yet.</p>
+  <ul class="report" id="retained-list"></ul>
+  <div class="dialog-actions"><button type="button" class="ghost" id="retained-cancel">Don’t save</button><button type="button" class="primary" id="retained-accept">Save anyway</button></div>
+</dialog>
+
+<section class="about-tool wrap" aria-labelledby="about-title">
+  <div class="about-intro">
+    <h2 id="about-title">About PDF Editor</h2>
+    <p>PDF Editor organizes, converts, protects, compresses and stamps PDFs entirely in your browser. Files are read from your disk and saved back to it. Nothing is uploaded, and the page keeps working with your network turned off.</p>
+  </div>
+  <div class="about-grid">
+    <div><h3>What it does</h3><p>Read PDFs page by page with zoom, find, text selection, thumbnails and bookmarks. Merge several PDFs, reorder, rotate, duplicate and delete pages, insert blank pages, split by ranges or every few pages, and extract pages. Turn photos into a PDF and pages into PNG or JPEG images. Add AES-256 passwords or remove one you know, compress, and add watermarks, page numbers and header or footer text. Sign with a certificate file (.p12 or .pfx) and check the signatures already in a document.</p></div>
+    <div><h3>MuPDF in WebAssembly</h3><p>Every PDF operation runs in MuPDF, the open-source PDF engine, compiled to WebAssembly and loaded from this site into a background worker. Pages are rendered by the same engine, a few at a time as you scroll, so large documents stay responsive.</p></div>
+    <div><h3>Privacy</h3><p>With Remove hidden data on, the saved PDF goes through the Metadata Cleaner before any password is added, so authors, software names, earlier versions and scripts are not carried along. Photos lose their location and camera details before they become pages. Signing keys are decrypted in this browser and cannot be read back out of it.</p></div>
+  </div>
+  <div class="limits">
+    <h3>Limitations</h3>
+    <ul>
+      <li>Existing text cannot be edited in place. Watermarks and page numbers are added on top of the page.</li>
+      <li>Signatures are checked offline: revocation and timestamps are not checked, and a certificate is trusted only if you import its root. A freshly signed document is saved unchanged; saving after any other edit rewrites the file, which invalidates its signatures, so sign last.</li>
+      <li>Form JavaScript is never run. Pages copied in from a second file, or duplicated, keep their content but not their links, comments or form fields.</li>
+      <li>Downsampling images is lossy: scaled-down images and recompressed photos cannot be restored. Lossless compression never changes what you see.</li>
+      <li>Large files are limited by the browser's memory. Up to 500 MB of files can be opened at once.</li>
+      <li>Watermarks and page numbers use the standard Helvetica font, which shows Western European characters only. Passwords cannot contain commas. Files whose author restricted printing, copying or changes open only with their owner password.</li>
+    </ul>
+  </div>
+</section>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-about">
+        <a class="brand" href="/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
+        <p>File tools that run in your browser. Your files are processed on your device and never uploaded. No account required.</p>
+      </div>
+      <div>
+        <h2>Tools</h2>
+        <ul>
+          <li><a href="/image-inspector/">Image Inspector</a></li>
+          <li><a href="/file-inspector/">File Inspector</a></li>
+          <li><a href="/metadata-cleaner/">Metadata Cleaner</a></li>
+          <li><a href="/archiver/">Archiver</a></li>
+          <li><a href="/pdf-editor/">PDF Editor</a></li>
+          <li><a href="/">All tools</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <ul>
+          <li><a href="https://github.com/rivera-daniel/private-tools#roadmap">Roadmap</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools">Source code</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools/issues">Report an issue</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Trust</h2>
+        <ul>
+          <li><a href="https://github.com/rivera-daniel/private-tools#privacy-model">How your data is handled</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools/blob/main/LICENSE">License (AGPL-3.0)</a></li>
+          <li><a href="https://danielrivera.ai/">danielrivera.ai</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Daniel Rivera</span>
+      <span>Processed on your device. Nothing is uploaded.</span>
+    </div>
+  </div>
+</footer>
+<script type="module" src="/pdf-editor/ui.js"></script></body></html>

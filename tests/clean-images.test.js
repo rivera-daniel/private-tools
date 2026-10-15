@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { cleanFile, cleanImage } from '../site/tools/lib/clean/index.js';
-import { inspectFile } from '../site/tools/lib/metadata/index.js';
+import { cleanFile, cleanImage } from '../site/lib/clean/index.js';
+import { inspectFile } from '../site/lib/metadata/index.js';
 import { tiff, xmpPacket, dms } from './fixtures/build.js';
 import { heif, heifItems, box, fullBox, ispe, hvcC, av1C, irot, auxC, colrNclx, exifItem, grid, tiffFile, tiffPages } from './fixtures/images-extra.js';
 

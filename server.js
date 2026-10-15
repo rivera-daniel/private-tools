@@ -17,7 +17,6 @@ const rules = (await readFile(path.join(root, '_headers'), 'utf8')).split(/\n(?=
 });
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname === '/' || url.pathname === '/tools') { res.writeHead(302, { Location: '/tools/' }); res.end(); return; }
   let decoded;
   try { decoded = decodeURIComponent(url.pathname.endsWith('/') ? url.pathname + 'index.html' : url.pathname); }
   catch { res.writeHead(400); res.end('Bad request'); return; }
@@ -33,4 +32,4 @@ http.createServer(async (req, res) => {
     }
     res.writeHead(200, headers); res.end(body);
   } catch { res.writeHead(404); res.end('Not found'); }
-}).listen(port, host, () => console.log(`Private Tools: http://${host}:${port}/tools/`));
+}).listen(port, host, () => console.log(`Private Tools: http://${host}:${port}/`));

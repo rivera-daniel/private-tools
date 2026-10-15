@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as fx from './fixtures/build.js';
 import { pe } from './fixtures/programs.js';
-import { writeZip } from '../site/tools/lib/zip/index.js';
+import { writeZip } from '../site/lib/zip/index.js';
 import { docx } from './fixtures/documents.js';
 import { pdf, basic } from './fixtures/pdf.js';
 import { id3v2, id3Frames, mp3Frames, cat } from './fixtures/media.js';
@@ -40,13 +40,15 @@ try {
       const expected = (t) => process.env.ALLOW_CF_JSD && /Executing inline script violates the following Content Security Policy|static\.cloudflareinsights\.com\/beacon/.test(t);
       page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) && !expected(m.text())) problems.push(m.text()); });
       page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-      await page.goto(`${base}/tools/file-inspector/`, { waitUntil: 'networkidle' });
+      await page.goto(`${base}/file-inspector/`, { waitUntil: 'networkidle' });
       assert.equal(await page.title(), 'File Inspector — Private Tools');
       await page.screenshot({ path: `${shots}/files-${label}-${scheme}-empty.png` });
+      // Let the offline service worker finish storing this tool before the network is cut.
+      await page.waitForSelector('html[data-offline-ready]', { state: 'attached', timeout: 60000 });
       await page.context().setOffline(true);
       const requests = []; page.on('request', (r) => requests.push(r.url()));
       // Files the offline service worker answers from its cache never reach the network.
-      const fromCache = new Set(); page.on('requestfinished', async (r) => { if ((await r.response())?.fromServiceWorker()) fromCache.add(r.url()); });
+      const fromCache = new Set(); page.on('response', (r) => { if (r.fromServiceWorker()) fromCache.add(r.url()); });
 
       const results = {};
       for (const f of ['hidden.txt', 'widget.exe', 'clean.png', 'photo.jpg', 'holiday.jpg', 'blob.bin', 'report.docx', 'paper.pdf', 'song.mp3']) {
@@ -103,14 +105,14 @@ try {
       await page.waitForSelector('#results:not([hidden])', { timeout: 15000 });
 
       // Replacing the spare re-requests only the worker's own code. File data never leaves the page.
-      assert.deepEqual(requests.filter((u) => !u.startsWith('blob:') && !fromCache.has(u) && u !== `${base}/tools/file-inspector/worker.js`), [], 'unexpected requests after cancel');
+      assert.deepEqual(requests.filter((u) => !u.startsWith('blob:') && !fromCache.has(u) && u !== `${base}/file-inspector/worker.js`), [], 'unexpected requests after cancel');
 
       // The cleaner card queues the inspected text file in Metadata Cleaner, then the stored copy is gone.
       if (scheme === 'light') {
         await page.context().setOffline(false);
         await page.setInputFiles('#file', `${dir}/hidden.txt`);
         await page.waitForSelector('#cleaner:not([hidden])');
-        await Promise.all([page.waitForURL(`${base}/tools/metadata-cleaner/`), page.click('#cleaner')]);
+        await Promise.all([page.waitForURL(`${base}/metadata-cleaner/`), page.click('#cleaner')]);
         await page.waitForFunction(() => document.querySelector('.job')?.dataset.state === 'done', null, { timeout: 15000 });
         assert.equal(await page.$eval('.job strong', (n) => n.textContent), 'hidden.txt');
         assert.match(await page.$eval('.job-body p', (n) => n.textContent), /zero-width characters/);
@@ -124,9 +126,9 @@ try {
   }
   // Catalog card links to the tool.
   const page = await browser.newPage();
-  await page.goto(`${base}/tools/`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/`, { waitUntil: 'networkidle' });
   await page.getByRole('link', { name: /File Inspector/ }).first().click();
-  await page.waitForURL(/\/tools\/file-inspector\/$/);
+  await page.waitForURL(/\/file-inspector\/$/);
   console.log('catalog link ok');
 } finally {
   await browser.close();

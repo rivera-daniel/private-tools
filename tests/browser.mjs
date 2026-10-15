@@ -18,17 +18,19 @@ async function run(viewport, label) {
   const expected = (t) => process.env.ALLOW_CF_JSD && /Executing inline script violates the following Content Security Policy|static\.cloudflareinsights\.com\/beacon/.test(t);
   page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) && !expected(m.text())) problems.push(m.text()); });
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  await page.goto(`${base}/tools/image-inspector/`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/image-inspector/`, { waitUntil: 'networkidle' });
   await page.screenshot({ path: `${shots}/${label}-empty.png`, fullPage: false });
   assert.equal(await page.isVisible('#results'), false, 'empty results visible before a file is chosen');
   assert.ok(await reachByTab(page), 'file input not reachable by keyboard');
   // Everything after this point runs with the network cut.
+  // Let the offline service worker finish storing this tool before the network is cut.
+  await page.waitForSelector('html[data-offline-ready]', { state: 'attached', timeout: 60000 });
   await page.context().setOffline(true);
   const requests = [];
   const methods = [];
   page.on('request', (r) => { requests.push(r.url()); methods.push(r.method()); });
   // Files the offline service worker answers from its cache never reach the network.
-  const fromCache = new Set(); page.on('requestfinished', async (r) => { if ((await r.response())?.fromServiceWorker()) fromCache.add(r.url()); });
+  const fromCache = new Set(); page.on('response', (r) => { if (r.fromServiceWorker()) fromCache.add(r.url()); });
   const results = {};
   for (const f of ['camera-gps.jpg', 'comfyui.png', 'content-credentials.jpg', 'clean.png', 'xss.png', 'notes.pdf', 'pii.heic', 'pii.tif', 'pii.svg', 'pii.jxl']) {
     await page.setInputFiles('#file', `${files}/${f}`);
@@ -86,7 +88,7 @@ async function run(viewport, label) {
   assert.equal(await page.evaluate(() => document.getElementById('provenance').dataset.level), 'camera');
   // Replacing the spare re-requests only the worker's own code, from the offline cache once it is stored.
   // File data never leaves the page.
-  const afterCancel = requests.filter((u) => !u.startsWith('blob:') && !fromCache.has(u) && u !== `${base}/tools/image-inspector/worker.js`);
+  const afterCancel = requests.filter((u) => !u.startsWith('blob:') && !fromCache.has(u) && u !== `${base}/image-inspector/worker.js`);
   assert.deepEqual(afterCancel, [], `unexpected requests after cancel: ${afterCancel.join(', ')}`);
   assert.deepEqual(methods.filter((m) => m !== 'GET'), [], 'a non-GET request was sent');
   await page.close();
@@ -101,7 +103,7 @@ async function catalog(viewport, label) {
   page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) problems.push(m.text()); });
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('request', (r) => requests.push(r.url()));
-  await page.goto(`${base}/tools/`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/`, { waitUntil: 'networkidle' });
   await page.screenshot({ path: `${shots}/catalog-${label}.png`, fullPage: true });
   const layout = await page.evaluate(() => new Promise((resolve) => {
     let shift = 0;
@@ -157,7 +159,7 @@ async function catalog(viewport, label) {
 
   // An available card links to its tool.
   await page.locator('#cards').getByRole('link', { name: /Image Inspector/ }).click();
-  await page.waitForURL(/\/tools\/image-inspector\/$/);
+  await page.waitForURL(/\/image-inspector\/$/);
   const external = requests.filter((u) => !u.startsWith(base));
   assert.deepEqual(external, [], `cross-origin requests: ${external.join(', ')}`);
   assert.deepEqual(problems, [], `console problems: ${problems.join(' | ')}`);

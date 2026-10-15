@@ -185,6 +185,6 @@ func main() {
 	if moduleName == "" {
 		log.Print("no PKCS#11 module found; install OpenSC or pass -module")
 	}
-	fmt.Printf("Private Tools signer: http://%s/tools/pdf-editor/\n", host)
+	fmt.Printf("Private Tools signer: http://%s/pdf-editor/\n", host)
 	log.Fatal(srv.Serve(ln))
 }

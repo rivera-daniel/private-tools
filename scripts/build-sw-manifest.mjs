@@ -3,7 +3,7 @@
 //
 // The site directory is the one Cloudflare serves (wrangler.jsonc "assets.directory"). The app is the folder
 // in it that holds sw.js, and the URL path it is served under is worked out from where that folder sits, so
-// the same script works whether the tools live at /tools/ or at the root of their own host.
+// the same script works whether the tools live at / or at the root of their own host.
 //
 // The shell is everything the catalog page loads. Each tool group is everything its page loads that is not
 // in the shell, found by following the files each page and script references. Paths in the manifest are

@@ -1,5 +1,5 @@
 // Browser check for the Sign mode of the PDF Editor. The module is mounted on a temporary harness page under
-// /tools/pdf-editor/ (so the editor's Content Security Policy applies), which this script writes into site/
+// /pdf-editor/ (so the editor's Content Security Policy applies), which this script writes into site/
 // and always removes again. The harness renders with MuPDF and, like the editor, rebuilds the document in
 // getBytes() while originalBytes() returns the untouched bytes.
 // Signs with a .p12 file, countersigns, checks the result with the module's verifier and pdfsig, checks that
@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeIdentity, classicPdf, pem } from './fixtures/pdf-sign.js';
-import { verifyPdf, readCertificates } from '../site/tools/lib/pdf-editor/sign.js';
+import { verifyPdf, readCertificates } from '../site/lib/pdf-editor/sign.js';
 const playwright = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 const chromium = playwright.chromium ?? playwright.default.chromium;
 const base = process.env.BASE ?? 'http://127.0.0.1:4176';
@@ -24,7 +24,7 @@ mkdirSync(shots, { recursive: true });
 const has = (cmd) => spawnSync('sh', ['-c', `command -v ${cmd}`]).status === 0;
 if (!has('openssl')) { console.log('skipping: openssl is needed to build the test certificate file'); process.exit(0); }
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'site', 'tools', 'pdf-editor');
+const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'site', 'pdf-editor');
 const harnessDir = join(root, '__sign-harness__');
 const editorDirExisted = existsSync(root);
 const cleanup = () => { rmSync(harnessDir, { recursive: true, force: true }); if (!editorDirExisted) rmSync(root, { recursive: true, force: true }); };
@@ -33,13 +33,13 @@ for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { cleanup(); proc
 
 mkdirSync(harnessDir, { recursive: true });
 writeFileSync(join(harnessDir, 'index.html'), `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign harness</title><link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/tools/assets/site.css"><script src="/tools/assets/theme.js"></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign harness</title><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css"><script src="/assets/theme.js"></script></head>
 <body><main class="wrap"><input type="file" id="doc" accept="application/pdf"><button type="button" id="edit">Simulate an edit</button>
 <section id="sign-panel"></section></main><script type="module" src="./harness.js"></script></body></html>
 `);
-writeFileSync(join(harnessDir, 'harness.js'), `import * as mupdf from '/tools/vendor/mupdf/mupdf.js';
-import { mountSign } from '/tools/lib/pdf-editor/sign-ui.js';
+writeFileSync(join(harnessDir, 'harness.js'), `import * as mupdf from '/vendor/mupdf/mupdf.js';
+import { mountSign } from '/lib/pdf-editor/sign-ui.js';
 let bytes = null; let doc = null; let pristine = true; let handle = null;
 window.__labels = []; window.__events = 0;
 const open = (u8) => { doc?.destroy(); bytes = u8; doc = mupdf.Document.openDocument(u8.slice(), 'application/pdf'); };
@@ -89,7 +89,7 @@ try {
     page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) && !allowed.some((re) => re.test(m.text()))) problems.push(m.text()); });
     page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
     page.on('request', (r) => requests.push(r.url()));
-    await page.goto(`${base}/tools/pdf-editor/__sign-harness__/`, { waitUntil: 'networkidle' });
+    await page.goto(`${base}/pdf-editor/__sign-harness__/`, { waitUntil: 'networkidle' });
     const cardServed = await page.locator('meta[name="local-signer-token"]').count() > 0;
     await page.setInputFiles('#doc', join(dir, 'document.pdf'));
     await page.waitForSelector('body[data-ready="1"]');

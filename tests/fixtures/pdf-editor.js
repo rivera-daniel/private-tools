@@ -1,6 +1,6 @@
 // PDF Editor fixtures, generated in code with MuPDF: text PDFs, an image whose top-left corner is red so
 // orientation mistakes show, a JPEG that asks to be rotated, a bloated PDF and a signed one.
-import * as mupdf from '../../site/tools/vendor/mupdf/mupdf.js';
+import * as mupdf from '../../site/vendor/mupdf/mupdf.js';
 import { tiff, exifSegment } from './build.js';
 
 const bytesOf = (buffer) => { try { return buffer.asUint8Array().slice(); } finally { buffer.destroy(); } };

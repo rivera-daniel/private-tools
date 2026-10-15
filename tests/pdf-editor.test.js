@@ -1,17 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as mupdf from '../site/tools/vendor/mupdf/mupdf.js';
+import * as mupdf from '../site/vendor/mupdf/mupdf.js';
 import {
   openPdf, buildDocument, buildBytes, saveDocument, splitDocument, protectPdf, unlockPdf, encryptOption, permissionValue,
   checkPassword, renderPage, pageImage, imagesToPdf, isSigned, PdfError, LOSSLESS,
-} from '../site/tools/lib/pdf-editor/index.js';
-import { addWatermark, addPageNumbers, winAnsi, isLatin } from '../site/tools/lib/pdf-editor/stamp.js';
-import { downsampleImages } from '../site/tools/lib/pdf-editor/compress.js';
-import { fitScale, fitsPixels, pixelSize, RenderSizeError, RENDER_PIXELS, PREVIEW_PIXELS, THUMB_PIXELS, MAX_SIDE } from '../site/tools/lib/pdf-editor/render-guard.js';
-import { fromSource, rotatePages, removePages, duplicatePages, insertBlank, pickPages, movePagesTo, movePagesBy, entrySize } from '../site/tools/lib/pdf-editor/plan.js';
-import { parseRanges, splitEvery, onePerPage, formatPageLabel, groupLabel, PageRangeError } from '../site/tools/lib/pdf-editor/ranges.js';
-import { cleanFile } from '../site/tools/lib/clean/index.js';
-import { inspectFile } from '../site/tools/lib/metadata/index.js';
+} from '../site/lib/pdf-editor/index.js';
+import { addWatermark, addPageNumbers, winAnsi, isLatin } from '../site/lib/pdf-editor/stamp.js';
+import { downsampleImages } from '../site/lib/pdf-editor/compress.js';
+import { fitScale, fitsPixels, pixelSize, RenderSizeError, RENDER_PIXELS, PREVIEW_PIXELS, THUMB_PIXELS, MAX_SIDE } from '../site/lib/pdf-editor/render-guard.js';
+import { fromSource, rotatePages, removePages, duplicatePages, insertBlank, pickPages, movePagesTo, movePagesBy, entrySize } from '../site/lib/pdf-editor/plan.js';
+import { parseRanges, splitEvery, onePerPage, formatPageLabel, groupLabel, PageRangeError } from '../site/lib/pdf-editor/ranges.js';
+import { cleanFile } from '../site/lib/clean/index.js';
+import { inspectFile } from '../site/lib/metadata/index.js';
 import { textPdf, cornerPng, cornerJpeg, orientedJpeg, bloatedPdf, photoPdf, signedPdf } from './fixtures/pdf-editor.js';
 
 const open = (bytes, password) => { const d = mupdf.Document.openDocument(bytes, 'application/pdf'); if (password) d.authenticatePassword(password); return d; };

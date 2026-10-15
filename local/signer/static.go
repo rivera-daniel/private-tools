@@ -191,8 +191,8 @@ func newStaticServer(root, token string, inject func(*http.Request) bool) (*stat
 
 func (s *staticServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	pathname := normalizePathname(r.URL.EscapedPath())
-	if pathname == "/" || pathname == "/tools" {
-		w.Header().Set("Location", "/tools/")
+	if pathname == "/tools" {
+		w.Header().Set("Location", "/")
 		w.WriteHeader(http.StatusFound)
 		return
 	}
@@ -224,7 +224,7 @@ func (s *staticServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h := orderedHeaders{{"Content-Type", ct}, {"Cache-Control", "no-store"}}
 	applyRules(s.rules, pathname, &h)
-	if ext == ".html" && strings.HasPrefix(pathname, "/tools/") && s.inject != nil && s.inject(r) {
+	if ext == ".html" && s.inject != nil && s.inject(r) {
 		body = injectToken(body, s.token)
 	}
 	w.Header()["Content-Type"] = nil // no sniffing if a rule removed it

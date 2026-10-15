@@ -2,7 +2,7 @@
 // Usage: EXIFTOOL_DIR=/path/to/Image-ExifTool node tests/vendor-check.mjs
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { inspectImage } from '../site/tools/lib/metadata/index.js';
+import { inspectImage } from '../site/lib/metadata/index.js';
 const dir = process.env.EXIFTOOL_DIR;
 if (!dir) { console.error('Set EXIFTOOL_DIR to an unpacked Image-ExifTool distribution.'); process.exit(2); }
 const files = ['Apple.jpg', 'Canon.jpg', 'Canon1DmkIII.jpg', 'CanonRaw.cr2', 'CanonRaw.cr3', 'FujiFilm.jpg', 'FujiFilm.raf', 'Nikon.jpg', 'NikonD70.jpg', 'Nikon.nef', 'Olympus.jpg', 'OlympusE1.jpg', 'Panasonic.jpg', 'Panasonic.rw2', 'Pentax.jpg', 'Sony.jpg', 'DNG.dng', 'QuickTime.heic', 'GPS.jpg', 'ExtendedXMP.jpg', 'XMP.svg', 'Photoshop.psd', 'RIFF.webp', 'JXL.jxl', 'JXL2.jxl', 'Google.jpg', 'ExifTool.tif', 'GeoTiff.tif', 'PNG.png', 'GIF.gif', 'BMP.bmp', 'BigTIFF.btf', 'IPTC.jpg', 'XMP.jpg', 'Minolta.jpg', 'Kodak.jpg', 'Casio.jpg', 'Ricoh.jpg', 'Sanyo.jpg', 'Sigma.jpg'];

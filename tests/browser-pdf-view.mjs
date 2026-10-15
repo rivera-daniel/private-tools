@@ -8,8 +8,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import * as mupdf from '../site/tools/vendor/mupdf/mupdf.js';
-import { protectPdf } from '../site/tools/lib/pdf-editor/index.js';
+import * as mupdf from '../site/vendor/mupdf/mupdf.js';
+import { protectPdf } from '../site/lib/pdf-editor/index.js';
 const playwright = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 const chromium = playwright.chromium ?? playwright.default.chromium;
 const base = process.env.BASE ?? 'http://127.0.0.1:4176';
@@ -52,7 +52,7 @@ try {
     page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) problems.push(m.text()); });
     page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
     const requests = []; page.on('request', (r) => requests.push(r.url()));
-    await page.goto(`${base}/tools/pdf-editor/`, { waitUntil: 'networkidle' });
+    await page.goto(`${base}/pdf-editor/`, { waitUntil: 'networkidle' });
     await page.setInputFiles('#file', join(dir, 'book.pdf'));
 
     // Opens straight into View.

@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { inspectFile } from '../site/tools/lib/metadata/index.js';
-import { cleanFile } from '../site/tools/lib/clean/index.js';
-import { readZip, readEntry, writeZip } from '../site/tools/lib/zip/index.js';
-import { parseXml } from '../site/tools/lib/metadata/documents/xml.js';
+import { inspectFile } from '../site/lib/metadata/index.js';
+import { cleanFile } from '../site/lib/clean/index.js';
+import { readZip, readEntry, writeZip } from '../site/lib/zip/index.js';
+import { parseXml } from '../site/lib/metadata/documents/xml.js';
 import { PERSON, TRACKER, docx, xlsx, pptx, odt, epub, rawZip, unixExtra, timeExtra, ntfsExtra, dos } from './fixtures/documents.js';
 
 const within = async (ms, fn) => { const started = Date.now(); const out = await fn(); assert.ok(Date.now() - started < ms, `finished in ${Date.now() - started} ms`); return out; };

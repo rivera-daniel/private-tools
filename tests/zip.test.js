@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readZip, readEntry, writeZip, rawEntry, isZip } from '../site/tools/lib/zip/index.js';
+import { readZip, readEntry, writeZip, rawEntry, isZip } from '../site/lib/zip/index.js';
 
 const enc = new TextEncoder();
 

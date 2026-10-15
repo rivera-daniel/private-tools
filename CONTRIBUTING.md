@@ -16,7 +16,7 @@ Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not
 
 ## Dependencies
 
-Third-party code is vendored under `site/tools/vendor/`, pinned to an exact version, with its license and a `NOTICE` that records where it came from and how it was built. Its license must be compatible with AGPL-3.0. Open an issue before adding one, because every dependency also has to work under the Content Security Policy.
+Third-party code is vendored under `site/vendor/`, pinned to an exact version, with its license and a `NOTICE` that records where it came from and how it was built. Its license must be compatible with AGPL-3.0. Open an issue before adding one, because every dependency also has to work under the Content Security Policy.
 
 ## Development
 

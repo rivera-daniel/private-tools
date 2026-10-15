@@ -1,0 +1,101 @@
+@font-face{font-family:Inter;src:url('/assets/fonts/InterVariable.woff2') format('woff2');font-weight:100 900;font-display:swap}
+
+/* Theme tokens. Dark applies when the system prefers it, unless the visitor chose a theme. */
+:root{
+  color-scheme:light;
+  --bg:#fcfcfd;--surface:#fff;--surface-2:#f4f5f7;--surface-3:#eceef1;
+  --line:#e3e5e9;--line-soft:#eff0f2;--line-strong:#c9cdd4;
+  --text:#0b0c0e;--text-2:#3c3f46;--muted:#6f747d;--faint:#9a9ea6;
+  --red:#bd102b;--red-text:#bd102b;--red-soft:#f9ecef;--red-line:#f0d1d9;--on-red:#fff;
+  --art-ink:#252930;--art-mid:#77848f;--art-soft:#d4d9de;--art-paper:#f4f5f7;
+  --icon-bg:linear-gradient(135deg,#fafbfc,#f1f3f6);
+  --shadow:0 12px 30px rgb(20 26 36 / 6%);--shadow-lg:0 30px 90px rgb(10 14 20 / 18%);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  color-scheme:dark;
+  --bg:#0d0f12;--surface:#15181c;--surface-2:#1b1f24;--surface-3:#23272e;
+  --line:#262b32;--line-soft:#1f2329;--line-strong:#3a414b;
+  --text:#eceef1;--text-2:#c3c8cf;--muted:#949ba6;--faint:#6c737e;
+  --red:#e2364f;--red-text:#ff7286;--red-soft:#2b171b;--red-line:#55252e;--on-red:#fff;
+  --art-ink:#d6dae0;--art-mid:#8a95a0;--art-soft:#39404a;--art-paper:#1d2127;
+  --icon-bg:linear-gradient(135deg,#1c2025,#181b20);
+  --shadow:0 12px 30px rgb(0 0 0 / 35%);--shadow-lg:0 30px 90px rgb(0 0 0 / 55%);
+}}
+:root[data-theme=dark]{
+  color-scheme:dark;
+  --bg:#0d0f12;--surface:#15181c;--surface-2:#1b1f24;--surface-3:#23272e;
+  --line:#262b32;--line-soft:#1f2329;--line-strong:#3a414b;
+  --text:#eceef1;--text-2:#c3c8cf;--muted:#949ba6;--faint:#6c737e;
+  --red:#e2364f;--red-text:#ff7286;--red-soft:#2b171b;--red-line:#55252e;--on-red:#fff;
+  --art-ink:#d6dae0;--art-mid:#8a95a0;--art-soft:#39404a;--art-paper:#1d2127;
+  --icon-bg:linear-gradient(135deg,#1c2025,#181b20);
+  --shadow:0 12px 30px rgb(0 0 0 / 35%);--shadow-lg:0 30px 90px rgb(0 0 0 / 55%);
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:24px}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-synthesis:none;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
+main{flex:1}
+a{color:inherit;text-decoration:none}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--red);outline-offset:4px;border-radius:6px}
+[hidden]{display:none!important}
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.wrap{width:calc(100% - 96px);max-width:1320px;margin:0 auto}
+
+/* Header */
+.header{height:76px;display:flex;align-items:center;gap:28px}
+.brand{display:flex;align-items:center;gap:14px;font-size:21px;font-weight:550;letter-spacing:-.8px}
+.brand svg{width:38px;height:26px;color:var(--text)}
+.header nav{margin-left:auto;display:flex;align-items:center;gap:30px;font-size:14px;color:var(--text-2)}
+.header nav a:hover{color:var(--red-text)}
+.icon-button{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--text-2);transition:border-color .2s,color .2s}
+.icon-button:hover{border-color:var(--line-strong);color:var(--text)}
+.icon-button svg{width:18px;height:18px}
+.header .actions{display:flex;gap:8px}
+
+/* Tool artwork colors */
+.art-red{stroke:var(--red)}.art-red-fill{fill:var(--red)}.art-ink{stroke:var(--art-ink)}.art-ink-fill{fill:var(--art-ink)}
+.art-mid{stroke:var(--art-mid)}.art-mid-fill{fill:var(--art-mid)}.art-soft{stroke:var(--art-soft)}.art-soft-fill{fill:var(--art-soft)}
+.art-paper-fill{fill:var(--art-paper)}.art-on-red{stroke:var(--on-red)}.art-on-red-fill{fill:var(--on-red)}.art-surface{stroke:var(--surface)}
+
+/* Dialog */
+dialog{border:1px solid var(--line);border-radius:18px;padding:32px;max-width:460px;width:calc(100% - 32px);background:var(--surface);color:var(--text);box-shadow:var(--shadow-lg)}
+dialog::backdrop{background:rgb(10 14 20 / 45%);backdrop-filter:blur(4px)}
+dialog .eyebrow{font-size:11px;font-weight:650;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);margin:0}
+dialog h2{font-size:26px;letter-spacing:-.8px;margin:12px 0}
+dialog p{font-size:15px;line-height:1.65;color:var(--muted)}
+dialog .close{float:right;border:0;background:none;font-size:26px;line-height:1;color:var(--muted)}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:10px;padding:12px 20px;font-size:14px;font-weight:550;background:var(--text);color:var(--bg)}
+.button:hover{opacity:.88}
+.button.ghost{background:var(--surface);color:var(--text);border:1px solid var(--line)}
+.button.ghost:hover{opacity:1;border-color:var(--line-strong)}
+
+/* Footer */
+.footer{border-top:1px solid var(--line);margin-top:auto}
+.footer-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:40px;padding:48px 0 40px}
+.footer .brand{font-size:18px}
+.footer .brand svg{width:30px;height:21px}
+.footer-about p{font-size:14px;line-height:1.65;color:var(--muted);max-width:340px;margin:16px 0 0}
+.footer h2{font-size:13px;font-weight:600;color:var(--text);margin:4px 0 16px}
+.footer ul{list-style:none;margin:0;padding:0;display:grid;gap:11px;font-size:14px;color:var(--muted)}
+.footer ul a:hover{color:var(--text)}
+.footer .soon{font-size:11px;color:var(--faint);margin-left:6px}
+.footer-bottom{display:flex;justify-content:space-between;gap:20px;border-top:1px solid var(--line);padding:22px 0 30px;font-size:13px;color:var(--faint)}
+.footer-bottom a:hover{color:var(--text)}
+
+@media (max-width:1100px){.footer-grid{grid-template-columns:1fr 1fr 1fr}.footer-about{grid-column:1/-1}}
+@media (max-width:650px){
+  .wrap{width:calc(100% - 36px)}
+  .header{height:64px;gap:16px}.brand{font-size:18px}.brand svg{width:32px;height:22px}
+  .header nav{gap:16px}.header nav .nav-text{display:none}
+  .footer-grid{grid-template-columns:1fr 1fr;gap:32px}
+  .footer-bottom{flex-direction:column;gap:8px}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
+
+/* Offline status, added to the footer by theme.js. */
+.offline-status{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.offline-status svg{width:15px;height:15px;flex:none}
+.offline-status[data-state=offline]{color:var(--text-2)}

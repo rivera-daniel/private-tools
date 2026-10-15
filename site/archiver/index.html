@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="description" content="Create and open ZIP, 7z, tar and gzip archives and extract RAR, xz, ISO and more in your browser, with AES-256 passwords and hidden data removed before archiving. Nothing is uploaded."><meta name="color-scheme" content="light dark"><title>Archiver — Private Tools</title><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"><link rel="stylesheet" href="/image-inspector/inspector.css"><link rel="stylesheet" href="/archiver/archiver.css"><script src="/assets/theme.js"></script></head>
+<body>
+<header class="header wrap">
+  <a class="brand" href="/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
+  <nav aria-label="Primary">
+    <a class="nav-text" href="/">All tools</a>
+    <a class="nav-text" href="https://github.com/rivera-daniel/private-tools">GitHub</a>
+    <button type="button" class="icon-button" id="theme-toggle" aria-label="Change theme"></button>
+  </nav>
+</header>
+<main>
+<section class="tool-hero wrap">
+  <p class="crumbs"><a href="/">All tools</a><span aria-hidden="true">/</span>Archiver</p>
+  <h1 class="tool-title">Archiver</h1>
+  <p class="tool-intro">Create and open ZIP, 7z, tar and gzip archives, extract RAR, ISO and more, and protect ZIPs with AES-256. Your files never leave this device.</p>
+</section>
+
+<section class="wrap workbench archiver" aria-live="polite">
+  <div class="segmented" role="tablist" aria-label="Mode">
+    <button type="button" role="tab" id="tab-create" aria-controls="create" aria-selected="true">Create archive</button>
+    <button type="button" role="tab" id="tab-open" aria-controls="open" aria-selected="false" tabindex="-1">Open archive</button>
+  </div>
+
+  <div id="create" role="tabpanel" aria-labelledby="tab-create">
+    <div class="dropzone" id="create-drop">
+      <input type="file" id="create-files" class="visually-hidden" multiple tabindex="-1">
+      <input type="file" id="create-folder" class="visually-hidden" webkitdirectory multiple tabindex="-1">
+      <span class="drop-art" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><rect class="art-soft-fill" x="18" y="18" width="28" height="30" rx="3"/><path class="art-mid" d="M32 18v4m0 4v4m0 4v4" stroke-width="2.4"/><rect class="art-ink" x="28.5" y="38" width="7" height="6" rx="1.5" stroke-width="1.8"/></svg></span>
+      <strong>Drop files or folders here</strong>
+      <span class="drop-sub"><button type="button" class="link" id="pick-files">Choose files</button> or <button type="button" class="link" id="pick-folder">choose a folder</button></span>
+      <small>ZIP, 7z, tar, tar.gz and gzip. Folders keep their structure.</small>
+      <span class="local-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg>Archived on this device. Nothing is uploaded.</span>
+    </div>
+
+    <div class="panel" id="create-panel" hidden>
+      <div class="list-card">
+        <div class="list-head">
+          <h2 id="create-title"></h2>
+          <div class="list-actions"><button type="button" class="ghost" id="add-files">Add files</button><button type="button" class="ghost" id="add-folder">Add folder</button><button type="button" class="ghost" id="clear">Clear</button></div>
+        </div>
+        <div class="table-scroll"><table class="entries"><thead><tr><th scope="col">Name</th><th scope="col" class="num">Size</th><th scope="col" class="act"><span class="visually-hidden">Remove</span></th></tr></thead><tbody id="create-list"></tbody></table></div>
+        <p class="more" id="create-more" hidden></p>
+      </div>
+
+      <form class="options" id="create-form" novalidate>
+        <fieldset class="field">
+          <legend>Format</legend>
+          <div class="choices" id="format">
+            <label><input type="radio" name="format" value="zip" checked><span>ZIP</span></label>
+            <label><input type="radio" name="format" value="tar.gz"><span>tar.gz</span></label>
+            <label><input type="radio" name="format" value="tar"><span>tar</span></label>
+            <label><input type="radio" name="format" value="gz"><span>gz</span></label>
+            <label><input type="radio" name="format" value="7z"><span>7z</span></label>
+          </div>
+          <p class="hint" id="format-hint"></p>
+        </fieldset>
+        <fieldset class="field" id="method-field">
+          <legend>Compression</legend>
+          <div class="choices">
+            <label><input type="radio" name="method" value="deflate" checked><span>Deflate</span></label>
+            <label><input type="radio" name="method" value="store"><span>Store</span></label>
+          </div>
+          <p class="hint">Photos, videos and other compressed files are always stored as they are.</p>
+        </fieldset>
+        <div class="field" id="password-field">
+          <label class="field-label" for="password">Password <span class="optional">optional</span></label>
+          <div class="password"><input type="password" id="password" autocomplete="new-password" spellcheck="false" placeholder="No password"><button type="button" class="reveal" id="reveal" aria-pressed="false">Show</button></div>
+          <p class="hint">AES-256 encryption. File names stay readable. Windows Explorer and macOS Archive Utility cannot open AES ZIPs; 7-Zip, Keka, The Unarchiver and this page can.</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="archive-name">Archive name</label>
+          <div class="name-row"><input type="text" id="archive-name" value="archive" spellcheck="false" autocomplete="off"><span class="ext" id="archive-ext">.zip</span></div>
+        </div>
+        <div class="field checks">
+          <label class="check"><input type="checkbox" id="clean" checked><span><strong>Remove hidden data</strong><small>Runs the Metadata Cleaner on every file it supports, such as photos, so location, camera details and other metadata are not archived.</small></span></label>
+          <label class="check"><input type="checkbox" id="hide-dates" checked><span><strong>Hide file dates</strong><small>Every entry gets the date 1 January 1980 instead of when the file was last changed.</small></span></label>
+        </div>
+        <div class="run"><button type="submit" class="primary" id="create-run">Create archive</button></div>
+      </form>
+    </div>
+
+    <div class="busy job-busy" id="create-busy" hidden><span class="spinner" aria-hidden="true"></span><span class="busy-text"><strong id="create-busy-title">Creating archive…</strong><span class="bar"><span id="create-bar"></span></span><small id="create-busy-detail"></small></span><button type="button" class="ghost" id="create-cancel">Cancel</button></div>
+
+    <div class="result" id="create-result" hidden>
+      <div class="result-head"><span class="result-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><div><h2 id="result-title"></h2><p id="result-detail"></p></div><a class="primary" id="result-save" href="#" download>Save</a></div>
+      <ul class="report" id="result-report"></ul>
+      <div class="result-actions"><button type="button" class="ghost" id="result-back">Change options</button><button type="button" class="ghost" id="result-new">Start over</button></div>
+    </div>
+    <p class="error-note" id="create-error" role="alert" hidden></p>
+  </div>
+
+  <div id="open" role="tabpanel" aria-labelledby="tab-open" hidden>
+    <label class="dropzone" id="open-drop">
+      <input type="file" id="open-file" class="visually-hidden">
+      <span class="drop-art" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="art-red" d="M10 19v-8h8m28 0h8v8M10 45v8h8m28 0h8v-8" stroke-width="2.2"/><path class="art-soft-fill" d="M16 26h32v20a3 3 0 0 1-3 3H19a3 3 0 0 1-3-3z"/><path class="art-ink" d="M16 26l5-9h22l5 9M26 34h12" stroke-width="1.8"/></svg></span>
+      <strong>Drop an archive here</strong>
+      <span class="drop-sub">or <span class="link">choose a file</span></span>
+      <small>ZIP (including encrypted), 7z, RAR, tar, gzip, xz, bzip2, zstd, ISO and CAB.</small>
+      <span class="local-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg>Opened on this device. Nothing is uploaded.</span>
+    </label>
+
+    <div class="busy job-busy" id="open-busy" hidden><span class="spinner" aria-hidden="true"></span><span class="busy-text"><strong id="open-busy-title">Reading archive…</strong><span class="bar"><span id="open-bar"></span></span><small id="open-busy-detail"></small></span><button type="button" class="ghost" id="open-cancel">Cancel</button></div>
+
+    <div class="panel" id="open-panel" hidden>
+      <div class="archive-card">
+        <span class="archive-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 8l2-4h12l2 4M10 12h4"/></svg></span>
+        <div><strong id="archive-name-out"></strong><p id="archive-facts"></p></div>
+        <button type="button" class="ghost" id="open-another">Open another</button>
+      </div>
+      <div class="warnings" id="open-warnings" hidden></div>
+      <form class="unlock" id="unlock" hidden>
+        <span class="unlock-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg></span>
+        <div class="unlock-body"><label for="unlock-password"><strong>This archive is encrypted</strong><small id="unlock-detail">Enter the password to extract its files.</small></label>
+          <div class="password"><input type="password" id="unlock-password" autocomplete="off" spellcheck="false" placeholder="Password"><button type="submit" class="primary small">Use password</button></div>
+        </div>
+      </form>
+      <div class="list-card" id="list-card">
+        <div class="list-head">
+          <label class="check-all"><input type="checkbox" id="select-all" checked><span id="selection"></span></label>
+          <label class="filter"><span class="visually-hidden">Filter entries</span><input type="search" id="entry-filter" placeholder="Filter by name…" autocomplete="off"></label>
+        </div>
+        <div class="table-scroll"><table class="entries open-entries"><thead><tr><th scope="col" class="pick"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col" class="num">Size</th><th scope="col" class="num packed">Packed</th><th scope="col" class="date">Modified</th><th scope="col" class="act"><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="open-list"></tbody></table></div>
+        <p class="more" id="open-more" hidden></p>
+      </div>
+      <div class="run extract-run" id="extract-run">
+        <label class="check-inline" id="extract-here-label" hidden><input type="checkbox" id="extract-here"><span>Extract directly into the chosen folder</span></label>
+        <button type="button" class="primary" id="extract-folder" hidden>Extract to folder</button>
+        <button type="button" class="ghost" id="extract-zip">Download as ZIP</button>
+      </div>
+      <p class="done-note" id="open-done" role="status" hidden></p>
+    </div>
+    <p class="error-note" id="open-error" role="alert" hidden></p>
+  </div>
+</section>
+
+<dialog id="inspect-dialog" aria-labelledby="inspect-title">
+  <button type="button" class="close" id="inspect-close" aria-label="Close">×</button>
+  <p class="eyebrow">Inspect contents</p>
+  <h2 id="inspect-title"></h2>
+  <article class="summary" id="inspect-summary"><span class="summary-mark" aria-hidden="true"></span><div><p class="eyebrow" id="inspect-format"></p><h3 id="inspect-summary-title"></h3><p id="inspect-summary-detail"></p></div></article>
+  <ul class="inspect-signals" id="inspect-signals"></ul>
+  <div class="dialog-actions"><button type="button" class="primary" id="inspect-open">Open in File Inspector</button></div>
+</dialog>
+
+<dialog id="collide-dialog" aria-labelledby="collide-title">
+  <p class="eyebrow">Extract here</p>
+  <h2 id="collide-title"></h2>
+  <p id="collide-detail">Nothing has been written yet. Existing files are kept unless you choose Replace.</p>
+  <div class="collide-all" role="group" aria-label="Apply to all"><button type="button" class="row-button" data-all="skip">Skip all</button><button type="button" class="row-button" data-all="keep">Keep both for all</button><button type="button" class="row-button" data-all="replace">Replace all</button></div>
+  <ul class="collide-list" id="collide-list"></ul>
+  <p class="collide-more" id="collide-more" hidden></p>
+  <div class="dialog-actions"><button type="button" class="ghost" id="collide-cancel">Cancel</button><button type="button" class="primary" id="collide-run">Extract</button></div>
+</dialog>
+
+<section class="about-tool wrap" aria-labelledby="about-title">
+  <div class="about-intro">
+    <h2 id="about-title">About Archiver</h2>
+    <p>Archiver packs files and folders into archives and unpacks them, entirely in your browser. Files are read from your disk and written back to it. Nothing is uploaded, and the page keeps working with your network turned off.</p>
+  </div>
+  <div class="about-grid">
+    <div><h3>Formats</h3><p>Create ZIP, 7z, tar, tar.gz and gzip. Open ZIP (including ZIP64, AES and legacy encrypted entries), 7z, RAR, tar with any compression, gzip, xz, bzip2, zstd, lzma, ISO 9660, CAB, cpio and ar. Large archives are streamed rather than held in memory where the browser can write to disk.</p></div>
+    <div><h3>Passwords</h3><p>Password-protected ZIPs use WinZip AES-256 with an authentication code, so a wrong password or altered data is detected. AES-256 encrypted 7z archives open with their password, including ones that hide their file names. Legacy ZipCrypto archives can be opened but never created, because that scheme is broken.</p></div>
+    <div><h3>Remove hidden data</h3><p>With this on, every file the Metadata Cleaner supports is cleaned before it is added, and the rest are listed. Entries never carry an owner, comments, extra timestamps or extra fields, and with Hide file dates every date is 1 January 1980.</p></div>
+  </div>
+  <div class="limits">
+    <h3>Limitations</h3>
+    <ul>
+      <li>Chrome and Edge can save archives of any size straight to disk. Firefox and Safari keep the output in memory, which limits archives to roughly 2 GB.</li>
+      <li>AES-encrypted ZIPs open in 7-Zip, Keka, The Unarchiver, WinZip and this page, but not in Windows Explorer or macOS Archive Utility. File names inside an encrypted ZIP are not hidden.</li>
+      <li>Files that the Metadata Cleaner cannot read are added unchanged and listed after the archive is created. Files over 200 MB are not cleaned.</li>
+      <li>Archives that expand more than 1,000 times their size are stopped, as are entries that would land outside the chosen folder. Links inside archives are listed but never extracted.</li>
+      <li>Extract to folder puts the files in a new folder named after the archive. Extracting directly into the chosen folder lists every name that already exists there first. Existing files are skipped or kept beside the new ones, and replaced only when you choose Replace. A file that fails to extract never removes one that was already there.</li>
+      <li>7z, RAR, ISO, CAB and the compressed formats other than gzip are read by libarchive, compiled to WebAssembly and loaded from this site. Encrypted RAR archives cannot be opened, and RAR archives cannot be created. Encrypted 7z archives that combine AES with the BCJ2 filter are not supported.</li>
+      <li>7z archives are limited to 1 GB of files when creating, because the compressed data stays in memory until the archive is finished. 7z archives cannot be given a password here.</li>
+    </ul>
+  </div>
+</section>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-about">
+        <a class="brand" href="/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
+        <p>File tools that run in your browser. Your files are processed on your device and never uploaded. No account required.</p>
+      </div>
+      <div>
+        <h2>Tools</h2>
+        <ul>
+          <li><a href="/image-inspector/">Image Inspector</a></li>
+          <li><a href="/file-inspector/">File Inspector</a></li>
+          <li><a href="/metadata-cleaner/">Metadata Cleaner</a></li>
+          <li><a href="/archiver/">Archiver</a></li>
+          <li><a href="/pdf-editor/">PDF Editor</a></li>
+          <li><a href="/">All tools</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <ul>
+          <li><a href="https://github.com/rivera-daniel/private-tools#roadmap">Roadmap</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools">Source code</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools/issues">Report an issue</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Trust</h2>
+        <ul>
+          <li><a href="https://github.com/rivera-daniel/private-tools#privacy-model">How your data is handled</a></li>
+          <li><a href="https://github.com/rivera-daniel/private-tools/blob/main/LICENSE">License (AGPL-3.0)</a></li>
+          <li><a href="https://danielrivera.ai/">danielrivera.ai</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Daniel Rivera</span>
+      <span>Processed on your device. Nothing is uploaded.</span>
+    </div>
+  </div>
+</footer>
+<script type="module" src="/archiver/ui.js"></script></body></html>

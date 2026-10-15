@@ -10,15 +10,15 @@ import (
 	"testing"
 )
 
-const testHeaders = `/tools/*
+const testHeaders = `/*
   Content-Security-Policy: default-src 'self'; connect-src 'none'
   X-Robots-Tag: noindex, nofollow
   X-Content-Type-Options: nosniff
 
-/tools/assets/fonts/*
+/assets/fonts/*
   Cache-Control: public, max-age=31536000, immutable
 
-/tools/pdf-editor/*
+/pdf-editor/*
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'self'; connect-src 'self'
 `
@@ -41,12 +41,11 @@ func newTestSite(t *testing.T) *staticServer {
 	site := filepath.Join(dir, "site")
 	writeFile(t, filepath.Join(dir, "outside.txt"), "secret")
 	writeFile(t, filepath.Join(site, "_headers"), testHeaders)
-	writeFile(t, filepath.Join(site, "tools", "index.html"), "<html><head><title>x</title></head><body></body></html>")
-	writeFile(t, filepath.Join(site, "tools", "pdf-editor", "index.html"), "<html><HEAD lang=en><title>x</title></HEAD></html>")
-	writeFile(t, filepath.Join(site, "tools", "pdf-editor", "app.js"), "console.log(1)")
-	writeFile(t, filepath.Join(site, "tools", "assets", "fonts", "a.woff2"), "font")
-	writeFile(t, filepath.Join(site, "tools", "data.bin"), "bin")
-	writeFile(t, filepath.Join(site, "index.html"), "<html><head></head></html>")
+	writeFile(t, filepath.Join(site, "index.html"), "<html><head><title>x</title></head><body></body></html>")
+	writeFile(t, filepath.Join(site, "pdf-editor", "index.html"), "<html><HEAD lang=en><title>x</title></HEAD></html>")
+	writeFile(t, filepath.Join(site, "pdf-editor", "app.js"), "console.log(1)")
+	writeFile(t, filepath.Join(site, "assets", "fonts", "a.woff2"), "font")
+	writeFile(t, filepath.Join(site, "data.bin"), "bin")
 	s, err := newStaticServer(site, "tok", func(r *http.Request) bool { return r.Host == testHost })
 	if err != nil {
 		t.Fatal(err)
@@ -67,9 +66,9 @@ func get(h http.Handler, target, host string) *httptest.ResponseRecorder {
 
 func TestStaticRedirects(t *testing.T) {
 	s := newTestSite(t)
-	for _, p := range []string{"/", "/tools", "/x/..", "/tools/x/../.."} {
+	for _, p := range []string{"/tools"} {
 		rec := get(s, p, testHost)
-		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/tools/" {
+		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/" {
 			t.Errorf("%s: got %d %q", p, rec.Code, rec.Header().Get("Location"))
 		}
 	}
@@ -78,7 +77,7 @@ func TestStaticRedirects(t *testing.T) {
 func TestStaticHeaders(t *testing.T) {
 	s := newTestSite(t)
 
-	rec := get(s, "/tools/", testHost)
+	rec := get(s, "/", testHost)
 	if rec.Code != 200 || rec.Header().Get("Content-Type") != "text/html" || rec.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("index: %d %v", rec.Code, rec.Header())
 	}
@@ -89,7 +88,7 @@ func TestStaticHeaders(t *testing.T) {
 		t.Errorf("missing X-Robots-Tag")
 	}
 
-	rec = get(s, "/tools/pdf-editor/app.js", testHost)
+	rec = get(s, "/pdf-editor/app.js", testHost)
 	if csp := rec.Header().Values("Content-Security-Policy"); len(csp) != 1 || csp[0] != "default-src 'self'; connect-src 'self'" {
 		t.Errorf("pdf-editor CSP after ! rule: %q", csp)
 	}
@@ -97,18 +96,18 @@ func TestStaticHeaders(t *testing.T) {
 		t.Errorf("pdf-editor headers: %v", rec.Header())
 	}
 
-	rec = get(s, "/tools/assets/fonts/a.woff2", testHost)
+	rec = get(s, "/assets/fonts/a.woff2", testHost)
 	if rec.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" || rec.Header().Get("Content-Type") != "font/woff2" {
 		t.Errorf("font headers: %v", rec.Header())
 	}
 
-	rec = get(s, "/tools/data.bin", testHost)
+	rec = get(s, "/data.bin", testHost)
 	if rec.Header().Get("Content-Type") != "application/octet-stream" {
 		t.Errorf("unknown type: %q", rec.Header().Get("Content-Type"))
 	}
 
 	// Rules match the normalized pathname.
-	rec = get(s, "/tools/x/../pdf-editor/app.js", testHost)
+	rec = get(s, "/x/../pdf-editor/app.js", testHost)
 	if rec.Code != 200 || !strings.Contains(rec.Header().Get("Content-Security-Policy"), "connect-src 'self'") {
 		t.Errorf("dot segments: %d %v", rec.Code, rec.Header())
 	}
@@ -144,20 +143,17 @@ func TestTokenInjection(t *testing.T) {
 	s := newTestSite(t)
 	meta := `<meta name="local-signer-token" content="tok">`
 
-	if body := get(s, "/tools/", testHost).Body.String(); body != "<html><head><title>x</title>"+meta+"</head><body></body></html>" {
+	if body := get(s, "/", testHost).Body.String(); body != "<html><head><title>x</title>"+meta+"</head><body></body></html>" {
 		t.Errorf("index: %s", body)
 	}
-	if body := get(s, "/tools/pdf-editor/", testHost).Body.String(); !strings.Contains(body, meta+"</HEAD>") {
+	if body := get(s, "/pdf-editor/", testHost).Body.String(); !strings.Contains(body, meta+"</HEAD>") {
 		t.Errorf("upper-case head: %s", body)
 	}
-	if body := get(s, "/tools/pdf-editor/app.js", testHost).Body.String(); strings.Contains(body, "local-signer-token") {
+	if body := get(s, "/pdf-editor/app.js", testHost).Body.String(); strings.Contains(body, "local-signer-token") {
 		t.Errorf("injected into JS")
 	}
-	if body := get(s, "/index.html", testHost).Body.String(); strings.Contains(body, "local-signer-token") {
-		t.Errorf("injected outside /tools/")
-	}
 	for _, host := range []string{"localhost:4198", "attacker.example:4198", "127.0.0.1"} {
-		if body := get(s, "/tools/", host).Body.String(); strings.Contains(body, "local-signer-token") {
+		if body := get(s, "/", host).Body.String(); strings.Contains(body, "local-signer-token") {
 			t.Errorf("injected for Host %s", host)
 		}
 	}
@@ -207,7 +203,7 @@ func TestParseHeaderRules(t *testing.T) {
 	if len(rules) != 3 {
 		t.Fatalf("got %d rules", len(rules))
 	}
-	if !rules[0].re.MatchString("/tools/a/b") || rules[0].re.MatchString("/toolsx") || rules[0].re.MatchString("/x/tools/a") {
+	if !rules[0].re.MatchString("/a/b") || !rules[1].re.MatchString("/assets/fonts/a") || rules[1].re.MatchString("/assets/fontsx") || rules[1].re.MatchString("/x/assets/fonts/a") {
 		t.Errorf("wildcard match wrong")
 	}
 	if len(rules[2].unset) != 1 || rules[2].unset[0] != "content-security-policy" || len(rules[2].headers) != 1 {

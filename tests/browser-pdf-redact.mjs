@@ -1,5 +1,5 @@
 // Browser check for Redact mode of the PDF Editor. The editor page is not needed: a small harness page is
-// written into site/tools/pdf-editor/ for the run (so it gets that directory's CSP) and deleted afterwards.
+// written into site/pdf-editor/ for the run (so it gets that directory's CSP) and deleted afterwards.
 // It mounts the panel, searches with a preset, draws boxes with the mouse and the keyboard, takes up the
 // fake-redaction banner, applies, checks the result, and looks at console, network and the mobile layout.
 // Usage: BASE=http://host:port [CHROMIUM=/path] [PLAYWRIGHT_CORE=/path] node tests/browser-pdf-redact.mjs
@@ -9,7 +9,7 @@ import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import * as mupdf from '../site/tools/vendor/mupdf/mupdf.js';
+import * as mupdf from '../site/vendor/mupdf/mupdf.js';
 import * as fx from './fixtures/pdf-redact.js';
 
 mupdf.setLog(() => {});
@@ -19,18 +19,18 @@ const base = process.env.BASE ?? 'http://127.0.0.1:4176';
 const shots = process.env.SHOTS ?? 'test-results';
 mkdirSync(shots, { recursive: true });
 
-const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'site', 'tools', 'pdf-editor');
+const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'site', 'pdf-editor');
 const files = { html: join(dir, 'redact-harness.html'), js: join(dir, 'redact-harness.js') };
 for (const f of Object.values(files)) if (existsSync(f)) throw new Error(`${f} already exists; remove it first.`);
 
 const HTML = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Redact harness</title><link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/tools/assets/site.css"><script src="/tools/assets/theme.js"></script><script type="module" src="/tools/pdf-editor/redact-harness.js"></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Redact harness</title><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css"><script src="/assets/theme.js"></script><script type="module" src="/pdf-editor/redact-harness.js"></script></head>
 <body><main class="wrap"><section id="redact-panel"></section></main></body></html>
 `;
 // The editor's side of the contract, with its own MuPDF worker for rendering.
-const JS = `import { mountRedact } from '/tools/lib/pdf-editor/redact-ui.js';
+const JS = `import { mountRedact } from '/lib/pdf-editor/redact-ui.js';
 let bytes = null; const sets = []; let seq = 0; const waiting = new Map();
-const engine = new Worker('/tools/pdf-editor/redact-worker.js', { type: 'module' });
+const engine = new Worker('/pdf-editor/redact-worker.js', { type: 'module' });
 engine.onmessage = ({ data }) => { const w = waiting.get(data.id); waiting.delete(data.id); data.ok ? w.resolve(data.result) : w.reject(new Error(data.error.message)); };
 const ask = (op, extra = {}) => new Promise((resolve, reject) => { const id = ++seq; waiting.set(id, { resolve, reject }); engine.postMessage({ id, op, ...extra }); });
 let pages = [];
@@ -71,7 +71,7 @@ try {
     page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) problems.push(m.text()); });
     page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
     const requests = []; page.on('request', (r) => requests.push(r.url()));
-    await page.goto(`${base}/tools/pdf-editor/redact-harness.html`);
+    await page.goto(`${base}/pdf-editor/redact-harness.html`);
     await page.waitForSelector('html[data-ready="1"]');
     await page.evaluate((list) => window.harness.load(list), Array.from(source));
     await page.waitForSelector('.rd-layout:not([hidden])');
@@ -179,7 +179,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 1200, height: 900 } });
   const page = await context.newPage();
   const problems = []; page.on('pageerror', (e) => problems.push(e.message)); page.on('console', (m) => { if (m.type() === 'error') problems.push(m.text()); });
-  await page.goto(`${base}/tools/pdf-editor/redact-harness.html`);
+  await page.goto(`${base}/pdf-editor/redact-harness.html`);
   await page.waitForSelector('html[data-ready="1"]');
   await page.evaluate((list) => window.harness.load(list).catch(() => {}), Array.from(locked));
   await page.waitForSelector('.rd-password:not([hidden])');
@@ -211,7 +211,7 @@ for (const [name, bytes, query] of [['editor', fx.personal(), 'Secretman'], ['ed
   const file = join(tmpdir(), `editor-redact-${process.pid}.pdf`);
   writeFileSync(file, bytes);
   try {
-    await page.goto(`${base}/tools/pdf-editor/`);
+    await page.goto(`${base}/pdf-editor/`);
     await page.setInputFiles('#file', file);
     await page.waitForSelector('#pages li.page', { state: 'attached' });
     await page.click('#tab-redact');

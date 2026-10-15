@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { inspectFile, inspectImage } from '../site/tools/lib/metadata/index.js';
-import { cleanFile, cleanableFormats, describeCleanable } from '../site/tools/lib/clean/index.js';
-import { cleanText, hiddenRuns } from '../site/tools/lib/metadata/scan/text.js';
-import { writeZip } from '../site/tools/lib/zip/index.js';
-import { Report } from '../site/tools/lib/metadata/report.js';
-import { Bytes } from '../site/tools/lib/metadata/bytes.js';
-import { scanFile } from '../site/tools/lib/metadata/families/scan.js';
+import { inspectFile, inspectImage } from '../site/lib/metadata/index.js';
+import { cleanFile, cleanableFormats, describeCleanable } from '../site/lib/clean/index.js';
+import { cleanText, hiddenRuns } from '../site/lib/metadata/scan/text.js';
+import { writeZip } from '../site/lib/zip/index.js';
+import { Report } from '../site/lib/metadata/report.js';
+import { Bytes } from '../site/lib/metadata/bytes.js';
+import { scanFile } from '../site/lib/metadata/families/scan.js';
 import { base, pngWith, tEXt } from './fixtures/build.js';
 
 const enc = (s) => new TextEncoder().encode(s);

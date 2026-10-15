@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { cleanImage } from '../site/tools/lib/clean/index.js';
-import { inspectImage } from '../site/tools/lib/metadata/index.js';
+import { cleanImage } from '../site/lib/clean/index.js';
+import { inspectImage } from '../site/lib/metadata/index.js';
 import { base, tiff, exifSegment, xmpSegment, xmpPacket, segment, jpegWith, pngWith, tEXt, iTXt, chunk, webpWith, dms } from './fixtures/build.js';
 
 const gps = [[0x0001, 2, 'N'], [0x0002, 5, dms(30.26715)], [0x0003, 2, 'W'], [0x0004, 5, dms(97.74306)]];
@@ -136,8 +136,8 @@ test('JPEG: a JFIF thumbnail is reported and removed, the JFIF header stays', as
 });
 
 test('a file the inspector could not fully read is refused rather than passed as clean', async () => {
-  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
-  const { readZip, readEntry, writeZip } = await import('../site/tools/lib/zip/index.js');
+  const { cleanFile } = await import('../site/lib/clean/index.js');
+  const { readZip, readEntry, writeZip } = await import('../site/lib/zip/index.js');
   const { epub } = await import('./fixtures/documents.js');
   const zip = readZip(await epub()); const entries = [];
   for (const e of zip.entries) {
@@ -159,8 +159,8 @@ test('PNG: thousands of compressed text chunks stop at the decompression count a
 });
 
 test('HEIC: a file cut off inside a box is refused, not passed through with its metadata', async () => {
-  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
-  const { inspectFile } = await import('../site/tools/lib/metadata/index.js');
+  const { cleanFile } = await import('../site/lib/clean/index.js');
+  const { inspectFile } = await import('../site/lib/metadata/index.js');
   const heic = readFileSync(new URL('./fixtures/formats/pii.heic', import.meta.url));
   const cut = heic.subarray(0, 734);
   assert.ok((await inspectFile(cut, 'a.heic')).warnings.some((w) => /truncated/.test(w)));
@@ -169,7 +169,7 @@ test('HEIC: a file cut off inside a box is refused, not passed through with its 
 });
 
 test('a cleaner that trips over a malformed structure refuses instead of throwing', async () => {
-  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
+  const { cleanFile } = await import('../site/lib/clean/index.js');
   const avif = Buffer.from(readFileSync(new URL('./fixtures/formats/pii.avif', import.meta.url)));
   avif[276] = 16; // an item reference box that claims more entries than it holds
   const r = await cleanFile(avif, 'a.avif');

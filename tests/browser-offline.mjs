@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import * as fx from './fixtures/build.js';
 import { LIBARCHIVE_SAMPLES } from './fixtures/archive.js';
 import { textPdf } from './fixtures/pdf-editor.js';
-import { writeZip } from '../site/tools/lib/zip/index.js';
+import { writeZip } from '../site/lib/zip/index.js';
 const playwright = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 const chromium = playwright.chromium ?? playwright.default.chromium;
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -22,7 +22,7 @@ const base = `http://127.0.0.1:${port}`;
 const dir = mkdtempSync(join(tmpdir(), 'offline-'));
 cpSync(join(repo, 'site'), join(dir, 'site'), { recursive: true });
 const build = () => assert.equal(spawnSync('node', [join(repo, 'scripts/build-sw-manifest.mjs'), join(dir, 'site')], { stdio: 'ignore' }).status, 0, 'manifest build failed');
-const version = () => JSON.parse(readFileSync(join(dir, 'site/tools/sw-manifest.json'), 'utf8')).version;
+const version = () => JSON.parse(readFileSync(join(dir, 'site/sw-manifest.json'), 'utf8')).version;
 build();
 const server = spawn('node', [join(repo, 'server.js')], { cwd: dir, env: { ...process.env, PORT: String(port + 1), HOST: '127.0.0.1' }, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise((resolve) => server.stdout.once('data', resolve));
@@ -43,7 +43,7 @@ writeFileSync(`${dir}/notes.zip`, await writeZip([{ name: 'notes.txt', data: new
 writeFileSync(`${dir}/hello.rar`, LIBARCHIVE_SAMPLES.rar5);
 writeFileSync(`${dir}/alpha.pdf`, textPdf(3, 'Alpha'));
 
-const PAGES = ['/tools/', '/tools/image-inspector/', '/tools/file-inspector/', '/tools/metadata-cleaner/', '/tools/archiver/', '/tools/pdf-editor/'];
+const PAGES = ['/', '/roadmap/', '/image-inspector/', '/file-inspector/', '/metadata-cleaner/', '/archiver/', '/pdf-editor/'];
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/usr/sbin/chromium' });
 try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -75,16 +75,16 @@ try {
   }
   const v1 = version();
   assert.deepEqual(await cacheNames(), [`private-tools-${v1}`]);
-  const manifest = JSON.parse(readFileSync(join(dir, 'site/tools/sw-manifest.json'), 'utf8'));
+  const manifest = JSON.parse(readFileSync(join(dir, 'site/sw-manifest.json'), 'utf8'));
   const stored = new Set(await cachedPaths());
-  for (const path of [...manifest.shell, ...Object.values(manifest.tools).flat()]) assert.ok(stored.has(`/tools/${path}`), `${path} not stored`);
+  for (const path of [...manifest.shell, ...Object.values(manifest.tools).flat()]) assert.ok(stored.has(`/${path}`), `${path} not stored`);
   assert.ok(stored.size <= Object.keys(manifest.files).length + 1, 'only listed files are stored');
-  assert.equal(await page.evaluate(() => navigator.serviceWorker.controller?.scriptURL), `${base}/tools/sw.js`);
+  assert.equal(await page.evaluate(() => navigator.serviceWorker.controller?.scriptURL), `${base}/sw.js`);
 
   // Offline: a URL that was never stored fails, which proves the cut reaches the worker too.
   await context.setOffline(true);
   const probe = await context.newPage();
-  await assert.rejects(probe.goto(`${base}/tools/assets/fonts/INTER-LICENSE.txt`), 'unstored file loaded offline');
+  await assert.rejects(probe.goto(`${base}/assets/fonts/INTER-LICENSE.txt`), 'unstored file loaded offline');
   await probe.close();
 
   for (const path of PAGES) {
@@ -94,29 +94,29 @@ try {
     await context.setOffline(false); await context.setOffline(true);
     assert.equal(await indicator(), 'offline: Offline', `${path} indicator offline`);
   }
-  await page.goto(`${base}/tools/`);
+  await page.goto(`${base}/`);
   await page.reload();
-  assert.ok(await page.$$eval('.card', (c) => c.length) > 0, 'catalog renders offline');
+  assert.ok(await page.$$eval('a[href="/pdf-editor/"]', (a) => a.length) > 0, 'catalog renders offline');
 
-  await page.goto(`${base}/tools/image-inspector/`);
+  await page.goto(`${base}/image-inspector/`);
   await page.reload();
   await page.setInputFiles('#file', `${dir}/photo.jpg`);
   await page.waitForSelector('#results:not([hidden])', { timeout: 15000 });
   assert.equal(await page.$eval('#summary', (n) => n.dataset.level), 'exposed', 'image inspector offline');
 
-  await page.goto(`${base}/tools/file-inspector/`);
+  await page.goto(`${base}/file-inspector/`);
   await page.reload();
   await page.setInputFiles('#file', `${dir}/photo.jpg`);
   await page.waitForSelector('#results:not([hidden])', { timeout: 15000 });
   assert.equal(await page.$eval('#summary', (n) => n.dataset.level), 'exposed', 'file inspector offline');
 
-  await page.goto(`${base}/tools/metadata-cleaner/`);
+  await page.goto(`${base}/metadata-cleaner/`);
   await page.reload();
   await page.setInputFiles('#file', `${dir}/photo.jpg`);
   await page.waitForFunction(() => ['done', 'error'].includes(document.querySelector('.job')?.dataset.state), null, { timeout: 15000 });
   assert.equal(await page.$eval('.job', (n) => n.dataset.state), 'done', 'cleaner offline');
 
-  await page.goto(`${base}/tools/archiver/`);
+  await page.goto(`${base}/archiver/`);
   await page.reload();
   await page.click('#tab-open');
   await page.setInputFiles('#open-file', `${dir}/notes.zip`);
@@ -126,7 +126,7 @@ try {
   await page.setInputFiles('#open-file', `${dir}/hello.rar`);
   await page.waitForFunction(() => /^RAR 5 archive/.test(document.getElementById('archive-facts').textContent), null, { timeout: 15000 });
 
-  await page.goto(`${base}/tools/pdf-editor/`);
+  await page.goto(`${base}/pdf-editor/`);
   await page.reload();
   await page.setInputFiles('#file', `${dir}/alpha.pdf`);
   await page.waitForFunction(() => [...document.querySelectorAll('#pages li.page')].filter((li) => li.dataset.drawn?.startsWith('b')).length === 3, null, { timeout: 30000 });
@@ -137,7 +137,7 @@ try {
 
   // A new deploy: a changed stylesheet gives a new version.
   await context.setOffline(false);
-  appendFileSync(join(dir, 'site/tools/assets/site.css'), '\n.sw-update-check{display:none}\n');
+  appendFileSync(join(dir, 'site/assets/site.css'), '\n.sw-update-check{display:none}\n');
   build();
   const v2 = version();
   assert.notEqual(v2, v1);
@@ -148,31 +148,31 @@ try {
   const updated = () => page.waitForFunction(() => [...document.styleSheets].some((s) => [...s.cssRules].some((r) => r.selectorText === '.sw-update-check')), null, { timeout: 15000 });
   let navigations = 0;
   page.on('framenavigated', (f) => { if (f === page.mainFrame()) navigations++; });
-  await page.goto(`${base}/tools/pdf-editor/`);
+  await page.goto(`${base}/pdf-editor/`);
   if (!(await updated().then(() => true, () => false))) { await page.reload(); await updated(); }
   assert.ok(navigations <= 3, `${navigations} navigations to reach the new version`);
   await poll(async (name) => { const k = await caches.keys(); return k.length === 1 && k[0] === name; }, `private-tools-${v2}`);
   // Unchanged files were copied from the old cache: the MuPDF engine was not downloaded again.
   const fetched = served.slice(before);
-  assert.ok(!fetched.includes('/tools/vendor/mupdf/mupdf-wasm.wasm'), 'engine downloaded again on update');
-  assert.ok(fetched.includes('/tools/assets/site.css'), 'changed file fetched on update');
+  assert.ok(!fetched.includes('/vendor/mupdf/mupdf-wasm.wasm'), 'engine downloaded again on update');
+  assert.ok(fetched.includes('/assets/site.css'), 'changed file fetched on update');
   // Every tool stays available offline in the new version.
   const after = new Set(await cachedPaths());
-  for (const path of Object.values(manifest.tools).flat()) assert.ok(after.has(`/tools/${path}`), `${path} lost in update`);
+  for (const path of Object.values(manifest.tools).flat()) assert.ok(after.has(`/${path}`), `${path} lost in update`);
   await context.setOffline(true);
-  await page.goto(`${base}/tools/archiver/`);
+  await page.goto(`${base}/archiver/`);
   await page.click('#tab-open');
   await page.setInputFiles('#open-file', `${dir}/notes.zip`);
   await page.waitForSelector('#open-panel:not([hidden])', { timeout: 15000 });
   await context.setOffline(false);
 
   // With a second tab open, a newer deploy installs but waits, so neither tab mixes two versions.
-  appendFileSync(join(dir, 'site/tools/assets/site.css'), '\n.sw-update-check-2{display:none}\n');
+  appendFileSync(join(dir, 'site/assets/site.css'), '\n.sw-update-check-2{display:none}\n');
   build();
   const v3 = version();
   const second = await context.newPage();
-  await second.goto(`${base}/tools/`);
-  await page.goto(`${base}/tools/image-inspector/`);
+  await second.goto(`${base}/`);
+  await page.goto(`${base}/image-inspector/`);
   await poll(async () => Boolean((await navigator.serviceWorker.getRegistration()).waiting));
   await page.reload();
   await page.waitForSelector('html[data-offline-ready]', { state: 'attached' });

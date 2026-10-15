@@ -16,4 +16,4 @@ Include the file, or a way to generate it, and the browser and version. Reports 
 
 ## Scope
 
-The code in this repository and the pages served from danielrivera.ai/tools/. Third-party services in front of the site, such as Cloudflare, are out of scope.
+The code in this repository and the pages served from tools.danielrivera.ai/. Third-party services in front of the site, such as Cloudflare, are out of scope.

@@ -1,6 +1,6 @@
 // Test certificates, keys and signers for the PDF signing tests, generated at run time with WebCrypto.
 // Nothing here is a real identity; every key lives only for the test run.
-import { seq, set, oid, int, octets, nullValue, bits, bool, explicit, utf8String, printableString, time, ecdsaRawToDer } from '../../site/tools/lib/pdf-editor/asn1.js';
+import { seq, set, oid, int, octets, nullValue, bits, bool, explicit, utf8String, printableString, time, ecdsaRawToDer } from '../../site/lib/pdf-editor/asn1.js';
 import { pdf, basic } from './pdf.js';
 
 const ALG = {

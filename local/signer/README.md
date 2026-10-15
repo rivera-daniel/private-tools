@@ -37,7 +37,7 @@ go build -trimpath -o private-tools-signer .
    ```
 
    `PKCS11_MODULE` in the environment works too.
-3. Open the printed URL, `http://127.0.0.1:4198/tools/pdf-editor/`.
+3. Open the printed URL, `http://127.0.0.1:4198/pdf-editor/`.
 4. In the PDF Editor's Sign tab, choose **Smart card or USB token**, pick the certificate, confirm the signature and enter the card PIN.
 
 Options:

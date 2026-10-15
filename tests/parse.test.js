@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
-import { inspectImage } from '../site/tools/lib/metadata/index.js';
+import { inspectImage } from '../site/lib/metadata/index.js';
 import { base, sample, tiff, exifSegment, xmpSegment, xmpPacket, iptcSegment, jpegWith, segment, pngWith, tEXt, zTXt, iTXt, chunk, webpWith, dms } from './fixtures/build.js';
 
 const hl = (report, group, key) => report.highlights.find((g) => g.name === group)?.fields.find((f) => f.key === key)?.value;

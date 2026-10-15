@@ -1,7 +1,7 @@
 // Builds document and archive fixtures in memory: DOCX, XLSX, PPTX, ODT, EPUB and plain ZIP files with
 // the metadata the inspector looks for. Names, paths and addresses are made up and assembled here.
 import { crc32 } from 'node:zlib';
-import { writeZip } from '../../site/tools/lib/zip/index.js';
+import { writeZip } from '../../site/lib/zip/index.js';
 import { base, jpegWith, exifSegment, tiff, dms } from './build.js';
 
 const enc = new TextEncoder();

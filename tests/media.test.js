@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { inspectFile } from '../site/tools/lib/metadata/index.js';
-import { cleanFile } from '../site/tools/lib/clean/index.js';
+import { inspectFile } from '../site/lib/metadata/index.js';
+import { cleanFile } from '../site/lib/clean/index.js';
 import { mp4, chunkOffsets, box, id3v2, id3Text, id3Frames, id3v1, apeTag, lyrics3, mp3Frames, adtsFrames, flac, wav, aiff, ogg, readOgg, oggCrc, mkv, crc32, jpeg, cat, u32 } from './fixtures/media.js';
 
 const hl = (r, group, key) => r.highlights.find((g) => g.name === group)?.fields.find((f) => f.key === key)?.value;

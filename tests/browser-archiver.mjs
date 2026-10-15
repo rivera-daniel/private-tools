@@ -7,12 +7,12 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as fx from './fixtures/build.js';
-import { readZip, readEntry } from '../site/tools/lib/zip/index.js';
-import { openZipBlob, zipEntryChunks } from '../site/tools/lib/zip/stream.js';
-import { tarStream } from '../site/tools/lib/archive/tar.js';
-import { createArchive } from '../site/tools/lib/archive/index.js';
-import { MemorySink, collect } from '../site/tools/lib/archive/streams.js';
-import { inspectImage } from '../site/tools/lib/metadata/index.js';
+import { readZip, readEntry } from '../site/lib/zip/index.js';
+import { openZipBlob, zipEntryChunks } from '../site/lib/zip/stream.js';
+import { tarStream } from '../site/lib/archive/tar.js';
+import { createArchive } from '../site/lib/archive/index.js';
+import { MemorySink, collect } from '../site/lib/archive/streams.js';
+import { inspectImage } from '../site/lib/metadata/index.js';
 import { LIBARCHIVE_SAMPLES } from './fixtures/archive.js';
 const playwright = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 const chromium = playwright.chromium ?? playwright.default.chromium;
@@ -73,11 +73,11 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) && !expected(m.text())) problems.push(m.text()); });
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   const loaded = []; page.on('request', (r) => loaded.push(r.url()));
-  await page.goto(`${base}/tools/archiver/`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/archiver/`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(300);
   // Everything, the WebAssembly archive reader included, comes from this origin.
   assert.deepEqual(loaded.filter((u) => !u.startsWith(base)), [], 'requests to other origins');
-  assert.ok(loaded.includes(`${base}/tools/vendor/libarchive/libarchive.wasm`), 'libarchive preloaded');
+  assert.ok(loaded.includes(`${base}/vendor/libarchive/libarchive.wasm`), 'libarchive preloaded');
   await page.screenshot({ path: `${shots}/archiver-${label}-empty.png` });
   await page.context().setOffline(true);
   const requests = []; page.on('request', (r) => requests.push(r.url()));
@@ -328,16 +328,16 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
 
   await page.context().setOffline(false);
   // The File Inspector is its own page; a stand-in answers here so only the handoff is tested.
-  await page.route(`${base}/tools/file-inspector/`, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>File Inspector</title>' }));
-  await Promise.all([page.waitForURL(`${base}/tools/file-inspector/#from-inspector`), page.click('#inspect-open')]);
-  await page.unroute(`${base}/tools/file-inspector/`);
+  await page.route(`${base}/file-inspector/`, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>File Inspector</title>' }));
+  await Promise.all([page.waitForURL(`${base}/file-inspector/#from-inspector`), page.click('#inspect-open')]);
+  await page.unroute(`${base}/file-inspector/`);
   // The stored copy is encrypted; read it the way the File Inspector does.
-  const handed = await page.evaluate(async () => (await (await import('/tools/lib/handoff.js')).takeFile())?.name ?? null);
+  const handed = await page.evaluate(async () => (await (await import('/lib/handoff.js')).takeFile())?.name ?? null);
   assert.equal(handed, 'photo.jpg', 'photo handed to the File Inspector');
 
   // Dark theme screenshots.
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.goto(`${base}/tools/archiver/`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/archiver/`, { waitUntil: 'networkidle' });
   await page.setInputFiles('#create-files', ['photo.jpg', 'notes.txt'].map((f) => `${dir}/${f}`));
   await page.waitForSelector('#create-panel:not([hidden])');
   await page.screenshot({ path: `${shots}/archiver-${label}-dark-create.png`, fullPage: true });

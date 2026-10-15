@@ -2,7 +2,7 @@
 
 A suite of private tools that run entirely in your browser. Your files never leave your device: nothing is uploaded, processed on a server or stored in a database, and there are no accounts.
 
-Live at [danielrivera.ai/tools](https://danielrivera.ai/tools/).
+Live at [tools.danielrivera.ai](https://tools.danielrivera.ai/).
 
 ## Tools
 
@@ -122,10 +122,10 @@ Planned improvements:
 
 After you open a page once, it keeps working without a network connection, across reloads and browser restarts.
 
-- **How:** a service worker (`site/tools/sw.js`) stores the site's own files in the browser's cache storage and serves them from there. The footer shows "Available offline" once the current page's files are stored, and "Offline" when the network is down. The service worker can fetch only from this site (`connect-src 'self'` in its own Content Security Policy), and it stores only the files listed in its manifest.
+- **How:** a service worker (`site/sw.js`) stores the site's own files in the browser's cache storage and serves them from there. The footer shows "Available offline" once the current page's files are stored, and "Offline" when the network is down. The service worker can fetch only from this site (`connect-src 'self'` in its own Content Security Policy), and it stores only the files listed in its manifest.
 - **What is stored:** the catalog, the shared stylesheet, scripts, font and icon when you first visit, and each tool's pages, scripts and WebAssembly engine when you first open that tool. The PDF Editor adds about 11 MB (MuPDF), the Archiver about 2 MB (libarchive) and each other tool under 1 MB. Engines are never downloaded for tools you have not opened.
 - **What is not stored:** your files. They are read from your disk by the page and never pass through the service worker or the cache.
-- **Updates:** every file is listed with its SHA-256 hash in `site/tools/sw-manifest.json`, and each deploy gets its own cache. A new version downloads in the background, reusing unchanged files, and takes over on your next visit when only one tab of the site is open. The page reloads once and the old cache is deleted. A page served from the cache loads every later file, workers and engines included, from the same deploy.
+- **Updates:** every file is listed with its SHA-256 hash in `site/sw-manifest.json`, and each deploy gets its own cache. A new version downloads in the background, reusing unchanged files, and takes over on your next visit when only one tab of the site is open. The page reloads once and the old cache is deleted. A page served from the cache loads every later file, workers and engines included, from the same deploy.
 - **Clearing it:** remove the site data for this site in your browser settings (in Chrome and Edge, Settings > Privacy > Site settings; in Firefox, Settings > Privacy & Security > Manage Data; in Safari, Settings > Privacy > Manage Website Data).
 
 ## Privacy model
@@ -141,23 +141,23 @@ After you open a page once, it keeps working without a network connection, acros
 ## Project structure
 
 ```
-site/                    Deployable static site, served under /tools/
+site/                    Deployable static site, served under /
   _headers               Response headers, including the Content Security Policy
-  tools/sw.js            Service worker for offline use, with sw-manifest.json listing the files it stores
-  tools/index.html       Tool catalog
-  tools/assets/         Shared stylesheet, theme script, fonts and icons
-  tools/image-inspector/ Image Inspector page, UI and worker
-  tools/file-inspector/  File Inspector page, UI and worker
-  tools/metadata-cleaner/ Metadata Cleaner page, UI and worker
-  tools/archiver/        Archiver page, UI and workers
-  tools/pdf-editor/      PDF Editor page, UI and workers
-  tools/lib/metadata/    Parsers: images, families/ (documents, PDF, media, programs, general scan)
-  tools/lib/clean/       Metadata removal for each format family
-  tools/lib/zip/         ZIP reader and writer, AES encryption
-  tools/lib/archive/     tar, gzip and archive handling for the Archiver
-  tools/lib/pdf-editor/  PDF editing operations, viewer, redaction, signing (sign.js, cms.js, pkcs12.js, asn1.js)
-  tools/vendor/mupdf/    MuPDF.js WebAssembly build
-  tools/vendor/libarchive/ libarchive WebAssembly build, its build script and licenses
+  sw.js                  Service worker for offline use, with sw-manifest.json listing the files it stores
+  index.html             Tool catalog
+  assets/                Shared stylesheet, theme script, fonts and icons
+  image-inspector/       Image Inspector page, UI and worker
+  file-inspector/        File Inspector page, UI and worker
+  metadata-cleaner/      Metadata Cleaner page, UI and worker
+  archiver/              Archiver page, UI and workers
+  pdf-editor/            PDF Editor page, UI and workers
+  lib/metadata/          Parsers: images, families/ (documents, PDF, media, programs, general scan)
+  lib/clean/             Metadata removal for each format family
+  lib/zip/               ZIP reader and writer, AES encryption
+  lib/archive/           tar, gzip and archive handling for the Archiver
+  lib/pdf-editor/        PDF editing operations, viewer, redaction, signing (sign.js, cms.js, pkcs12.js, asn1.js)
+  vendor/mupdf/          MuPDF.js WebAssembly build
+  vendor/libarchive/     libarchive WebAssembly build, its build script and licenses
 local/signer/            Local smart card signer (Go, PKCS#11). Not deployed: run it yourself
 tests/                   Parser and browser tests, fixtures and reference data
 scripts/                 build-sw-manifest.mjs, run before each deploy
@@ -170,7 +170,7 @@ wrangler.jsonc           Cloudflare Worker configuration
 Requires Node.js 22 or later. The site has no runtime dependencies and no build step.
 
 ```sh
-npm run dev       # serve site/ at http://127.0.0.1:4176/tools/ with the production headers
+npm run dev       # serve site/ at http://127.0.0.1:4176/ with the production headers
 npm test          # parser and cleaner tests
 npm run test:independent   # cleaned files checked with external tools (see below)
 ```
@@ -229,7 +229,7 @@ The site is deployed as a Cloudflare Worker with static assets:
 npm run deploy
 ```
 
-`npm run deploy` first runs `scripts/build-sw-manifest.mjs`, which lists the files each page loads with their hashes in `site/tools/sw-manifest.json` and stamps the resulting version into `site/tools/sw.js`. Run it by hand after changing files if you want to test offline use locally.
+`npm run deploy` first runs `scripts/build-sw-manifest.mjs`, which lists the files each page loads with their hashes in `site/sw-manifest.json` and stamps the resulting version into `site/sw.js`. Run it by hand after changing files if you want to test offline use locally.
 
 ## Contributing
 
@@ -242,6 +242,6 @@ The code is licensed under the [GNU Affero General Public License v3.0](LICENSE)
 Third-party material:
 
 - Some test fixtures come from the [C2PA reference implementation](https://github.com/contentauth/c2pa-rs) under MIT or Apache-2.0. See `tests/fixtures/NOTICE.md`.
-- MuPDF.js is licensed under the AGPL-3.0. See `site/tools/vendor/mupdf/NOTICE`.
-- libarchive and the compression libraries in its WebAssembly build (zlib, liblzma, bzip2, zstd, lz4) are under permissive licenses. See `site/tools/vendor/libarchive/NOTICE`, which `site/tools/vendor/libarchive/build/build.sh` regenerates.
-- The Inter font is licensed under the SIL Open Font License. See `site/tools/assets/fonts/INTER-LICENSE.txt`.
+- MuPDF.js is licensed under the AGPL-3.0. See `site/vendor/mupdf/NOTICE`.
+- libarchive and the compression libraries in its WebAssembly build (zlib, liblzma, bzip2, zstd, lz4) are under permissive licenses. See `site/vendor/libarchive/NOTICE`, which `site/vendor/libarchive/build/build.sh` regenerates.
+- The Inter font is licensed under the SIL Open Font License. See `site/assets/fonts/INTER-LICENSE.txt`.

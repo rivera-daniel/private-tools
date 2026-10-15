@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
-import { inspectFile } from '../site/tools/lib/metadata/index.js';
-import { cleanFile } from '../site/tools/lib/clean/index.js';
-import { PdfDocument } from '../site/tools/lib/metadata/pdf/document.js';
+import { inspectFile } from '../site/lib/metadata/index.js';
+import { cleanFile } from '../site/lib/clean/index.js';
+import { PdfDocument } from '../site/lib/metadata/pdf/document.js';
 import { pdf, update, basic, stream, xmp, utf16, signedData } from './fixtures/pdf.js';
 import { base, tiff, exifSegment, jpegWith, dms } from './fixtures/build.js';
 
@@ -423,8 +423,8 @@ test('hostile: garbage after the header and truncated files do not throw', async
 });
 
 test('stream filters stop at the decompression allowance, alone and chained', async () => {
-  const { decode, Budget } = await import('../site/tools/lib/metadata/pdf/filters.js');
-  const { Dict, Name } = await import('../site/tools/lib/metadata/pdf/syntax.js');
+  const { decode, Budget } = await import('../site/lib/metadata/pdf/filters.js');
+  const { Dict, Name } = await import('../site/lib/metadata/pdf/syntax.js');
   const dict = (...names) => new Dict([['Filter', names.length === 1 ? new Name(names[0]) : names.map((n) => new Name(n))]]);
   const bombs = {
     ASCII85Decode: Buffer.from(`${'z'.repeat(1 << 20)}~>`),

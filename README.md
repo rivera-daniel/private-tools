@@ -121,7 +121,7 @@ Planned improvements:
 
 - All parsing and cleaning runs in a Web Worker in the browser. No file data leaves the device.
 - Pages are served with a Content Security Policy of `default-src 'self'` and `connect-src 'none'`, so the page cannot make network requests. The site itself loads no third-party scripts, fonts or analytics.
-- Opening an inspected file in Metadata Cleaner passes the file through the browser's own storage (IndexedDB). The cleaner deletes it as soon as it reads it, and any tool page deletes a leftover copy when it loads.
+- Opening a file from one tool in another (for example from File Inspector into Metadata Cleaner) passes it through the browser's own storage. The file is encrypted with a fresh AES-GCM key that is kept only in that tab's session storage, so a copy left behind by an interrupted page change cannot be read after the tab closes. The receiving tool deletes the copy and the key as soon as it reads them, and any tool page deletes a leftover copy when it loads.
 - The Archiver and PDF Editor pages also allow `'wasm-unsafe-eval'` and `connect-src 'self'`, so their workers can load their WebAssembly engines (libarchive, MuPDF) from the same site. They still cannot contact any other site.
 - Signing keys from .p12/.pfx files stay in the browser as non-extractable WebCrypto keys. The local card signer (`local/signer/`) is not part of the hosted site: it runs on your own computer, listens on 127.0.0.1 only, accepts requests only from the pages it serves (exact Host and Origin checks plus a per-launch token) and receives only the 32- or 48-byte digest to sign, never the document.
 - Extracted values are rendered as text only and are never interpreted as HTML.

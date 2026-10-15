@@ -99,6 +99,7 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   assert.equal(await page.$eval('.job strong', (n) => n.textContent), 'photo.jpg');
   const leftover = await page.evaluate(() => new Promise((resolve) => { const r = indexedDB.open('private-tools'); r.onsuccess = () => { const g = r.result.transaction('handoff').objectStore('handoff').count(); g.onsuccess = () => resolve(g.result); }; }));
   assert.equal(leftover, 0, 'handed-off file left in IndexedDB');
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('private-tools-handoff-key')), null, 'handoff key left in session storage');
   assert.deepEqual(problems, [], 'console problems after handoff');
   await page.close();
 

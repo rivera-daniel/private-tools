@@ -8,6 +8,9 @@ import { join } from 'node:path';
 import * as fx from './fixtures/build.js';
 import { pe } from './fixtures/programs.js';
 import { writeZip } from '../site/tools/lib/zip/index.js';
+import { docx } from './fixtures/documents.js';
+import { pdf, basic } from './fixtures/pdf.js';
+import { id3v2, id3Frames, mp3Frames, cat } from './fixtures/media.js';
 const playwright = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 const chromium = playwright.chromium ?? playwright.default.chromium;
 const base = process.env.BASE ?? 'http://127.0.0.1:4176';
@@ -23,6 +26,9 @@ writeFileSync(`${dir}/clean.png`, fx.base.png);
 const camera = fx.tiff([[0x010f, 2, 'Canon'], [0x0110, 2, 'Canon EOS R5']], { gps: [[1, 2, 'N'], [2, 5, fx.dms(30.26715)], [3, 2, 'W'], [4, 5, fx.dms(97.74306)]] });
 writeFileSync(`${dir}/photo.jpg`, fx.jpegWith(fx.exifSegment(camera)));
 writeFileSync(`${dir}/holiday.jpg`, await writeZip([{ name: 'secret.txt', data: new TextEncoder().encode('hidden') }]));
+writeFileSync(`${dir}/report.docx`, await docx());
+writeFileSync(`${dir}/paper.pdf`, pdf(basic({ extra: { 6: '<< /Title (Quarterly plan) /Author (Jane Roe) /Creator (Microsoft Word) /Producer (Acme PDF 2.1) >>' } }), { trailer: '/Root 1 0 R /Info 6 0 R' }));
+writeFileSync(`${dir}/song.mp3`, cat(id3v2(id3Frames()), mp3Frames()));
 writeFileSync(`${dir}/blob.bin`, Uint8Array.from({ length: 4000 }, (_, i) => (i * 2654435761) >>> 24));
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/usr/sbin/chromium' });
@@ -41,7 +47,7 @@ try {
       const requests = []; page.on('request', (r) => requests.push(r.url()));
 
       const results = {};
-      for (const f of ['hidden.txt', 'widget.exe', 'clean.png', 'photo.jpg', 'holiday.jpg', 'blob.bin']) {
+      for (const f of ['hidden.txt', 'widget.exe', 'clean.png', 'photo.jpg', 'holiday.jpg', 'blob.bin', 'report.docx', 'paper.pdf', 'song.mp3']) {
         await page.setInputFiles('#file', `${dir}/${f}`);
         await page.waitForSelector('#results:not([hidden])', { timeout: 15000 });
         await page.waitForFunction(() => document.getElementById('busy').hidden);
@@ -55,7 +61,7 @@ try {
           signals: [...document.querySelectorAll('#privacy .signal strong')].map((n) => n.textContent),
           injected: document.querySelectorAll('.findings b, .findings script, .findings img').length,
         }));
-        if (['hidden.txt', 'widget.exe', 'photo.jpg'].includes(f)) await page.screenshot({ path: `${shots}/files-${label}-${scheme}-${f}.png`, fullPage: true });
+        if (['hidden.txt', 'widget.exe', 'photo.jpg', 'report.docx', 'paper.pdf', 'song.mp3'].includes(f)) await page.screenshot({ path: `${shots}/files-${label}-${scheme}-${f}.png`, fullPage: true });
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
         assert.equal(overflow, false, `horizontal overflow at ${label} width for ${f}`);
       }
@@ -75,6 +81,11 @@ try {
       assert.ok(r['photo.jpg'].signals.includes('Exact location stored'));
       assert.ok(r['holiday.jpg'].signals.includes('File type does not match its name'));
       assert.match(r['blob.bin'].facts, /^Unknown binary data · Other · /);
+      for (const [f, format, category] of [['report.docx', 'DOCX', 'Document'], ['paper.pdf', 'PDF', 'Document'], ['song.mp3', 'MP3', 'Audio']]) {
+        assert.match(r[f].facts, new RegExp(`^${format} · ${category} · `), f);
+        assert.equal(r[f].level, 'exposed', f); assert.equal(r[f].provenance, null, f); assert.equal(r[f].icon, true, f);
+        assert.match(r[f].cleaner, /Open this file in Metadata Cleaner/, f);
+      }
 
       assert.deepEqual(requests.filter((u) => !u.startsWith('blob:') && !u.startsWith('data:')), [], 'inspecting made network requests');
       assert.deepEqual(problems, [], `console problems: ${problems.join(' | ')}`);

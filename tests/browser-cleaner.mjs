@@ -7,6 +7,9 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as fx from './fixtures/build.js';
+import { docx } from './fixtures/documents.js';
+import { pdf, basic } from './fixtures/pdf.js';
+import { id3v2, id3Frames, mp3Frames, cat } from './fixtures/media.js';
 import { inspectFile, inspectImage } from '../site/tools/lib/metadata/index.js';
 const playwright = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 const chromium = playwright.chromium ?? playwright.default.chromium;
@@ -20,6 +23,9 @@ writeFileSync(`${dir}/photo.jpg`, fx.jpegWith(fx.exifSegment(exif), fx.segment(0
 writeFileSync(`${dir}/prompt.png`, fx.pngWith(fx.tEXt('parameters', 'a secret prompt')));
 // Binary garbage with no signature: no family claims it, so it must be refused, never altered.
 writeFileSync(`${dir}/notes.pdf`, Uint8Array.from({ length: 600 }, (_, i) => (i * 2654435761) >>> 24 || 1).map((x, i) => (i % 5 ? x : 0)));
+writeFileSync(`${dir}/report.docx`, await docx());
+writeFileSync(`${dir}/paper.pdf`, pdf(basic({ extra: { 6: '<< /Title (Quarterly plan) /Author (Jane Roe) /Producer (Acme PDF 2.1) >>' } }), { trailer: '/Root 1 0 R /Info 6 0 R' }));
+writeFileSync(`${dir}/song.mp3`, cat(id3v2(id3Frames()), mp3Frames()));
 writeFileSync(`${dir}/hidden.txt`, 'Hello\u200b team\u202e, see you\u{E0041}\u{E0042} soon.\n');
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/usr/sbin/chromium' });
@@ -55,6 +61,19 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   assert.equal((await inspectImage(saved['prompt.png'])).cleanable.blocks, 0);
   assert.equal(saved['hidden.txt'].toString('utf8'), 'Hello team, see you soon.\n');
   assert.equal((await inspectFile(saved['hidden.txt'], 'hidden.txt')).cleanable.blocks, 0);
+
+  // Documents, PDFs and audio from the other families clean in the same queue.
+  await page.evaluate(() => document.getElementById('again').click());
+  await page.setInputFiles('#file', ['report.docx', 'paper.pdf', 'song.mp3'].map((f) => `${dir}/${f}`));
+  await page.waitForFunction(() => document.querySelectorAll('.job').length === 3 && [...document.querySelectorAll('.job')].every((j) => ['done', 'error'].includes(j.dataset.state)), null, { timeout: 30000 });
+  assert.deepEqual(await page.$$eval('.job', (jobs) => jobs.map((j) => j.dataset.state)), ['done', 'done', 'done']);
+  await page.screenshot({ path: `${shots}/cleaner-${label}-families.png`, fullPage: true });
+  for (const [name, format] of [['report.docx', 'DOCX'], ['paper.pdf', 'PDF'], ['song.mp3', 'MP3']]) {
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click(`a.save[aria-label="Save cleaned ${name}"]`)]);
+    const path = join(dir, download.suggestedFilename()); await download.saveAs(path);
+    const after = await inspectFile(readFileSync(path), name);
+    assert.equal(after.format, format, `${name}: ${download.suggestedFilename()} ${readFileSync(path).subarray(0, 40).toString('latin1')}`); assert.equal(after.cleanable.blocks, 0, `${name} cleaned`);
+  }
 
   // Options open and close, and the summary counts what is on.
   await page.click('#options summary');
@@ -101,14 +120,14 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
     };
   });
   await retryPage.goto(`${base}/tools/metadata-cleaner/`, { waitUntil: 'networkidle' });
-  writeFileSync(`${dir}/report.docx`, 'not really a document');
-  await retryPage.setInputFiles('#file', `${dir}/report.docx`);
+  writeFileSync(`${dir}/changes.docx`, 'not really a document');
+  await retryPage.setInputFiles('#file', `${dir}/changes.docx`);
   await retryPage.waitForSelector('.job .retry');
   assert.match(await retryPage.textContent('.job-body p'), /Turn on “Accept tracked changes in documents” to clean it\./);
   await retryPage.screenshot({ path: `${shots}/cleaner-${label}-retry.png`, fullPage: true });
   await retryPage.click('.job .retry');
   await retryPage.waitForFunction(() => document.querySelector('.job')?.dataset.state === 'done');
-  assert.equal(await retryPage.getAttribute('.job .save', 'download'), 'report-clean.docx');
+  assert.equal(await retryPage.getAttribute('.job .save', 'download'), 'changes-clean.docx');
   // Kept macros are offered for removal with one more click.
   assert.match(await retryPage.textContent('.job .offer'), /Macros kept\. Enable “Remove macros” to strip them\./);
   await retryPage.screenshot({ path: `${shots}/cleaner-${label}-offer.png`, fullPage: true });

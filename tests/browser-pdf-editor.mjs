@@ -1,6 +1,6 @@
 // Browser check for the PDF Editor: the page and its MuPDF worker load from this origin only, PDFs open,
 // pages reorder by keyboard and by dragging, merged output saves with the right pages, passwords work both
-// ways, the other modes produce what they promise, a 200-page file stays responsive, and the layout holds
+// ways, the other modes produce what they promise, signing with a .p12 saves a valid signature, a 200-page file stays responsive, and the layout holds
 // at 390 px in light and dark.
 // Usage: BASE=http://host:port [CHROMIUM=/path] [PLAYWRIGHT_CORE=/path] node tests/browser-pdf-editor.mjs
 import assert from 'node:assert/strict';
@@ -12,6 +12,9 @@ import { protectPdf } from '../site/tools/lib/pdf-editor/index.js';
 import { readZip } from '../site/tools/lib/zip/index.js';
 import { inspectFile } from '../site/tools/lib/metadata/index.js';
 import { textPdf, orientedJpeg, photoPdf } from './fixtures/pdf-editor.js';
+import { makeIdentity, pem } from './fixtures/pdf-sign.js';
+import { verifyPdf } from '../site/tools/lib/pdf-editor/sign.js';
+import { spawnSync } from 'node:child_process';
 const playwright = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 const chromium = playwright.chromium ?? playwright.default.chromium;
 const base = process.env.BASE ?? 'http://127.0.0.1:4176';
@@ -25,6 +28,18 @@ writeFileSync(`${dir}/big.pdf`, textPdf(200, 'Big'));
 writeFileSync(`${dir}/locked.pdf`, protectPdf(textPdf(2, 'Locked'), { userPassword: 'letmein' }));
 writeFileSync(`${dir}/photo.jpg`, orientedJpeg(6, 80, 60));
 writeFileSync(`${dir}/photos.pdf`, photoPdf(1600, 1200));
+
+// A test signing certificate in a .p12 file, made with openssl at run time.
+const has = (cmd) => spawnSync('sh', ['-c', `command -v ${cmd}`]).status === 0;
+let p12 = null;
+if (has('openssl')) {
+  const id = await makeIdentity('rsa', { cn: 'Editor Test Signer' });
+  writeFileSync(`${dir}/key.pem`, pem('PRIVATE KEY', id.key.pkcs8)); writeFileSync(`${dir}/leaf.pem`, pem('CERTIFICATE', id.leaf.der)); writeFileSync(`${dir}/ca.pem`, pem('CERTIFICATE', id.ca.der));
+  const r = spawnSync('openssl', ['pkcs12', '-export', '-inkey', `${dir}/key.pem`, '-in', `${dir}/leaf.pem`, '-certfile', `${dir}/ca.pem`, '-out', `${dir}/signer.p12`, '-passout', 'pass:sign-test']);
+  if (r.status === 0) p12 = `${dir}/signer.p12`;
+}
+if (!p12) console.log('skipping the signing checks: openssl is needed to build the test certificate file');
+const pdfsig = (path) => (has('pdfsig') ? spawnSync('pdfsig', [path], { encoding: 'utf8' }).stdout : null);
 
 const open = (bytes, password) => { const d = mupdf.Document.openDocument(bytes, 'application/pdf'); if (password) d.authenticatePassword(password); return d; };
 function texts(bytes, password) {
@@ -95,6 +110,11 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   // The redaction panel loads its worker and engine after it appears. Wait for every request to settle.
   await page.waitForFunction(() => performance.getEntriesByType('resource').length > 0);
   for (let quiet = 0, seen = -1; quiet < 4; await page.waitForTimeout(250)) { const n = await page.evaluate(() => performance.getEntriesByType('resource').length); quiet = n === seen && inflight === 0 ? quiet + 1 : 0; seen = n; }
+  // The same for the signing module.
+  await page.click('#tab-sign');
+  await page.waitForSelector('#sign-panel .sg');
+  for (let quiet = 0, seen = -1; quiet < 4; await page.waitForTimeout(250)) { const n = await page.evaluate(() => performance.getEntriesByType('resource').length); quiet = n === seen && inflight === 0 ? quiet + 1 : 0; seen = n; }
+  assert.equal(await page.isVisible('label.sg-seg:has-text("Smart card")'), false, 'no card option on the hosted site');
   await page.click('#tab-organize');
 
   // Everything else is loaded: the rest works offline.
@@ -211,6 +231,62 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   await page.waitForFunction(() => document.querySelector('#pages li.page:last-child').dataset.drawn?.startsWith('b'), null, { timeout: 15000 });
   console.log(`${label}: 200 pages listed in ${opened} ms, ${early} then ${later} thumbnails rendered, click handled in ${clickMs.toFixed(1)} ms`);
 
+  // Sign: open one file, sign it with the .p12 in a box, save the signed bytes unchanged.
+  if (p12) {
+    await page.click('#close');
+    await page.setInputFiles('#file', [`${dir}/alpha.pdf`]);
+    await page.waitForFunction(() => document.querySelectorAll('#pages li.page').length === 3);
+    await page.click('#tab-sign');
+    await page.waitForFunction(() => document.querySelector('#sign-panel .sg-sigs')?.textContent.includes('no digital signatures'));
+    assert.equal(await page.isVisible('#layout'), false, 'page grid hidden while signing');
+    assert.ok(await page.$eval('#save-form', (f) => f.previousElementSibling?.id === 'sign-panel'), 'Save card follows the Sign panel');
+    await page.setInputFiles('#sg-p12', p12);
+    await page.fill('#sg-password', 'sign-test');
+    await page.click('#sign-panel button:has-text("Open")');
+    await page.waitForSelector('#sign-panel .sg-cert:not([hidden])');
+    await page.click('#sign-panel button:has-text("Place a box")');
+    await page.fill('#sg-reason', 'Approved');
+    for (const scheme of ['light', 'dark']) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.waitForTimeout(150);
+      await page.screenshot({ path: `${shots}/pdf-editor-${label}-sign-${scheme}.png`, fullPage: true });
+    }
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.click('#sign-panel .sg-sign');
+    await page.click('#sign-panel button:has-text("Confirm signature")');
+    await page.waitForSelector('#sign-panel .sg-result:not([hidden])');
+    assert.match(await page.textContent('#sign-note'), /Saved exactly as signed/);
+    assert.equal(await page.isDisabled('#clean'), true);
+    const signedFile = await save(() => page.click('#save'));
+    assert.equal(signedFile.name, 'alpha-edited.pdf');
+    writeFileSync(join(dir, `${label}-signed.pdf`), signedFile.bytes);
+    const v = await verifyPdf(new Uint8Array(signedFile.bytes));
+    assert.deepEqual(v.signatures.map((x) => x.status), ['valid']);
+    assert.equal(v.signatures[0].signer.commonName, 'Editor Test Signer');
+    assert.equal(v.signatures[0].reason, 'Approved');
+    assert.equal(texts(signedFile.bytes).length, 3);
+    const out = pdfsig(join(dir, `${label}-signed.pdf`));
+    if (out !== null) assert.match(out, /Signature is Valid/);
+    assert.match(await page.textContent('#save-report'), /Saved exactly as signed/);
+    await page.screenshot({ path: `${shots}/pdf-editor-${label}-signed.png`, fullPage: true });
+    // Undo leaves the signed state: cleaning applies again.
+    await page.click('#undo');
+    assert.equal(await page.isDisabled('#clean'), false);
+    await page.click('#redo');
+    assert.equal(await page.isDisabled('#clean'), true);
+    // Rotating a page afterwards rewrites the file, and the editor says the signature goes.
+    await page.click('#tab-organize');
+    await page.click('#pages li.page:nth-child(1)');
+    await page.keyboard.press('r');
+    assert.equal(await page.isDisabled('#clean'), false);
+    assert.match(await page.textContent('#notes'), /digitally signed/);
+    await page.click('#tab-sign');
+    // The rotated copy is rebuilt: its earlier signature is either reported as no longer matching or gone.
+    await page.waitForFunction(() => /edited after opening|no digital signatures/.test(document.querySelector('#sign-panel .sg-sigs')?.textContent ?? ''));
+    assert.doesNotMatch(await page.textContent('#sign-panel .sg-sigs'), /Valid —/);
+    await page.click('#tab-organize');
+  }
+
   // Layout: no sideways scrolling, light and dark.
   await page.$eval('#pages', (l) => { l.scrollTop = 0; });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -230,6 +306,47 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   assert.deepEqual(loaded.filter((u) => !u.startsWith(base) && !u.startsWith('blob:')), [], 'requests to other origins');
   await context.close();
   console.log(`${label}: ok`);
+}
+// Redact, then sign the redacted result: the signature covers the redacted bytes and stays valid when saved.
+if (p12) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
+  const page = await context.newPage();
+  const problems = [];
+  page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) problems.push(m.text()); });
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  await page.goto(`${base}/tools/pdf-editor/`, { waitUntil: 'networkidle' });
+  await page.setInputFiles('#file', [`${dir}/alpha.pdf`]);
+  await page.waitForFunction(() => document.querySelectorAll('#pages li.page').length === 3);
+  await page.click('#tab-redact');
+  await page.waitForSelector('#rd-query');
+  await page.waitForFunction(() => document.querySelector('.rd-canvas')?.width > 0);
+  await page.fill('#rd-query', 'Alpha 2');
+  await page.click('#redact-panel button[type=submit]:has-text("Search")');
+  await page.click('#redact-panel button:has-text("Mark all")');
+  await page.locator('.rd-apply').click({ timeout: 10000 });
+  await page.waitForSelector('.rd-result:not([hidden])', { timeout: 60000 });
+  assert.equal(await page.getAttribute('.rd-result', 'data-state'), 'ok', await page.textContent('.rd-result'));
+  await page.click('#tab-sign');
+  await page.waitForSelector('#sign-panel .sg');
+  await page.setInputFiles('#sg-p12', p12);
+  await page.fill('#sg-password', 'sign-test');
+  await page.click('#sign-panel button:has-text("Open")');
+  await page.waitForSelector('#sign-panel .sg-cert:not([hidden])');
+  await page.click('#sign-panel button:has-text("Place a box")');
+  await page.click('#sign-panel .sg-sign');
+  await page.click('#sign-panel button:has-text("Confirm signature")');
+  await page.waitForSelector('#sign-panel .sg-result:not([hidden])');
+  const [d] = await Promise.all([page.waitForEvent('download'), page.click('#save')]);
+  const path = join(dir, 'redacted-signed.pdf'); await d.saveAs(path);
+  const bytes = readFileSync(path);
+  assert.deepEqual((await verifyPdf(new Uint8Array(bytes))).signatures.map((x) => x.status), ['valid']);
+  const out = pdfsig(path);
+  if (out !== null) assert.match(out, /Signature is Valid/);
+  const words = texts(bytes).join(' ');
+  assert.ok(!words.includes('Alpha 2') && words.includes('Alpha 3'), 'the signed copy is the redacted one');
+  assert.deepEqual(problems, [], 'console errors while redacting and signing');
+  await context.close();
+  console.log('redact then sign: ok');
 }
 await browser.close();
 console.log('pdf editor browser checks passed');

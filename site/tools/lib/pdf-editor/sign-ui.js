@@ -244,6 +244,7 @@ export function mountSign(container, ctx) {
     S.box = { page: S.page, x: width - w - 36, y: height - h - 48, width: w, height: h };
     S.visible = true; visibleRadio.checked = true;
     drawBox(); update(); say(`Signature box placed on page ${S.page + 1}.`);
+    stage.scrollTop = Math.max(0, S.box.y * S.scale + 16 + S.box.height * S.scale - stage.clientHeight + 24);
   }
 
   let drag = null;

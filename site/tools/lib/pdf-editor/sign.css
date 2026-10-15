@@ -58,7 +58,7 @@
 .sg-choices label{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
 .sg-cert{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface-2)}
 .sg-cert-name{font-size:15px;font-weight:600;overflow-wrap:anywhere}
-.sg dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:13px}
+.sg dl{display:grid;grid-template-columns:fit-content(40%) 1fr;gap:4px 12px;margin:0;font-size:13px}
 .sg dt{color:var(--muted)}
 .sg dd{margin:0;color:var(--text-2);overflow-wrap:anywhere;min-width:0}
 .sg-warn,.sg-error{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.5;margin:0}
@@ -99,5 +99,7 @@
 
 @media (max-width:900px){
   .sg-layout{grid-template-columns:minmax(0,1fr)}
+  .sg-sig dl{grid-template-columns:minmax(0,1fr);gap:0}
+  .sg-sig dd{margin-bottom:6px}
   .sg-stage{max-height:62vh;min-height:240px;padding:10px}
 }

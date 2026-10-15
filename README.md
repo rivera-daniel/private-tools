@@ -65,8 +65,11 @@ Edits PDFs with [MuPDF](https://mupdf.com/) compiled to WebAssembly.
 - **Compress:** a lossless rewrite, plus optional lossy image downsampling.
 - **Watermark and page numbers:** text watermarks and page-number formats such as "Page 1 of 9".
 - **Redact:** search, common patterns (emails, phone numbers, SSNs, card numbers, IBANs, dates) or boxes drawn on the page. Text, image pixels, line art and form values under each box are deleted from the file, the redacted words are scrubbed from bookmarks, accessibility text, labels and links, and the file is rewritten as a single revision. Every result is checked before it is handed back: the redacted text must be gone from every page, object, stream and byte, or no file is produced. A rasterize mode turns marked pages into images. PDFs whose black boxes hide text that can still be copied are flagged.
-- **Save:** edits are applied, then hidden data is removed with Metadata Cleaner, then encryption is added.
-- **Limits:** existing text cannot be edited in place. Pages copied from a second file keep their content but lose links, comments and form fields. Saving rewrites the file, which invalidates existing digital signatures. Redaction checks fragments shorter than four characters only in page text.
+- **Sign:** PAdES digital signatures (CMS SignedData, `/ETSI.CAdES.detached`) with RSA (PKCS #1 v1.5 or PSS) or ECDSA P-256 and P-384 keys from a .p12/.pfx file, visible in a box drawn on the page (text and an optional image) or invisible. The signature is appended as an incremental update, so earlier signatures stay valid, and the signed file is saved byte for byte. Older .p12 files with 3DES and RC2 encryption open too. Keys are imported into WebCrypto as non-extractable.
+- **Verify:** every signature in the document: whether the signed bytes and the cryptographic signature match, what changed in later revisions, the signer's certificate and its chain. Certificates are trusted only when you import their root. Checking is offline: no revocation (CRL, OCSP) or timestamp checks.
+- **Smart cards:** CAC, PIV, eID cards and USB tokens can sign through `local/signer/`, a small program you run yourself that serves the site on 127.0.0.1 and talks to the card through PKCS#11 (see its README). The hosted site never shows this option.
+- **Save:** edits are applied, then hidden data is removed with Metadata Cleaner, then encryption is added. A freshly signed document is saved unchanged instead.
+- **Limits:** existing text cannot be edited in place. Pages copied from a second file keep their content but lose links, comments and form fields. Saving other edits rewrites the file, which invalidates existing digital signatures, so sign last. Visible signature text uses Helvetica and covers Western European characters only. Redaction checks fragments shorter than four characters only in page text.
 
 ## Roadmap
 
@@ -76,7 +79,7 @@ Edits PDFs with [MuPDF](https://mupdf.com/) compiled to WebAssembly.
 | File Inspector | Available | Shows what any file reveals: its true type, hidden text, user names, build paths, signatures and metadata. |
 | Metadata Cleaner | Available | Removes metadata from photos, documents, PDFs, audio and video on your device and re-inspects the result. |
 | Archiver | Available | Creates and opens ZIP, 7z, tar and gzip archives and extracts RAR, xz, ISO and more, with AES-256 encryption. |
-| PDF Editor | Available | Merges, splits, reorders, rotates, protects and compresses PDFs and removes redacted content for real, using MuPDF in WebAssembly. Signing, annotations and forms are next. |
+| PDF Editor | Available | Merges, splits, reorders, rotates, protects, compresses, redacts and digitally signs PDFs and checks their signatures, using MuPDF in WebAssembly. Annotations and forms are next. |
 | Photo Editor | Planned | A layered image editor with masks, adjustment layers, selections, filters and PSD support, based on the open-source PhotoCraft engine in WebAssembly. |
 | Audio Editor | Planned | Records, cuts, mixes and cleans up audio on the device, based on the open-source SoundCraft engine in WebAssembly. |
 | Office Viewer | Planned | Opens Word documents, spreadsheets and presentations without uploading them, based on the open-source WordCraft, GridCraft and DeckCraft engines. |
@@ -106,8 +109,10 @@ Planned improvements:
 
 - [ ] Metadata Cleaner support for HEIC, AVIF and TIFF
 - [ ] Offline support across page reloads (service worker)
-- [ ] PDF Editor: digital signatures with certificate files, signature verification, annotations, form filling and OCR
-- [ ] Smart card and USB token signing through a local companion program that is not part of the hosted site
+- [x] PDF Editor: digital signatures with certificate files and signature verification
+- [x] Smart card and USB token signing through a local companion program that is not part of the hosted site
+- [ ] PDF Editor: annotations, form filling and OCR
+- [ ] PDF Editor: signature timestamps and offline revocation data
 - [ ] Content Credentials signature and trust-chain verification
 - [ ] Decoding of Brotli-compressed JPEG XL metadata boxes
 
@@ -117,6 +122,7 @@ Planned improvements:
 - Pages are served with a Content Security Policy of `default-src 'self'` and `connect-src 'none'`, so the page cannot make network requests. The site itself loads no third-party scripts, fonts or analytics.
 - Opening an inspected file in Metadata Cleaner passes the file through the browser's own storage (IndexedDB). The cleaner deletes it as soon as it reads it, and any tool page deletes a leftover copy when it loads.
 - The Archiver and PDF Editor pages also allow `'wasm-unsafe-eval'` and `connect-src 'self'`, so their workers can load their WebAssembly engines (libarchive, MuPDF) from the same site. They still cannot contact any other site.
+- Signing keys from .p12/.pfx files stay in the browser as non-extractable WebCrypto keys. The local card signer (`local/signer/`) is not part of the hosted site: it runs on your own computer, listens on 127.0.0.1 only, accepts requests only from the pages it serves (exact Host and Origin checks plus a per-launch token) and receives only the 32- or 48-byte digest to sign, never the document.
 - Extracted values are rendered as text only and are never interpreted as HTML.
 - Parsers treat every input as hostile: reads are bounds-checked, directory loops are detected, and decompression, nesting depth and field counts are capped.
 
@@ -136,9 +142,10 @@ site/                    Deployable static site, served under /tools/
   tools/lib/clean/       Metadata removal for each format family
   tools/lib/zip/         ZIP reader and writer, AES encryption
   tools/lib/archive/     tar, gzip and archive handling for the Archiver
-  tools/lib/pdf-editor/  PDF editing operations and redaction
+  tools/lib/pdf-editor/  PDF editing operations, redaction, signing (sign.js, cms.js, pkcs12.js, asn1.js)
   tools/vendor/mupdf/    MuPDF.js WebAssembly build
   tools/vendor/libarchive/ libarchive WebAssembly build, its build script and licenses
+local/signer/            Local smart card signer (Go, PKCS#11). Not deployed: run it yourself
 tests/                   Parser and browser tests, fixtures and reference data
 server.js                Development server
 wrangler.jsonc           Cloudflare Worker configuration
@@ -169,7 +176,7 @@ BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium npm run test:browser
 BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium node tests/browser-cleaner.mjs
 ```
 
-`tests/browser-files.mjs` checks the File Inspector the same way, with generated documents, PDFs, audio, programs and text files. `tests/browser-archiver.mjs` creates, encrypts and extracts archives in the Archiver. `tests/browser-pdf-editor.mjs` and `tests/browser-pdf-redact.mjs` cover the PDF Editor and its redaction panel.
+`tests/browser-files.mjs` checks the File Inspector the same way, with generated documents, PDFs, audio, programs and text files. `tests/browser-archiver.mjs` creates, encrypts and extracts archives in the Archiver. `tests/browser-pdf-editor.mjs`, `tests/browser-pdf-redact.mjs` and `tests/browser-pdf-sign.mjs` cover the PDF Editor, its redaction panel and its signing panel. `local/signer/e2e.sh` runs the signing test with a SoftHSM token through the local card signer.
 
 ### Reference data
 

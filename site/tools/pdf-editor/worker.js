@@ -103,6 +103,14 @@ async function build({ id, plan }) {
   reply({ type: 'built', id, data: buffer(bytes) }, [buffer(bytes)]);
 }
 
+// The stored bytes of one source, copied, for signing without a rebuild. Sources opened with a password are not
+// handed out: their stored bytes are still encrypted.
+async function original({ id, src }) {
+  const s = sources.get(src);
+  const bytes = s && !s.password ? s.bytes.slice() : null;
+  reply({ type: 'original', id, data: bytes ? bytes.buffer : null }, bytes ? [bytes.buffer] : []);
+}
+
 async function adopt({ id, name, data }) {
   const opened = lib.openPdf(new Uint8Array(data));
   if (opened.needsPassword) throw new lib.PdfError('The new document is password protected and cannot be used here.');
@@ -185,4 +193,4 @@ async function drop({ ids }) {
   for (const id of ids) { const s = sources.get(id); if (s) { s.doc.destroy(); sources.delete(id); } }
 }
 
-const JOBS = { open, images, render, build, adopt, save, split, toImages, compress, stamp, drop };
+const JOBS = { open, images, render, build, original, adopt, save, split, toImages, compress, stamp, drop };

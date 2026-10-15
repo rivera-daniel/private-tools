@@ -35,8 +35,10 @@ Shows what any file reveals, up to 200 MB. Every file gets a general scan, and f
 
 Removes the metadata the inspectors find and copies everything else as is. Pixels, audio and video are never re-encoded.
 
-- **Formats:** photos (JPEG, PNG, WebP, GIF), PDF, Word, Excel and PowerPoint files, OpenDocument files, EPUB, ZIP, audio and video (MP4, MOV, M4A, 3GP, MP3, MP2, AAC, WAV, AIFF, FLAC, Ogg, Opus, MKV, WebM) and plain text, up to 200 MB. Other files are refused with a reason and never altered.
+- **Formats:** photos (JPEG, PNG, WebP, GIF, HEIC, HEIF, AVIF, TIFF), PDF, Word, Excel and PowerPoint files, OpenDocument files, EPUB, ZIP, audio and video (MP4, MOV, M4A, 3GP, MP3, MP2, AAC, WAV, AIFF, FLAC, Ogg, Opus, MKV, WebM) and plain text, up to 200 MB. Other files are refused with a reason and never altered.
 - **Photos:** EXIF, XMP, IPTC, PNG text chunks, Content Credentials, thumbnails, comments, Photoshop data and data after the end of the image are removed. ICC color profiles and the EXIF Orientation value are kept so photos still display upright.
+- **HEIC, HEIF and AVIF:** Exif, XMP and other metadata items, thumbnails and Content Credentials are removed and the item tables are rewritten around the untouched image data. Grids, rotation, alpha, depth maps and HDR gain maps stay. Depth maps are listed as kept because they can show the outline of people. Image sequences are refused.
+- **TIFF:** each page is rewritten with only the tags needed to display it, its strips or tiles copied unchanged. EXIF, GPS, XMP, IPTC, Photoshop data, maker notes, GeoTIFF tags, text tags such as Artist, Software and DateTime, reduced-resolution copies, sub-images and trailing data are removed. ICC profiles and Orientation are kept. DNG and other camera raw files are refused.
 - **Documents:** properties, comments, people lists, editing-session IDs, document variables, thumbnails, printer settings and custom XML are removed, auto-loading remote content is cut off, photos inside are cleaned, and archive timestamps are reset. Hidden sheets, notes and embedded objects are document content and stay.
 - **PDF:** the file is saved as one fresh revision, which drops earlier versions and unused objects, along with document information, XMP, JavaScript and automatic actions, attachments and comments. Photos inside are cleaned. Links stay clickable.
 - **Audio and video:** tags, cover art, location, device details, metadata tracks and leftover data are removed, and creation times are zeroed. Container offsets are rewritten so the file still plays.
@@ -104,7 +106,6 @@ Edits PDFs with [MuPDF](https://mupdf.com/) compiled to WebAssembly.
 
 Planned improvements:
 
-- [ ] Metadata Cleaner support for HEIC, AVIF and TIFF
 - [ ] Offline support across page reloads (service worker)
 - [ ] PDF Editor: digital signatures with certificate files, signature verification, annotations, form filling and OCR
 - [ ] Smart card and USB token signing through a local companion program that is not part of the hosted site

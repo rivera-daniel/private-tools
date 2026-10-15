@@ -228,9 +228,10 @@ test('hidden-character rules are stable: one cleaning pass leaves nothing remova
 test('cleanable formats come from the clean module and include plain text', () => {
   const formats = cleanableFormats();
   for (const f of ['JPEG', 'PNG', 'WebP', 'GIF', 'Text', 'PDF', 'DOCX', 'ODT', 'EPUB', 'ZIP', 'MP3', 'MP4', 'FLAC']) assert.ok(formats.has(f), f);
-  assert.ok(!formats.has('EXE') && !formats.has('TIFF'));
+  for (const f of ['HEIC', 'HEIF', 'AVIF', 'TIFF']) assert.ok(formats.has(f), f);
+  assert.ok(!formats.has('EXE') && !formats.has('DNG'));
   const words = describeCleanable();
-  for (const part of ['photos (JPEG, PNG, WebP, GIF)', 'PDF', 'Word, Excel and PowerPoint files', 'OpenDocument files', 'EPUB', 'MP3', 'plain text']) assert.ok(words.includes(part), part);
+  for (const part of ['photos (JPEG, PNG, WebP, GIF, HEIC, HEIF, AVIF, TIFF)', 'PDF', 'Word, Excel and PowerPoint files', 'OpenDocument files', 'EPUB', 'MP3', 'plain text']) assert.ok(words.includes(part), part);
   assert.equal(describeCleanable(new Set(['PNG', 'Text'])), 'photos (PNG) and plain text');
 });
 

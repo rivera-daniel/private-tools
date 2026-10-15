@@ -7,7 +7,7 @@ import { parseJumbf } from '../c2pa.js';
 
 const C2PA_UUID = 'd8fec3d61b0e483c92975828877ec481';
 const CANON_UUID = '85c0b687820f11e08111f4ce462b6a48';
-const AUX_TYPES = { 'urn:mpeg:hevc:2015:auxid:1': 'Alpha', 'urn:mpeg:mpegB:cicp:systems:auxiliary:alpha': 'Alpha', 'urn:mpeg:hevc:2015:auxid:2': 'Depth', 'urn:mpeg:mpegB:cicp:systems:auxiliary:depth': 'Depth', 'urn:com:apple:photo:2020:aux:hdrgainmap': 'HDR gain map (Apple)', 'urn:com:apple:photo:2018:aux:portraiteffectsmatte': 'Portrait matte (Apple)', 'urn:com:apple:photo:2019:aux:semanticskinmatte': 'Skin matte (Apple)', 'urn:com:apple:photo:2019:aux:semantichairmatte': 'Hair matte (Apple)', 'urn:com:apple:photo:2019:aux:semanticteethmatte': 'Teeth matte (Apple)', 'urn:com:apple:photo:2020:aux:semanticskymatte': 'Sky matte (Apple)' };
+export const AUX_TYPES = { 'urn:mpeg:hevc:2015:auxid:1': 'Alpha', 'urn:mpeg:mpegB:cicp:systems:auxiliary:alpha': 'Alpha', 'urn:mpeg:hevc:2015:auxid:2': 'Depth', 'urn:mpeg:mpegB:cicp:systems:auxiliary:depth': 'Depth', 'urn:com:apple:photo:2020:aux:hdrgainmap': 'HDR gain map (Apple)', 'urn:com:apple:photo:2018:aux:portraiteffectsmatte': 'Portrait matte (Apple)', 'urn:com:apple:photo:2019:aux:semanticskinmatte': 'Skin matte (Apple)', 'urn:com:apple:photo:2019:aux:semantichairmatte': 'Hair matte (Apple)', 'urn:com:apple:photo:2019:aux:semanticteethmatte': 'Teeth matte (Apple)', 'urn:com:apple:photo:2020:aux:semanticskymatte': 'Sky matte (Apple)' };
 
 export function* boxes(b, start, end, depthGuard = { n: 0 }) {
   let o = start;
@@ -91,7 +91,10 @@ function parseMeta(b, meta, r) {
     r.field('Items', `Item ${id}`, desc);
     if (auxType && /depth|matte|gainmap/i.test(auxType)) r.signal('privacy', 'Hidden auxiliary images', `The file contains ${AUX_TYPES[auxType] ?? auxType} images that viewers do not show. Depth maps and mattes can reveal the shape of people and scenes.`, 'HEIF items', 'hidden auxiliary images');
     const data = () => readItem(b, it, idat);
-    if (it.type === 'Exif') {
+    if (refs.some((x) => x.type === 'thmb' && x.from === id)) {
+      for (const e of it.extents ?? []) r.block('Thumbnail', it.method === 0 ? e.offset : undefined, e.length, { container: `HEIF item ${id}` });
+      r.signal('privacy', 'Embedded thumbnail preview', 'A small copy of the image is stored in the file. After cropping or editing, it can still show the original picture.', `HEIF item ${id}`, 'an embedded thumbnail');
+    } else if (it.type === 'Exif') {
       const bytes = data(); if (!bytes) continue;
       const skip = bytes.length >= 4 ? 4 + new DataView(bytes.buffer, bytes.byteOffset).getUint32(0) : 0;
       const ids = (it.extents ?? []).map((e) => r.block('EXIF', it.method === 0 ? e.offset : undefined, e.length, { container: `HEIF item ${id}` }));

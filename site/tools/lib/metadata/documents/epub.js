@@ -1,8 +1,7 @@
 // EPUB 2 and 3. The rules here are shared with the cleaner.
 import { parseXml, rootOf, elements, all, get, set, text, prune, dropAttrs, attrLocal, attrValue, escapeText, serialize } from './xml.js';
-import { DOC_LIMITS, budget, readPart, entryBlock, rewriteBlock, flag, sample, targetKind, isLeftover } from './package.js';
+import { DOC_LIMITS, budget, readRequired, failure, MISSING, entryBlock, rewriteBlock, flag, sample, targetKind, isLeftover } from './package.js';
 import { resolveTarget } from './opc.js';
-import { utf8 } from '../bytes.js';
 
 const OPF = 'http://www.idpf.org/2007/opf';
 const DC = 'http://purl.org/dc/elements/1.1/';
@@ -20,31 +19,37 @@ const FETCHERS = new Set(['img', 'image', 'audio', 'video', 'source', 'track', '
 const isRemote = (v) => targetKind(v) === 'remote' || /^file:/i.test(v.trim());
 
 // Where the package document is, what the cleaner drops and whether the book is DRM protected.
+// incomplete lists what could not be fully read as { part, reason }: the container, the encryption list
+// (which decides DRM) and the package document.
 export async function planEpub(zip, b) {
   const byName = new Map(zip.entries.map((e) => [e.name, e]));
-  const read = async (name, limit) => { const e = byName.get(name); const d = e && await readPart(zip, e, b, limit); return d ? utf8.decode(d) : null; };
+  const incomplete = [];
+  const read = async (name, limit) => {
+    if (!byName.has(name)) return null;
+    const r = await readRequired(zip, byName.get(name), b, limit, parseXml);
+    if (r.reason) { incomplete.push({ part: name, reason: r.reason }); return null; }
+    return r.doc;
+  };
   let opfPath = null;
   const container = await read('META-INF/container.xml', 1024 * 1024);
-  if (container) { const rf = all(parseXml(container), (x) => x.local === 'rootfile')[0]; opfPath = rf ? get(rf, 'full-path') : null; }
-  if (!opfPath || !byName.has(opfPath)) opfPath = zip.entries.find((e) => /\.opf$/i.test(e.name))?.name ?? null;
+  if (container) { const rf = all(container, (x) => x.local === 'rootfile')[0]; opfPath = rf ? get(rf, 'full-path') : null; }
+  // Without a usable container, the first package document there is. An unreadable container is not guessed around.
+  if (!incomplete.length && (!opfPath || !byName.has(opfPath))) opfPath = zip.entries.find((e) => /\.opf$/i.test(e.name))?.name ?? null;
   let drm = byName.has('META-INF/rights.xml');
   const obfuscated = new Set();
   const encryption = await read('META-INF/encryption.xml', 4 * 1024 * 1024);
   if (encryption) {
-    for (const data of all(parseXml(encryption), (x) => x.local === 'EncryptedData')) {
+    for (const data of all(encryption, (x) => x.local === 'EncryptedData')) {
       const method = all(data, (x) => x.local === 'EncryptionMethod')[0]; const ref = all(data, (x) => x.local === 'CipherReference')[0];
       const alg = method && get(method, 'Algorithm'); const uri = ref && get(ref, 'URI');
       if (FONT_OBFUSCATION.has(alg)) { if (uri) obfuscated.add(safeDecode(uri)); } else drm = true;
     }
   }
   const listed = new Set(); let opf = null;
-  if (opfPath) {
-    const t = await read(opfPath, 8 * 1024 * 1024);
-    if (t) {
-      opf = parseXml(t);
-      for (const item of all(opf, (x) => x.ns === OPF && x.local === 'item')) { const href = get(item, 'href'); if (href && targetKind(href) === 'local') listed.add(resolveTarget(opfPath, href)); }
-    }
-  }
+  if (opfPath && byName.has(opfPath)) {
+    opf = await read(opfPath, 8 * 1024 * 1024);
+    for (const item of opf ? all(opf, (x) => x.ns === OPF && x.local === 'item') : []) { const href = get(item, 'href'); if (href && targetKind(href) === 'local') listed.add(resolveTarget(opfPath, href)); }
+  } else if (!incomplete.length) incomplete.push({ part: opfPath ?? 'The package document', reason: MISSING });
   const remove = new Map();
   for (const e of zip.entries) {
     const n = e.name;
@@ -54,7 +59,7 @@ export async function planEpub(zip, b) {
     else if (n === 'META-INF/signatures.xml') remove.set(n, 'Digital signature');
     else if (!n.startsWith('META-INF/') && opf && !listed.has(n)) remove.set(n, 'Unused part');
   }
-  return { opfPath, opf, drm, obfuscated, remove, listed };
+  return { opfPath, opf, drm, obfuscated, remove, listed, incomplete };
 }
 
 const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
@@ -183,8 +188,8 @@ export function contentParts(zip, plan) {
 
 export async function parseEpub(zip, r) {
   const b = budget(DOC_LIMITS.maxReadBytes);
-  let plan;
-  try { plan = await planEpub(zip, b); } catch { r.warn('The package document is malformed.'); return []; }
+  const plan = await planEpub(zip, b);
+  for (const { part, reason } of plan.incomplete) r.markIncomplete(part, reason);
   r.field('Document', 'Format', 'EPUB');
   if (plan.opfPath) r.field('Document', 'Package document', plan.opfPath);
   if (plan.drm) { r.field('Document', 'DRM', 'Yes'); r.warn('The book is DRM protected, so most of its content could not be read.'); }
@@ -195,8 +200,9 @@ export async function parseEpub(zip, r) {
     if (!e || kind === 'System leftovers') continue;
     entryBlock(r, kind, e);
     if (kind === 'Store purchase record') {
-      const data = await readPart(zip, e, b, 1024 * 1024).catch(() => null);
-      for (const m of (data ? utf8.decode(data) : '').matchAll(/<key>(appleId|apple-id|userName|purchaser|buyer)[^<]*<\/key>\s*<string>([^<]+)<\/string>/gi)) r.add('People', 'Store account', m[2]);
+      const read = await readRequired(zip, e, b, 1024 * 1024);
+      if (read.reason) r.markIncomplete(name, read.reason);
+      for (const m of (read.text ?? '').matchAll(/<key>(appleId|apple-id|userName|purchaser|buyer)[^<]*<\/key>\s*<string>([^<]+)<\/string>/gi)) r.add('People', 'Store account', m[2]);
       flag(r, 'store', `${name} is a store purchase record, which can name the account that bought the book.`, name);
     }
   }
@@ -211,9 +217,10 @@ export async function parseEpub(zip, r) {
   if (plan.drm) return media;
   for (const { e, kind } of contentParts(zip, plan)) {
     if (kind === 'image') { media.push(e); continue; }
+    const read = await readRequired(zip, e, b);
+    if (read.reason) { r.markIncomplete(e.name, read.reason); continue; }
+    const t = read.text;
     try {
-      const data = await readPart(zip, e, b); if (!data) continue;
-      const t = utf8.decode(data);
       if (kind === 'ncx') {
         const n = sanitizeNcx(parseXml(t));
         for (const [k, v] of n.fields) { r.field('Table of contents', k, v); if (k === 'docAuthor' && v) r.add('People', 'Author', v); }
@@ -223,7 +230,7 @@ export async function parseEpub(zip, r) {
       if (!mayLoadRemote(t)) continue;
       const c = sanitizeContent(t, kind);
       if (c.remote.length) { rewriteBlock(r, 'Remote resource', e, c.remote.join('').length); remote.push(...c.remote); }
-    } catch { r.warn('Some content documents are malformed.'); }
+    } catch (error) { r.markIncomplete(e.name, failure(error)); }
   }
   for (const x of remote.slice(0, 100)) r.field('Remote resources', 'Linked', x, { flag: 'privacy' });
   if (remote.length) flag(r, 'remote', `${remote.length} resource${remote.length === 1 ? '' : 's'} such as ${remote[0]} load from the internet when the book is opened, which tells their owner when and where it was read.`, 'Content');

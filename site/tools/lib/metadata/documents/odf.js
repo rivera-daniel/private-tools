@@ -1,7 +1,6 @@
 // OpenDocument: ODT, ODS, ODP and ODG with their templates. The rules here are shared with the cleaner.
 import { parseXml, rootOf, elements, all, walk, get, text, attrNs, attrLocal, dropAttrs, prune, clear, child } from './xml.js';
-import { DOC_LIMITS, budget, readPart, entryBlock, rewriteBlock, flag, flagUsers, sample, targetKind, isLeftover } from './package.js';
-import { utf8 } from '../bytes.js';
+import { DOC_LIMITS, budget, readRequired, declaredNonImage, entryBlock, rewriteBlock, flag, flagUsers, sample, targetKind, isLeftover } from './package.js';
 
 export const ODF_TYPES = {
   'application/vnd.oasis.opendocument.text': 'ODT', 'application/vnd.oasis.opendocument.text-template': 'OTT',
@@ -34,18 +33,19 @@ export const hasMacros = (names) => names.some((n) => /^Basic\/[^/]+\/(?!script-
 export const isMacroEntry = (name) => /^(Basic|Scripts|Dialogs)\//.test(name);
 
 // Reads the manifest and decides which entries the cleaner drops. options: { removeMacros, acceptChanges }.
+// incomplete lists what could not be fully read as { part, reason }. Without the manifest nothing is
+// judged unlisted.
 export async function planOdf(zip, b, options = {}) {
   const names = zip.entries.map((e) => e.name);
-  const manifestEntry = zip.entries.find((e) => e.name === 'META-INF/manifest.xml');
-  let manifest = null; const listed = new Set(); let encrypted = false;
-  if (manifestEntry) {
-    const data = await readPart(zip, manifestEntry, b, 8 * 1024 * 1024);
-    if (data) {
-      manifest = parseXml(utf8.decode(data));
-      for (const fe of all(manifest, (x) => x.ns === ODF.manifest && x.local === 'file-entry')) {
-        listed.add(get(fe, 'full-path', ODF.manifest) ?? '');
-        if (all(fe, (x) => x.local === 'encryption-data').length) encrypted = true;
-      }
+  let manifest = null; const listed = new Set(); const types = new Map(); let encrypted = false; const incomplete = [];
+  const read = await readRequired(zip, zip.entries.find((e) => e.name === 'META-INF/manifest.xml'), b, 8 * 1024 * 1024, parseXml);
+  if (read.reason) incomplete.push({ part: 'META-INF/manifest.xml', reason: read.reason });
+  else {
+    manifest = read.doc;
+    for (const fe of all(manifest, (x) => x.ns === ODF.manifest && x.local === 'file-entry')) {
+      const path = get(fe, 'full-path', ODF.manifest) ?? '';
+      listed.add(path); types.set(path, get(fe, 'media-type', ODF.manifest) ?? '');
+      if (all(fe, (x) => x.local === 'encryption-data').length) encrypted = true;
     }
   }
   const macros = new Set(hasMacros(names) ? names.filter((n) => isMacroEntry(n) && !n.endsWith('/')) : []);
@@ -60,8 +60,11 @@ export async function planOdf(zip, b, options = {}) {
     else if (macros.has(n)) { if (options.removeMacros) remove.set(n, 'Macros'); }
     else if (manifest && !listed.has(n) && !n.startsWith('META-INF/')) remove.set(n, 'Unused part');
   }
-  return { manifest, listed, encrypted, macros, remove, options };
+  return { manifest, listed, types, encrypted, macros, remove, incomplete, options };
 }
+
+// Pictures the inspector and the cleaner read: entries under Pictures/ not declared as video or audio.
+export const isPictureEntry = (plan, name) => /(^|\/)Pictures\//.test(name) && !declaredNonImage(plan.types.get(name));
 
 // Which sanitizer a part needs, by its file name in the package or in an embedded object.
 export function odfKind(name) {
@@ -156,6 +159,7 @@ export async function parseOdf(zip, r, id) {
   const b = budget(DOC_LIMITS.maxReadBytes);
   const byName = new Map(zip.entries.map((e) => [e.name, e]));
   const plan = await planOdf(zip, b, { removeMacros: true, acceptChanges: true });
+  for (const { part, reason } of plan.incomplete) r.markIncomplete(part, reason);
   r.field('Document', 'Format', id.format);
   if (plan.encrypted) { r.field('Document', 'Encrypted', 'Yes'); r.warn('The document is password protected, so its content could not be read.'); }
   for (const [name, kind] of plan.remove) {
@@ -164,31 +168,27 @@ export async function parseOdf(zip, r, id) {
     entryBlock(r, kind, e);
     if (kind === 'Thumbnail') flag(r, 'thumbnail', `${name} is a small picture of the first page, which can show content later removed.`, 'Package');
     if (kind === 'Digital signature') {
-      const data = await readPart(zip, e, b).catch(() => null);
-      for (const m of (data ? utf8.decode(data) : '').matchAll(/<(?:\w+:)?X509SubjectName>([^<]+)</g)) { r.add('People', 'Signed by', m[1]); flag(r, 'signature', `The digital signature names ${m[1]}. Cleaning removes the signature, which would no longer be valid.`, name); }
+      const read = await readRequired(zip, e, b);
+      if (read.reason) r.markIncomplete(name, read.reason);
+      for (const m of (read.text ?? '').matchAll(/<(?:\w+:)?X509SubjectName>([^<]+)</g)) { r.add('People', 'Signed by', m[1]); flag(r, 'signature', `The digital signature names ${m[1]}. Cleaning removes the signature, which would no longer be valid.`, name); }
     }
   }
   for (const name of plan.macros) entryBlock(r, 'Macros', byName.get(name), { note: 'Removed only when macro removal is chosen. Removing macros changes what the document does.' });
   if (plan.macros.size) flag(r, 'macros', 'The document contains macros, code that can run when it is opened.', 'Basic');
   const hidden = { text: 0, sections: 0, rows: 0, cols: 0, tables: 0, slides: 0, notes: null };
-  let skipped = false;
   const media = [];
   for (const e of zip.entries) {
     if (plan.remove.has(e.name) || e.directory || plan.encrypted) continue;
-    if (/(^|\/)Pictures\//.test(e.name)) { media.push(e); continue; }
+    if (/(^|\/)Pictures\//.test(e.name)) { if (isPictureEntry(plan, e.name)) media.push(e); continue; }
     const kind = odfKind(e.name);
     if (!kind) continue;
-    let doc;
-    try {
-      const data = await readPart(zip, e, b);
-      if (!data) { skipped = true; continue; }
-      doc = parseXml(utf8.decode(data));
-    } catch (error) { if (error.limit) skipped = true; else r.warn('Some XML parts are malformed or could not be read.'); continue; }
+    const read = await readRequired(zip, e, b, undefined, parseXml);
+    if (read.reason) { r.markIncomplete(e.name, read.reason); continue; }
+    const doc = read.doc;
     if (kind === 'meta') describeMeta(r, doc, e);
     if (kind === 'content') describeContent(doc, hidden, r, e);
     report(r, sanitizeOdf(doc, kind, plan), e);
   }
-  if (skipped) r.warn('Some parts are larger than the inspection limit and were not inspected.');
   if (hidden.notes) entryBlock(r, 'Speaker notes', hidden.notes, { removable: false, note: 'Part of the presentation; remove notes in your editor' });
   const parts = [];
   const count = (n, one, many = `${one}s`) => n && parts.push(`${n} ${n === 1 ? one : many}`);

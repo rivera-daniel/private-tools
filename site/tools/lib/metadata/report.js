@@ -19,6 +19,9 @@ export class Report {
     this.format = null; this.category = null; this.width = null; this.height = null; this.size = size;
     this.sources = new Map(); this.highlights = new Map(); this.blocks = []; this.structure = [];
     this.signals = []; this.warnings = []; this.c2pa = []; this.inflated = 0;
+    // Parts that could not be fully read: [{ part, reason }]. A report with any is not a complete picture
+    // of the file, and the cleaner refuses it.
+    this.incomplete = [];
   }
 
   field(source, key, value, extra = {}) {
@@ -72,6 +75,12 @@ export class Report {
 
   warn(message) { if (this.warnings.length < 50 && !this.warnings.includes(message)) this.warnings.push(message); }
 
+  // reason completes the sentence after the part's name, e.g. "is larger than the inspection limit".
+  markIncomplete(part, reason) {
+    if (!this.incomplete.some((x) => x.part === part)) this.incomplete.push({ part, reason });
+    this.warn(`Analysis is incomplete: ${part} ${reason}.`);
+  }
+
   async inflate(data, label) {
     const budget = LIMITS.maxInflateBytesPerFile - this.inflated;
     if (budget <= 0) { this.warn('The file holds more compressed metadata than the 32 MB limit. The rest was skipped.'); return new Uint8Array(); }
@@ -85,7 +94,7 @@ export class Report {
       sources: [...this.sources].map(([name, fields]) => ({ name, fields, technical: technical(name) })),
       highlights: [...this.highlights].map(([name, fields]) => ({ name, fields })),
       blocks: this.blocks, structure: this.structure,
-      signals: this.signals, warnings: this.warnings, c2pa: this.c2pa,
+      signals: this.signals, warnings: this.warnings, c2pa: this.c2pa, incomplete: this.incomplete,
       fieldCount: metadataFields(this),
       cleanable: (() => { const list = this.cleanable(); return { blocks: list.length, bytes: list.reduce((n, b) => n + (b.length || 0), 0) }; })(),
       summary: summarize(this), provenance: provenance(this),
@@ -99,11 +108,13 @@ function summarize(r) {
   const removable = r.cleanable();
   const image = isImage(r);
   const what = `${fields.toLocaleString('en-US')} metadata field${fields === 1 ? '' : 's'}${removable.length ? ` in ${removable.length} block${removable.length === 1 ? '' : 's'}` : ''}`;
+  const gap = r.incomplete.length ? ` Part of the file (${r.incomplete[0].part}) could not be fully read, so there may be more.` : '';
   if (exposures.length) {
     const names = exposures.slice(0, 3).map((s) => s.short ?? s.title.toLowerCase());
     if (exposures.length > 3) names.push(`${exposures.length - 3} more`);
-    return { level: 'exposed', title: `${capitalize(listJoin(names))} found`, detail: fields ? `This file carries ${what}. Anyone you share it with can read them.` : 'Anyone you share this file with can find this.' };
+    return { level: 'exposed', title: `${capitalize(listJoin(names))} found`, detail: (fields ? `This file carries ${what}. Anyone you share it with can read them.` : 'Anyone you share this file with can find this.') + gap };
   }
+  if (r.incomplete.length) return { level: 'error', title: 'Analysis incomplete', detail: `${r.incomplete[0].part} ${r.incomplete[0].reason}, so metadata, links or hidden content may be missing from this report.` };
   if (fields) return { level: 'some', title: 'No sensitive metadata found', detail: image ? `This file carries ${what}, but none of it is location, names, serial numbers, prompts or hidden data.` : `This file carries ${what}, but none of it was flagged as personal, identifying or hidden.` };
   return { level: 'clean', title: 'No metadata found', detail: image ? 'This file carries no readable metadata beyond its basic image properties.' : 'No metadata, personal details or hidden data were found in this file.' };
 }

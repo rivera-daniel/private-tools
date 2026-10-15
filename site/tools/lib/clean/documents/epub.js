@@ -12,8 +12,8 @@ const enc = new TextEncoder();
 export async function cleanEpub(zip, report) {
   const b = budget(DOC_LIMITS.maxReadBytes);
   const plan = await planEpub(zip, b);
+  if (plan.incomplete.length) { const { part, reason } = plan.incomplete[0]; refuse(`${part} ${reason}, so the book could not be fully checked and was left untouched.`); }
   if (plan.drm) refuse('This book is DRM protected. It cannot be rewritten, so it was left untouched.');
-  if (!plan.opf) refuse('The book has no readable package document, so it was left untouched.');
   const out = new Map(); const removed = archiveRemovals(report);
   const byName = new Map(zip.entries.map((e) => [e.name, e]));
   for (const [name, kind] of plan.remove) removed.push({ kind, container: name, bytes: byName.get(name)?.size ?? 0 });

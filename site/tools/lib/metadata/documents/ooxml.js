@@ -1,13 +1,15 @@
 // Office Open XML: DOCX, XLSX and PPTX with their macro-enabled, template and show variants.
 import { parseXml, rootOf, elements, all, get, text, attrLocal, attrValue } from './xml.js';
-import { openPackage, planPackage, sanitizePart, partFamily, mayNeedRewrite, mainPart, contentType, MAIN_TYPES, familyOf, NS } from './opc.js';
-import { budget, entryBlock, rewriteBlock, flag, flagUsers, sample, printerName, usersInBinary, readPart } from './package.js';
+import { openPackage, planPackage, sanitizePart, partFamily, mayNeedRewrite, mainPart, contentType, guessFormat, isPicturePart, MAIN_TYPES, familyOf, NS } from './opc.js';
+import { budget, entryBlock, rewriteBlock, flag, flagUsers, sample, printerName, usersInBinary, readPart, failure, TOO_LARGE } from './package.js';
 
+// Decided from [Content_Types].xml and the package relationships alone.
 export async function ooxmlFormat(zip) {
   try {
-    const pkg = await openPackage(zip, budget(16 * 1024 * 1024));
+    const pkg = await openPackage(zip, budget(16 * 1024 * 1024), { rootOnly: true });
     const main = mainPart(pkg);
-    return main ? MAIN_TYPES[contentType(pkg, main)] ?? null : null;
+    const format = main ? MAIN_TYPES[contentType(pkg, main)] : null;
+    return format ?? (pkg.incomplete.length ? guessFormat(pkg) : null);
   } catch { return null; }
 }
 
@@ -28,8 +30,9 @@ const STORY = /^word\/(document|header\d*|footer\d*|footnotes|endnotes|glossary\
 // Returns the embedded picture entries the image inspector should look at.
 export async function parseOoxml(zip, r, id) {
   const pkg = await openPackage(zip);
-  if (pkg.errors.length) r.warn('Some relationship parts could not be read.');
   const plan = await planPackage(pkg, { removeMacros: true, acceptChanges: true });
+  for (const { part, reason } of pkg.incomplete) r.markIncomplete(part, reason);
+  const gap = (e, reason) => r.markIncomplete(e.name, reason);
   const family = familyOf(id.format);
   const main = mainPart(pkg);
   r.field('Document', 'Format', id.format);
@@ -46,7 +49,7 @@ export async function parseOoxml(zip, r, id) {
     if (plan.macros.has(lower) || plan.revisions.has(lower)) continue;
     entryBlock(r, kind, e);
     try { await describeDropped(r, pkg, e, kind, unused); }
-    catch { r.warn('Some metadata parts could not be read.'); }
+    catch (error) { gap(e, failure(error)); }
   }
   if (unused.length) r.field('Package', 'Unused parts', unused.slice(0, 50).join(', '));
   for (const lower of plan.macros) {
@@ -57,7 +60,8 @@ export async function parseOoxml(zip, r, id) {
   for (const lower of plan.revisions) {
     const e = pkg.entries.get(lower); if (!e) continue;
     entryBlock(r, 'Tracked changes', e, { note: 'Shared workbook change history' });
-    const t = await pkg.read(lower).catch(() => null);
+    let t = null;
+    try { t = await pkg.read(lower); if (t === null) gap(e, TOO_LARGE); } catch (error) { gap(e, failure(error)); }
     const names = t ? [...t.matchAll(/\b(?:userName|name)="([^"]+)"/g)].map((m) => m[1]) : [];
     for (const n of new Set(names)) r.add('People', 'Change author', n);
     flag(r, 'tracked', `The workbook keeps a change history${names.length ? ` with the names ${[...new Set(names)].slice(0, 3).join(', ')}` : ''}.`, e.name);
@@ -91,12 +95,13 @@ export async function parseOoxml(zip, r, id) {
   }
 
   // Every XML part: what the cleaner would rewrite, plus content kept on purpose.
-  let skipped = false; const hidden = { runs: 0, text: [], sheets: [], rows: 0, cols: 0, slides: 0 };
+  const hidden = { runs: 0, text: [], sheets: [], rows: 0, cols: 0, slides: 0 };
   const media = [];
   for (const [lower, e] of pkg.entries) {
     if (plan.remove.has(lower)) continue;
     const kind = relKind.get(lower);
-    if (/(^|\/)media\//.test(lower) || (kind === 'image' && !/\.(xml|bin)$/.test(lower))) { media.push(e); continue; }
+    if (isPicturePart(pkg, lower)) { media.push(e); continue; }
+    if (/(^|\/)media\//.test(lower)) continue;
     if (kind === 'oleObject' || kind === 'package') await describeEmbedded(r, pkg, e);
     else if (kind === 'font') entryBlock(r, 'Embedded font', e, { removable: false, note: 'Needed to display the document' });
     else if (kind === 'control' || kind === 'activeXControlBinary') entryBlock(r, 'Active content', e, { removable: false, note: 'ActiveX control' });
@@ -104,8 +109,8 @@ export async function parseOoxml(zip, r, id) {
     const fam = partFamily(pkg, lower, id.format);
     if (!fam) continue;
     let t;
-    try { t = await pkg.read(lower); } catch { r.warn('Some parts could not be read.'); continue; }
-    if (t === null) { skipped = true; continue; }
+    try { t = await pkg.read(lower); } catch (error) { gap(e, failure(error)); continue; }
+    if (t === null) { gap(e, TOO_LARGE); continue; }
     const hasIds = plan.removedIds.has(lower);
     const needed = mayNeedRewrite(t, fam, hasIds, plan, lower);
     const detect = (fam === 'word' && STORY.test(lower)) || (fam === 'xl' && /^xl\/(workbook|connections|pivotcache\/pivotcachedefinition\d*)\.xml$/.test(lower)) || (fam === 'ppt' && /^ppt\/notesslides\//.test(lower)) || fam === 'core' || fam === 'app';
@@ -116,7 +121,7 @@ export async function parseOoxml(zip, r, id) {
     if (fam === 'ppt' && /^ppt\/slides\/slide\d+\.xml$/.test(lower) && /<p:sld\b[^>]*\sshow="(?:0|false)"/.test(t)) hidden.slides++;
     if (!needed && !detect) continue;
     let doc;
-    try { doc = parseXml(t); } catch (error) { if (error.limit) skipped = true; else r.warn('Some XML parts are malformed.'); continue; }
+    try { doc = parseXml(t); } catch (error) { gap(e, failure(error)); continue; }
     try {
       if (fam === 'core') describeCore(r, doc);
       else if (fam === 'app') describeApp(r, doc);
@@ -128,12 +133,11 @@ export async function parseOoxml(zip, r, id) {
         const notes = all(doc, (x) => x.local === 't').map(text).join(' ').trim();
         if (notes && !/^\d+$/.test(notes)) { r.field('Speaker notes', e.name, sample(notes)); entryBlock(r, 'Speaker notes', e, { removable: false, note: 'Part of the presentation; remove notes in your editor' }); flag(r, 'notes', 'The presentation has speaker notes, which the audience does not see but anyone with the file can read.', e.name); }
       }
-    } catch { r.warn('Some metadata parts could not be read.'); }
+    } catch (error) { gap(e, failure(error)); }
     if (!needed) continue;
     const s = sanitizePart(doc, { name: lower, family: fam }, plan);
     report(r, s, e);
   }
-  if (skipped) r.warn('Some parts are larger than the inspection limit and were not inspected.');
   reportHidden(r, hidden, pkg, family);
   return media;
 }
@@ -223,7 +227,8 @@ function describePeople(r, doc, label) {
 
 async function describeDropped(r, pkg, e, kind, unused) {
   const lower = e.name.toLowerCase();
-  const xml = async () => { const t = await pkg.read(lower); return t ? parseXml(t) : null; };
+  const read = async () => { const t = await pkg.read(lower); if (t === null) r.markIncomplete(e.name, TOO_LARGE); return t; };
+  const xml = async () => { const t = await read(); return t === null ? null : parseXml(t); };
   if (kind === 'Thumbnail') flag(r, 'thumbnail', `${e.name} is a small picture of the first page, which can show content later removed.`, 'Package');
   else if (kind === 'Custom properties') {
     const doc = await xml(); if (!doc) return;
@@ -240,18 +245,18 @@ async function describeDropped(r, pkg, e, kind, unused) {
     const name = data && printerName(data);
     if (name) { r.field('Printer settings', 'Printer', name); flag(r, 'printer', `The printer "${name}" is recorded.`, e.name); }
   } else if (kind === 'Custom XML') {
-    const t = await pkg.read(lower); if (!t || /itemProps/i.test(lower)) return;
+    const t = await read(); if (!t || /itemProps/i.test(lower)) return;
     const visible = t.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
     if (visible) r.field('Custom XML', e.name, sample(visible));
     for (const m of t.matchAll(/<(?:\w+:)?DisplayName>([^<]+)</g)) r.add('People', 'Person', m[1]);
   } else if (kind === 'Digital signature') {
-    const t = /\.xml$/i.test(lower) ? await pkg.read(lower) : null;
+    const t = /\.xml$/i.test(lower) ? await read() : null;
     for (const m of (t ?? '').matchAll(/<(?:\w+:)?X509SubjectName>([^<]+)</g)) { r.add('People', 'Signed by', m[1]); flag(r, 'signature', `The digital signature names ${m[1]}. Cleaning removes the signature, which would no longer be valid.`, e.name); }
   } else if (kind === 'Sensitivity label') {
-    const t = await pkg.read(lower);
+    const t = await read();
     for (const m of (t ?? '').matchAll(/\b(id|siteId)="([^"]+)"/g)) r.field('Sensitivity label', m[1] === 'siteId' ? 'Organization ID' : 'Label ID', m[2]);
   } else if (kind === 'Editing history') {
-    const t = await pkg.read(lower);
+    const t = await read();
     const n = (t?.match(/<(?:\w+:)?(client|chgData|docChg)\b/g) ?? []).length;
     r.field('Editing history', e.name, `${n} records`);
     flag(r, 'fingerprints', 'Editing history records client IDs and dates of past edits.', e.name);

@@ -3,6 +3,7 @@
 import { readEntry, HOSTS, METHODS } from '../../zip/index.js';
 import { utf8, latin1, fmtBytes } from '../bytes.js';
 import { detect, inspectImage } from '../index.js';
+import { XmlError } from './xml.js';
 
 export const DOC_LIMITS = {
   maxPartBytes: 32 * 1024 * 1024,   // one XML part
@@ -24,6 +25,25 @@ export async function readPart(zip, entry, b, limit = DOC_LIMITS.maxPartBytes) {
   const data = await readEntry(zip, entry, cap);
   b.left -= data.length;
   return data;
+}
+
+// Why a part could not be fully read, worded to follow its name in an incomplete-analysis warning.
+export const TOO_LARGE = 'is larger than the inspection limit';
+export const MISSING = 'is missing';
+export function failure(error) {
+  if (error instanceof XmlError) return error.limit ? TOO_LARGE : `is malformed (${error.message})`;
+  return `could not be read (${error?.message ?? error})`;
+}
+
+// Reads and parses a part the analysis depends on. Returns { text } or { reason } when it cannot be fully read.
+export async function readRequired(zip, entry, b, limit, parse) {
+  if (!entry) return { reason: MISSING };
+  let data;
+  try { data = await readPart(zip, entry, b, limit); } catch (error) { return { reason: failure(error) }; }
+  if (!data) return { reason: TOO_LARGE };
+  const text = utf8.decode(data);
+  if (!parse) return { text };
+  try { return { text, doc: parse(text) }; } catch (error) { return { reason: failure(error) }; }
 }
 
 export async function readText(zip, entry, b, limit) {
@@ -177,13 +197,15 @@ function checkOverlap(zip, r) {
 }
 
 // Embedded pictures go through the image inspector. Their findings are listed under the picture's path.
+// A picture that cannot be read leaves the analysis incomplete: its metadata would go unchecked.
 export async function inspectImages(r, zip, entries) {
   const b = budget(DOC_LIMITS.maxImageBytes); let n = 0;
-  for (const e of entries) {
-    if (n >= DOC_LIMITS.maxImages) { r.warn('There are more embedded images than the inspection limit. The rest were not inspected.'); break; }
+  for (const [k, e] of entries.entries()) {
+    if (n >= DOC_LIMITS.maxImages) { r.markIncomplete(`${entries.length - k} embedded images`, `were not inspected (more than ${DOC_LIMITS.maxImages})`); break; }
     let data;
-    try { data = await readPart(zip, e, b, DOC_LIMITS.maxImageBytes); } catch { continue; }
-    if (!data || !detect(data)) continue;
+    try { data = await readPart(zip, e, b, DOC_LIMITS.maxImageBytes); } catch (error) { r.markIncomplete(`Embedded image ${e.name}`, failure(error)); continue; }
+    if (!data) { r.markIncomplete(`Embedded image ${e.name}`, TOO_LARGE); continue; }
+    if (!detect(data)) continue;
     n++;
     const rep = await inspectImage(data);
     const source = `Embedded image ${e.name}`;
@@ -196,6 +218,10 @@ export async function inspectImages(r, zip, entries) {
     }
   }
 }
+
+// Media parts declared as video or audio are not pictures, so they are neither read nor counted
+// against the picture budget.
+export const declaredNonImage = (type) => /^(video|audio)\//i.test(String(type ?? ''));
 
 // The image cleaner keeps a lone orientation tag, so a picture holding only that counts as clean.
 export function imageNeedsCleaning(rep) {

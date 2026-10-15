@@ -2,7 +2,7 @@
 // content, styles and settings, and keeps the manifest in step with the entries.
 import { writeZip } from '../../zip/index.js';
 import { parseXml, all, get, prune, serialize } from '../../metadata/documents/xml.js';
-import { planOdf, sanitizeOdf, odfKind, ODF } from '../../metadata/documents/odf.js';
+import { planOdf, sanitizeOdf, odfKind, isPictureEntry, ODF } from '../../metadata/documents/odf.js';
 import { DOC_LIMITS, budget, readPart } from '../../metadata/documents/package.js';
 import { utf8 } from '../../metadata/bytes.js';
 import { TRACKED, refuse, copyEntry, cleanPicture, reopen, archiveRemovals } from './common.js';
@@ -14,8 +14,8 @@ export async function cleanOdf(zip, report, options) {
   if (report.blocks.some((b) => b.kind === 'Tracked changes') && !options.acceptChanges) refuse(TRACKED, 'acceptChanges');
   const b = budget(DOC_LIMITS.maxReadBytes);
   const plan = await planOdf(zip, b, options);
+  if (plan.incomplete.length) { const { part, reason } = plan.incomplete[0]; refuse(`${part} ${reason}, so the document could not be fully checked and was left untouched.`); }
   if (plan.encrypted) refuse('This document is password protected. It cannot be rewritten without the password, so it was left untouched.');
-  if (!plan.manifest) refuse('The document has no readable manifest, so it was left untouched.');
   const out = new Map(); const removed = archiveRemovals(report);
   const byName = new Map(zip.entries.map((e) => [e.name, e]));
   for (const [name, kind] of plan.remove) removed.push({ kind, container: name, bytes: byName.get(name)?.size ?? 0 });
@@ -23,6 +23,7 @@ export async function cleanOdf(zip, report, options) {
   for (const e of zip.entries) {
     if (plan.remove.has(e.name) || e.directory) continue;
     if (/(^|\/)Pictures\//.test(e.name)) {
+      if (!isPictureEntry(plan, e.name)) continue;
       const picture = await cleanPicture(zip, e, images);
       if (picture) { out.set(e.name, picture.data); removed.push(picture.removed); }
       continue;

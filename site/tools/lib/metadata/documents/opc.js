@@ -1,8 +1,8 @@
 // Office Open XML packages: the part and relationship model, the removal plan and the in-part rewrites.
 // The inspector and the cleaner both run these, so what the inspector reports is exactly what the
 // cleaner removes, and a cleaned file inspects as clean.
-import { parseXml, rootOf, serialize, all, walk, elements, get, set, dropAttrs, attrNs, attrLocal, attrValue, prune, unwrapAll, clear, text } from './xml.js';
-import { DOC_LIMITS, budget, readPart, targetKind, bareName, isLeftover } from './package.js';
+import { XmlError, parseXml, rootOf, serialize, all, walk, elements, get, set, dropAttrs, attrNs, attrLocal, attrValue, prune, unwrapAll, clear, text } from './xml.js';
+import { DOC_LIMITS, budget, readPart, readRequired, failure, MISSING, declaredNonImage, targetKind, bareName, isLeftover } from './package.js';
 import { utf8 } from '../bytes.js';
 
 export const NS = {
@@ -86,35 +86,41 @@ export function resolveTarget(source, target) {
   return path.join('/');
 }
 
-// Reads [Content_Types].xml and every relationship part. Parts are looked up case-insensitively, as OPC
-// requires. pkg.read(part) returns a part's text within the per-file budget, or null when it is over the limits.
-export async function openPackage(zip, b = budget(DOC_LIMITS.maxReadBytes)) {
-  const pkg = { zip, b, entries: new Map(), texts: new Map(), rels: new Map(), relsDocs: new Map(), relByEl: new Map(), defaults: new Map(), overrides: new Map(), errors: [], tooLarge: [] };
+// Reads [Content_Types].xml and every relationship part (only the package relationships with rootOnly).
+// Parts are looked up case-insensitively, as OPC requires. pkg.read(part) returns a part's text within the
+// per-file budget, or null when it is over the limits. pkg.incomplete lists the parts of the package model
+// that could not be fully read as { part, reason }: with any, the relationship graph is not known and
+// nothing may be judged unused.
+export async function openPackage(zip, b = budget(DOC_LIMITS.maxReadBytes), { rootOnly = false } = {}) {
+  const pkg = { zip, b, entries: new Map(), texts: new Map(), rels: new Map(), relsDocs: new Map(), relByEl: new Map(), defaults: new Map(), overrides: new Map(), incomplete: [] };
   for (const e of zip.entries) if (!e.directory) pkg.entries.set(e.name.toLowerCase(), e);
   pkg.read = async (lower, limit = DOC_LIMITS.maxPartBytes) => {
     if (pkg.texts.has(lower)) return pkg.texts.get(lower);
     const e = pkg.entries.get(lower);
     if (!e) return null;
     const data = await readPart(zip, e, b, limit);
-    if (!data) { pkg.tooLarge.push(e.name); return null; }
+    if (!data) return null;
     const t = utf8.decode(data);
     pkg.texts.set(lower, t);
     return t;
   };
-  const typesText = await pkg.read('[content_types].xml', 4 * 1024 * 1024);
-  if (typesText) {
-    pkg.typesDoc = parseXml(typesText);
+  pkg.gap = (part, reason) => { if (!pkg.incomplete.some((x) => x.part === part)) pkg.incomplete.push({ part, reason }); };
+  const types = await readRequired(zip, pkg.entries.get('[content_types].xml'), b, 4 * 1024 * 1024, parseXml);
+  if (types.reason) pkg.gap('[Content_Types].xml', types.reason);
+  else {
+    pkg.typesDoc = types.doc;
     for (const el of elements(rootOf(pkg.typesDoc))) {
       if (el.local === 'Default') pkg.defaults.set(String(get(el, 'Extension') ?? '').toLowerCase(), get(el, 'ContentType') ?? '');
       else if (el.local === 'Override') pkg.overrides.set(String(get(el, 'PartName') ?? '').replace(/^\//, '').toLowerCase(), get(el, 'ContentType') ?? '');
     }
   }
+  if (!pkg.entries.has('_rels/.rels')) pkg.gap('_rels/.rels', MISSING);
   for (const [lower, e] of pkg.entries) {
-    if (!/(^|\/)_rels\/[^/]*\.rels$/.test(lower)) continue;
+    if (!/(^|\/)_rels\/[^/]*\.rels$/.test(lower) || (rootOnly && lower !== '_rels/.rels')) continue;
     const source = sourceOfRels(e.name);
-    let doc;
-    try { const t = await pkg.read(lower, 8 * 1024 * 1024); if (!t) continue; doc = parseXml(t); }
-    catch (error) { pkg.errors.push(`${e.name}: ${error.message}`); continue; }
+    const read = await readRequired(zip, e, b, 8 * 1024 * 1024, parseXml);
+    if (read.reason) { pkg.gap(e.name, read.reason); continue; }
+    const doc = read.doc;
     pkg.relsDocs.set(lower, doc);
     const list = [];
     for (const el of elements(rootOf(doc))) {
@@ -134,6 +140,24 @@ export const contentType = (pkg, lower) => pkg.overrides.get(lower) ?? pkg.defau
 export function mainPart(pkg) {
   const rel = (pkg.rels.get('') ?? []).find((r) => r.kind === 'officeDocument' && !r.external && r.part && pkg.entries.has(r.part));
   return rel ? rel.part : null;
+}
+
+// The format of a package whose content types or package relationships could not be read, from the folder
+// the main part lives in, so it is reported as an incompletely read document rather than a plain archive.
+export function guessFormat(pkg) {
+  const main = mainPart(pkg);
+  const names = main ? [main] : [...pkg.entries.keys()];
+  for (const [dir, format] of [['word/', 'DOCX'], ['xl/', 'XLSX'], ['ppt/', 'PPTX']]) if (names.some((n) => n.startsWith(dir))) return format;
+  return null;
+}
+
+// Pictures the inspector and the cleaner read: anything under media/ or reached by an image relationship,
+// except parts declared as video or audio that no image relationship reaches.
+export function isPicturePart(pkg, lower) {
+  pkg.imageParts ??= new Set([...pkg.rels.values()].flatMap((list) => list.filter((r) => r.kind === 'image' && r.part).map((r) => r.part)));
+  const image = pkg.imageParts.has(lower);
+  if (!(/(^|\/)media\//.test(lower) || (image && !/\.(xml|bin)$/.test(lower)))) return false;
+  return image || !declaredNonImage(contentType(pkg, lower));
 }
 
 // What the cleaner does to the package. options: { removeMacros, acceptChanges }.
@@ -172,15 +196,18 @@ export async function planPackage(pkg, options = {}) {
     for (const rel of list.filter((r) => r.kind === 'vmlDrawing' && r.part && pkg.entries.has(r.part))) {
       try {
         const t = await pkg.read(rel.part);
-        const doc = parseXml(t ?? '');
+        if (t === null) throw new XmlError('part is too large to read', true);
+        const doc = parseXml(t);
         const shapes = all(doc, (x) => x.ns === NS.V && x.local === 'shape');
         const notes = shapes.filter(isNoteShape);
         if (notes.length && notes.length === shapes.length) remove.set(rel.part, 'Comments');
         else if (notes.length) vmlNotes.add(rel.part);
-      } catch { /* left as is; the check afterwards decides */ }
+      } catch (error) { pkg.gap(pkg.entries.get(rel.part).name, failure(error)); }
     }
   }
-  // Parts no relationship reaches any more are dropped too.
+  // Parts no relationship reaches any more are dropped too, but only when every relationship part was
+  // read: on an incomplete graph a part that looks unreached may well be in use.
+  const complete = !pkg.incomplete.length;
   const reached = new Set(); const queue = [''];
   for (let k = 0; k < queue.length; k++) {
     for (const rel of pkg.rels.get(queue[k]) ?? []) {
@@ -191,7 +218,7 @@ export async function planPackage(pkg, options = {}) {
   const orphans = [];
   for (const [lower, e] of pkg.entries) {
     if (lower === '[content_types].xml' || /(^|\/)_rels\/[^/]*\.rels$/.test(lower) || remove.has(lower) || reached.has(lower)) continue;
-    if (isLeftover(e.name)) remove.set(lower, 'System leftovers'); else orphans.push(lower);
+    if (isLeftover(e.name)) remove.set(lower, 'System leftovers'); else if (complete) orphans.push(lower);
   }
   // A part only a dropped part referenced is reported under that part's kind: one walk outward from the
   // dropped parts.
@@ -207,7 +234,7 @@ export async function planPackage(pkg, options = {}) {
   for (const [lower] of pkg.relsDocs) {
     const source = sourceOfRels(lower);
     if (source === '') continue;
-    if (!pkg.entries.has(source)) remove.set(lower, 'Unused part');
+    if (!pkg.entries.has(source)) { if (complete) remove.set(lower, 'Unused part'); }
     else if (remove.has(source)) remove.set(lower, remove.get(source));
   }
   const removedIds = new Map();

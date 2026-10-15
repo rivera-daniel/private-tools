@@ -70,7 +70,6 @@ function structure(I) {
   r.field('Container', 'Objects', String([...doc.entries.values()].filter((e) => e.type !== 0).length));
   if (doc.objstms.size) r.field('Container', 'Object streams', String(doc.objstms.size));
   if (doc.linearized()) r.field('Container', 'Linearized', 'Yes (fast web view)');
-  if (doc.repairedLengths) r.field('Container', 'Stream lengths corrected', String(doc.repairedLengths));
 }
 
 function encryption(I) {
@@ -709,6 +708,7 @@ async function redactions(I) {
 
 function finalSignals(I) {
   const { r } = I;
+  if (I.doc.repairedLengths) r.field('Container', 'Stream lengths corrected', String(I.doc.repairedLengths));
   outer: for (const [name, fields] of r.sources) {
     for (const f of fields) {
       const m = PATH.exec(f.value);

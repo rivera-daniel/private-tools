@@ -176,7 +176,7 @@ export class PdfDocument {
       catch (error) { if (!(error instanceof PdfError)) throw error; }
     }
     const at = this.scan().found.get(num);
-    if (at === undefined) throw new PdfError('object not found');
+    if (at === undefined || tries.includes(at)) throw new PdfError('object not found');
     if (!this.misplaced++) this.warn('Some cross-reference entries point to the wrong place. Those objects were found by scanning the file.');
     const o = this.parseAt(at);
     this.spans.set(num, [o.start, o.end - o.start]);

@@ -147,7 +147,7 @@ test('a file the inspector could not fully read is refused rather than passed as
   }
   const r = await cleanFile(await writeZip(entries), 'book.epub');
   assert.equal(r.ok, false);
-  assert.match(r.reason, /could not be read/);
+  assert.match(r.reason, /could not be (read|fully checked)/);
 });
 
 test('PNG: thousands of compressed text chunks stop at the decompression count and are refused', async () => {

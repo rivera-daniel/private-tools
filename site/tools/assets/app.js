@@ -1,5 +1,5 @@
-// Tool catalog: available tools as cards, planned ones as compact roadmap rows grouped by job, plus search
-// across everything. TOOLS is the single source of truth. stage is null for available tools.
+// Catalog and roadmap share one tool registry. Search includes available and planned tools.
+// stage is null for available tools.
 const GROUPS = [
   { id: 'inspect', name: 'Inspect and clean', short: 'Inspect and clean' },
   { id: 'documents', name: 'Documents and PDF', short: 'Documents' },
@@ -114,20 +114,26 @@ function arrow() {
   return el;
 }
 
-// Available tool: a large card linking to the tool.
+// Available tools keep the whole row clickable, with a concise description.
+const SUMMARIES = {
+  'Image Inspector': 'See the location, camera details and hidden data in a photo.',
+  'File Inspector': 'Find out what a file contains and what it reveals.',
+  'Metadata Cleaner': 'Remove hidden personal data before you share a file.',
+  'Archiver': 'Create, open and encrypt archives without uploading them.',
+  'PDF Editor': 'Organize, edit, protect and redact your PDFs locally.',
+};
 function card(tool) {
   const el = node('a', 'cat-card');
   el.href = tool.href;
-  el.dataset.status = 'available';
   el.dataset.group = tool.group;
   const body = node('span', 'cat-card-body');
-  body.append(node('span', 'cat-eyebrow', groupName[tool.group]), node('h3', '', tool.name), node('span', 'cat-card-copy', tool.copy));
+  body.append(node('h3', '', tool.name), node('span', 'cat-card-copy', SUMMARIES[tool.name] ?? tool.copy));
   el.append(icon(tool, 'cat-icon'), body, arrow());
   return el;
 }
 
 // Compact row, used for the roadmap and for search results. Planned rows open the details dialog.
-function row(tool, withGroup) {
+function row(tool) {
   const el = node(tool.href ? 'a' : 'button', 'cat-row');
   el.dataset.status = tool.stage ? 'planned' : 'available';
   el.dataset.group = tool.group;
@@ -138,7 +144,6 @@ function row(tool, withGroup) {
     el.addEventListener('click', () => openDialog(tool));
   }
   const body = node('span', 'cat-row-body');
-  if (withGroup) body.append(node('span', 'cat-eyebrow', groupName[tool.group]));
   const tag = node('span', 'cat-tag', statusLabel(tool));
   if (!tool.stage) tag.classList.add('live');
   else if (tool.stage === 'Next') tag.classList.add('next');
@@ -157,94 +162,50 @@ function openDialog(tool) {
   dialog.showModal();
 }
 
-// Static build: everything is created once and filtering only toggles hidden.
-const chips = usedGroups.map((g) => ({ id: g.id, label: g.short }));
-chips.unshift({ id: 'all', label: 'All tools' });
-for (const chip of chips) {
-  const button = node('button', '', chip.label);
-  button.type = 'button';
-  button.dataset.group = chip.id;
-  button.setAttribute('aria-pressed', String(chip.id === group));
-  button.addEventListener('click', () => setGroup(chip.id));
-  $('groups').append(button);
-  const option = node('option', '', chip.label);
-  option.value = chip.id;
-  $('group-select').append(option);
+// Both pages use the same registry. Search always includes planned tools.
+const isRoadmap = document.body.dataset.page === 'roadmap';
+const listing = isRoadmap ? planned : available;
+const select = $('group-select');
+for (const item of [{ id: 'all', short: 'All categories' }, ...usedGroups]) {
+  const option = node('option', '', item.short);
+  option.value = item.id;
+  select.append(option);
 }
-
-const cards = available.map(card);
-$('cards').append(...cards);
-
-const roadmapGroups = usedGroups.filter((g) => planned.some((t) => t.group === g.id)).map((g) => {
-  const items = planned.filter((t) => t.group === g.id);
-  const section = node('section', 'cat-group');
-  section.dataset.group = g.id;
-  section.setAttribute('aria-labelledby', `group-${g.id}`);
-  const heading = node('h3', '', g.name);
-  heading.id = `group-${g.id}`;
-  const count = node('span', 'cat-count', String(items.length));
-  count.append(node('span', 'visually-hidden', ' planned'));
-  heading.append(count);
-  const rows = node('div', 'cat-rows');
-  rows.append(...items.map((t) => row(t, false)));
-  section.append(heading, rows);
-  return section;
+const entries = listing.map((tool) => {
+  const el = isRoadmap ? row(tool) : card(tool);
+  el.tool = tool;
+  return el;
 });
-$('roadmap-groups').append(...roadmapGroups);
-
-const results = [...available, ...planned].map((t) => row(t, true));
+$('cards').append(...entries);
+const results = [...available, ...planned].map((t) => row(t));
 $('result-rows').append(...results);
 
 function matches(tool, query) {
   return [tool.name, tool.copy, groupName[tool.group], statusLabel(tool), tool.update ?? ''].join(' ').toLowerCase().includes(query);
 }
-
 function render() {
   const query = search.value.trim().toLowerCase();
-  const inGroup = (el) => group === 'all' || el.dataset.group === group;
-  let status = '';
-  if (query) {
-    let shown = 0;
-    for (const el of results) { el.hidden = !matches(el.tool, query); if (!el.hidden) shown++; }
-    $('results-note').textContent = shown ? `${plural(shown, 'tool')} for “${search.value.trim()}”` : `No tools match “${search.value.trim()}”.`;
-    status = shown ? `${plural(shown, 'tool')} found` : 'No tools found';
-  } else {
-    let live = 0;
-    for (const el of cards) { el.hidden = !inGroup(el); if (!el.hidden) live++; }
-    let soon = 0;
-    for (const section of roadmapGroups) {
-      section.hidden = !inGroup(section);
-      if (!section.hidden) soon += planned.filter((t) => t.group === section.dataset.group && !t.update).length;
-    }
-    $('available').hidden = live === 0;
-    $('roadmap').hidden = !roadmapGroups.some((s) => !s.hidden);
-    $('available-note').textContent = `${plural(live, 'tool')} ready to use`;
-    $('roadmap-note').textContent = `${plural(soon, 'tool')} planned · Explore what’s next`;
-    if (group !== 'all') status = `${groupName[group]}: ${live} available, ${soon} planned`;
+  let count = 0;
+  const current = query ? results : entries;
+  for (const el of current) {
+    el.hidden = (group !== 'all' && el.tool.group !== group) || (query && !matches(el.tool, query));
+    if (!el.hidden) count++;
   }
-  if (query) { $('available').hidden = true; $('roadmap').hidden = true; }
+  $('available').hidden = Boolean(query);
   $('results').hidden = !query;
+  $('available-note').textContent = isRoadmap ? `${plural(count, 'tool')} planned` : `${plural(count, 'tool')} available`;
+  $('results-note').textContent = count ? `${plural(count, 'tool')} found` : 'No tools found. Try another search or category.';
+  let empty = $('catalog-empty');
+  if (!empty) { empty = node('p', 'catalog-empty', 'No tools in this category yet. See what’s coming on the roadmap.'); empty.id = 'catalog-empty'; $('available').append(empty); }
+  empty.hidden = Boolean(query) || count > 0;
   $('clear').hidden = !query;
-  $('search-status').textContent = status;
+  $('search-status').textContent = `${plural(count, 'tool')} ${query ? 'found' : isRoadmap ? 'planned' : 'available'}`;
 }
-
-// When the bar is stuck to the top, bring the start of the list back into view after the content changes.
 function toListTop() {
   const top = sentinel.getBoundingClientRect().top;
   if (top < 0) window.scrollTo(0, top + window.scrollY);
 }
-
-function setGroup(id) {
-  group = id;
-  $('group-select').value = id;
-  for (const button of $('groups').children) button.setAttribute('aria-pressed', String(button.dataset.group === id));
-  if (search.value) search.value = '';
-  if (group !== 'all') $('roadmap').open = true;
-  render();
-  toListTop();
-}
-
-$('group-select').addEventListener('change', (event) => setGroup(event.target.value));
+select.addEventListener('change', () => { group = select.value; render(); toListTop(); });
 search.addEventListener('input', () => { render(); toListTop(); });
 $('clear').addEventListener('click', () => { search.value = ''; render(); search.focus(); });
 search.addEventListener('keydown', (event) => {
@@ -254,19 +215,7 @@ document.addEventListener('keydown', (event) => {
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
   if (event.key === '/' && !dialog.open && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) { event.preventDefault(); search.focus(); }
 });
-// Roadmap links show the whole roadmap, whatever was filtered before.
-document.addEventListener('click', (event) => {
-  if (event.target.closest('a[href="#roadmap"]')) {
-    if (group !== 'all' || search.value) setGroup('all');
-    $('roadmap').open = true;
-  }
-});
 new IntersectionObserver(([entry]) => {
   bar.classList.toggle('stuck', !entry.isIntersecting && entry.boundingClientRect.top < 0);
 }).observe(sentinel);
-
 render();
-
-// Direct roadmap links reveal the disclosure before the browser scrolls to it.
-if (location.hash === '#roadmap') $('roadmap').open = true;
-window.addEventListener('hashchange', () => { if (location.hash === '#roadmap') $('roadmap').open = true; });

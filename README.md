@@ -170,7 +170,7 @@ wrangler.jsonc           Cloudflare Worker configuration
 
 ## Development
 
-Requires Node.js 22 or later. The site has no runtime dependencies and no build step. The test and deploy tools (`playwright-core` and `wrangler`) are pinned to exact versions in `package.json` and `package-lock.json`: run `npm ci` once to install them.
+Requires Node.js 22 or later. The site has no runtime dependencies and no build step. The test and deploy tools (`playwright-core` and `wrangler`) are pinned to exact versions in `package.json` and `package-lock.json`: run `npm ci` once to install them. `.npmrc` keeps them installed when `NODE_ENV=production` is set.
 
 ```sh
 npm run dev       # serve site/ at http://127.0.0.1:4176/ with the production headers

@@ -10,6 +10,9 @@ const browser=await chromium.launch({executablePath:process.env.CHROMIUM ?? '/us
 try {
  const context=await browser.newContext({javaScriptEnabled:false});const page=await context.newPage();
  await page.goto(`${base}/tools/`);
+ assert.equal(await page.getByRole('heading',{name:'Toolkit',exact:true}).count(),1);
+ assert.equal(await page.locator('#cards .tool-illustration').count(),TOOLS.filter(t=>!t.stage).length);
+ assert.equal(await page.locator('#cards .tool-preview').count(),0);
  assert.equal(await page.locator('#cards .cat-card').count(),TOOLS.filter(t=>!t.stage).length);
  for(const t of TOOLS.filter(t=>!t.stage)) {const card=page.locator('#cards article').filter({has:page.getByRole('heading',{name:t.name,exact:true})});assert.ok((await card.textContent()).includes(t.copy));assert.ok((await card.textContent()).includes(DETAILS[t.name]));assert.equal(await card.locator('a').getAttribute('href'),t.href);}
  assert.ok(await page.getByRole('heading',{level:1}).isVisible());await context.close();
@@ -21,7 +24,7 @@ try {
   for(const colorScheme of ['light','dark']){
    await page.emulateMedia({colorScheme});
    await page.locator('.cat-card:last-of-type').scrollIntoViewIfNeeded();
-   await page.waitForFunction(()=>[...document.querySelectorAll('.tool-preview img')].every(i=>i.complete&&i.naturalWidth>0));
+   assert.equal(await page.locator('.tool-illustration').count(),TOOLS.filter(t=>!t.stage).length);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow ${width}/${colorScheme}`);
    await page.evaluate(()=>window.scrollTo(0,0));
    await page.screenshot({path:`${shots}/${width}-${colorScheme}.jpg`,type:'jpeg',quality:80,fullPage:true});
@@ -35,6 +38,6 @@ try {
   await page.locator('.app-shelf a').first().click();assert.ok(await page.locator('#image-inspector').isVisible());assert.equal(await page.locator('#group-select').inputValue(),'all');await page.locator('body').click({position:{x:3,y:3}});await page.keyboard.press('/');assert.ok(await page.locator('#search').evaluate(e=>e===document.activeElement));
   await page.locator('.cat-teaser').click();await page.waitForURL(`${base}/tools/roadmap/`);assert.equal(await page.locator('#cards .cat-row').count(),24);
   await page.locator('#group-select').selectOption('forensics');assert.equal(await page.locator('#cards .cat-row:visible').count(),8);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();console.log(`${width}px: light/dark, real images, search, filters, dialog, keyboard and roadmap passed`);
+  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();console.log(`${width}px: light/dark, illustrated icons, search, filters, dialog, keyboard and roadmap passed`);
  }
 }finally{await browser.close();}

@@ -54,9 +54,8 @@ html:has(.catalog){scroll-padding-top:110px}
 .cat-card{min-width:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden;scroll-margin-top:100px;transition:border-color .18s,box-shadow .18s}
 .cat-card:hover{border-color:var(--line-strong);box-shadow:var(--shadow)}
 .cat-card-link{display:flex;flex-direction:column;height:100%}
-.tool-preview{aspect-ratio:11/7;overflow:hidden;background:#11151a;border-bottom:1px solid var(--line)}
-.tool-preview img{display:block;width:100%;height:100%;object-fit:cover;object-position:top}
-.tool-body{display:flex;flex-direction:column;flex:1;padding:22px 22px 24px}
+.tool-illustration{display:block;width:112px;height:112px;flex:none;margin:0 0 28px}
+.tool-body{display:flex;flex-direction:column;flex:1;padding:28px 26px 26px}
 .tool-heading{display:flex;align-items:center;gap:13px;margin-bottom:15px}
 .tool-heading h3{font-size:21px;line-height:1.25;font-weight:620;letter-spacing:-.6px;margin:0}
 .tool-copy,.tool-details{font-size:14px;line-height:1.6;color:var(--text-2);margin:0}
@@ -105,7 +104,7 @@ html:has(.catalog){scroll-padding-top:110px}
  .app-shelf{max-width:350px;justify-self:center;gap:21px 14px}.app-shelf .app-icon{width:72px;height:72px;border-radius:16px}.app-shelf>a{font-size:11px;gap:9px}
  .cat-bar-inner{padding:20px 0}.catalog-controls{gap:9px}.cat-search input{font-size:16px}.cat-group-select{width:133px;font-size:12px;padding:0 7px}
  .cat-grid,.cat-rows{grid-template-columns:1fr;gap:16px}.tool-heading h3{font-size:22px}.tool-heading .app-icon{width:42px;height:42px;border-radius:10px}
- .tool-body{padding:22px}.tool-copy{font-size:15px}.tool-details{font-size:14px}.tool-preview{aspect-ratio:11/7}
+ .tool-body{padding:22px}.tool-copy{font-size:15px}.tool-details{font-size:14px}
  .cat-teaser{min-height:330px;padding:30px}.cat-teaser h3{font-size:30px}.cat-teaser p{max-width:100%}
  .cat-rows{gap:0}.catalog main{padding-bottom:38px}.catalog-footer{align-items:flex-start;flex-direction:column;gap:24px}.catalog-footer nav{gap:20px;flex-wrap:wrap}
  html:has(.catalog){scroll-padding-top:150px}.cat-card{scroll-margin-top:145px}

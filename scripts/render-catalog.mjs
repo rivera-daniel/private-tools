@@ -1,6 +1,7 @@
 // Regenerate crawlable catalog and roadmap HTML after changing the shared registry.
 // Usage: node scripts/render-catalog.mjs. Does not fetch or upload anything.
-import { writeFile, mkdir, access } from 'node:fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
+import { illustration } from '../site/tools/assets/catalog-illustrations.js';
 import { GROUPS, STAGES, TOOLS, DETAILS } from '../site/tools/assets/catalog-data.js';
 import { ART, ARROW } from '../site/tools/assets/catalog-icons.js';
 const root = new URL('../site/tools/', import.meta.url);
@@ -16,8 +17,7 @@ const options = `<option value="all">All categories</option>${GROUPS.filter((g) 
 function card(t) {
   return `<article class="cat-card" data-tool="${escape(t.name)}" data-group="${escape(t.group)}" id="${slug(t)}">
   <a class="cat-card-link" href="${escape(t.href)}">
-    <div class="tool-preview"><img src="/tools/assets/previews/${slug(t)}.webp" alt="${escape(t.name)} showing sample file results in the actual tool interface" width="1100" height="700" loading="lazy" decoding="async"></div>
-    <div class="tool-body"><div class="tool-heading">${icon(t)}<h3>${escape(t.name)}</h3></div>
+    <div class="tool-body">${illustration(t.art,`card-${slug(t)}-`)}<div class="tool-heading"><h3>${escape(t.name)}</h3></div>
       <p class="tool-copy">${escape(t.copy)}</p><p class="tool-details">${escape(DETAILS[t.name] ?? '')}</p>
       <span class="tool-action">Open tool <span aria-hidden="true">↗</span></span>
     </div>
@@ -38,15 +38,13 @@ function page(roadmap = false) {
 <main>
 <section class="cat-intro wrap" aria-labelledby="catalog-title"><div class="hero-copy"><h1 id="catalog-title">${roadmap?'A little more.<br><span>On the way.</span>':'Your files.<br><span>Your tools.</span>'}</h1><p>${roadmap?'A growing collection, built around your files.':'On your device. No uploads. No accounts.'}</p><div class="hero-actions"><a class="hero-primary" href="#available">${roadmap?'Explore the roadmap':'Explore tools'} <span aria-hidden="true">↓</span></a><a class="hero-secondary" href="${roadmap?'/tools/':'/tools/roadmap/'}">${roadmap?'Back to the tools':'See the roadmap'} <span aria-hidden="true">→</span></a></div></div>
 ${roadmap?'':`<nav class="app-shelf" aria-label="Tools in this collection">${live.slice(0,5).map((t)=>`<a href="#${slug(t)}">${icon(t)}<span>${escape(t.name)}</span></a>`).join('')}</nav>`}</section>
-<div class="cat-body"><div class="cat-sentinel" id="bar-sentinel"></div><div class="cat-bar" id="bar"><div class="cat-bar-inner wrap"><div class="cat-head"><h2 id="available-title">${roadmap?'On the roadmap':'The tools'}</h2><p id="available-note">${roadmap?planned.length+' planned':live.length+' available'}</p></div><div class="catalog-controls"><label class="cat-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span class="visually-hidden">Search all tools, including planned ones</span><input type="search" id="search" placeholder="Search tools" autocomplete="off" aria-controls="available results"><button type="button" class="cat-clear" id="clear" aria-label="Clear search" hidden>×</button></label><select class="cat-group-select" id="group-select" aria-label="Filter tools by category">${options}</select></div></div><p class="visually-hidden" id="search-status" role="status" aria-live="polite"></p></div>
+<div class="cat-body"><div class="cat-sentinel" id="bar-sentinel"></div><div class="cat-bar" id="bar"><div class="cat-bar-inner wrap"><div class="cat-head"><h2 id="available-title">${roadmap?'On the roadmap':'Toolkit'}</h2><p id="available-note">${roadmap?planned.length+' planned':live.length+' available'}</p></div><div class="catalog-controls"><label class="cat-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span class="visually-hidden">Search all tools, including planned ones</span><input type="search" id="search" placeholder="Search tools" autocomplete="off" aria-controls="available results"><button type="button" class="cat-clear" id="clear" aria-label="Clear search" hidden>×</button></label><select class="cat-group-select" id="group-select" aria-label="Filter tools by category">${options}</select></div></div><p class="visually-hidden" id="search-status" role="status" aria-live="polite"></p></div>
 <section class="cat-section wrap" id="available" aria-labelledby="available-title"><div class="${roadmap?'cat-rows':'cat-grid'}" id="cards">${roadmap?planned.map(plannedRow).join('\n'):live.map(card).join('\n')+teaser}</div><p id="catalog-empty" class="catalog-empty" hidden>${roadmap?'No planned tools in this category. <a href="/tools/">Browse the available tools.</a>':'No available tools in this category yet. <a href="/tools/roadmap/">See what’s coming on the roadmap.</a>'}</p></section>
 <section class="cat-section wrap" id="results" aria-labelledby="results-title" hidden><div class="results-heading"><h2 id="results-title">Search results</h2><p id="results-note"></p></div><div class="cat-rows" id="result-rows"></div></section></div>
 </main>
 <footer class="catalog-footer wrap"><div><a class="brand" href="/tools/">${mark}Private Tools</a><p>Your files stay yours.</p></div><nav aria-label="Footer"><a href="https://github.com/rivera-daniel/private-tools#privacy-model">Privacy</a><a href="https://github.com/rivera-daniel/private-tools">GitHub</a><span>© 2026 Daniel Rivera</span></nav></footer>
 <dialog id="tool-dialog" aria-labelledby="dialog-title"><form method="dialog"><button class="close" aria-label="Close">×</button></form><p class="eyebrow" id="dialog-status"></p><h2 id="dialog-title"></h2><p id="dialog-copy"></p><p>Not available yet. Follow its progress on the <a href="/tools/roadmap/">roadmap</a>.</p><form method="dialog"><button class="button">Back to tools</button></form></dialog><script type="module" src="/tools/assets/app.js"></script></body></html>\n`;
 }
-// A new shipped tool needs its own real screenshot, rather than a misleading fallback.
-for (const t of live) await access(new URL(`assets/previews/${slug(t)}.webp`, root));
 await mkdir(new URL('roadmap/',root),{recursive:true});
 await writeFile(new URL('index.html',root),page());
 await writeFile(new URL('roadmap/index.html',root),page(true));

@@ -166,11 +166,9 @@ npm test          # parser and cleaner tests
 
 ### Catalog presentation and screenshots
 
-The catalog and roadmap include static headings, links and detailed descriptions for readers and crawlers without JavaScript. Edit `site/tools/assets/catalog-data.js`, then run `node scripts/render-catalog.mjs` to regenerate both pages. The generator requires a real preview for every available tool.
+The catalog and roadmap include static headings, links and detailed descriptions for readers and crawlers without JavaScript. Edit `site/tools/assets/catalog-data.js`, then run `node scripts/render-catalog.mjs` to regenerate both pages. Catalog cards use scalable artwork from `site/tools/assets/catalog-illustrations.js`. The hero keeps five shortcuts while the grid includes every available tool.
 
-Refresh populated tool screenshots with `BASE=http://127.0.0.1:4176 PLAYWRIGHT_CORE=/path/to/playwright-core/index.mjs node scripts/capture-catalog-previews.mjs`. This uses synthetic files and actual tool UIs. See `site/tools/assets/previews/README.md` for provenance and requirements.
-
-`tests/browser-catalog.mjs` checks static descriptions without JavaScript, real image loading, search, filters, navigation and responsive themes. It uses the same BASE, PLAYWRIGHT_CORE and CHROMIUM settings as the other browser checks.
+`tests/browser-catalog.mjs` checks static descriptions without JavaScript, illustrated cards, search, filters, navigation and responsive themes. It uses the same BASE, PLAYWRIGHT_CORE and CHROMIUM settings as the other browser checks.
 
 The existing HTML robots directives and response headers still disable indexing. Static descriptions prepare the content for search engines but do not change the site's publication or indexing policy.
 

@@ -54,7 +54,7 @@ export function mountRedact(container, ctx) {
 
   function startWorker() {
     worker = new Worker(WORKER, { type: 'module' });
-    worker.onmessage = ({ data }) => { const p = pending.get(data.id); if (!p) return; pending.delete(data.id); clearTimeout(p.timer); if (data.ok) p.resolve(data.result); else p.reject(Object.assign(new Error(data.error.message), { code: data.error.code })); };
+    worker.onmessage = ({ data }) => { const p = pending.get(data.id); if (!p) return; if (data.started) { p.start?.(); return; } pending.delete(data.id); clearTimeout(p.timer); if (data.ok) p.resolve(data.result); else p.reject(Object.assign(new Error(data.error.message), { code: data.error.code })); };
     worker.onerror = (event) => { event.preventDefault(); failAll('The redaction engine stopped unexpectedly. The file may be damaged.'); };
   }
   function failAll(message) { for (const p of pending.values()) { clearTimeout(p.timer); p.reject(Object.assign(new Error(message), { code: 'crashed' })); } pending.clear(); }
@@ -63,14 +63,17 @@ export function mountRedact(container, ctx) {
     const id = ++seq;
     return new Promise((resolve, reject) => {
       const p = { resolve, reject, timer: 0 };
-      if (timeout) p.timer = setTimeout(() => { pending.delete(id); restartWorker(); reject(Object.assign(new Error('The search took too long and was stopped. Try a simpler pattern.'), { code: 'timeout' })); }, timeout);
+      if (timeout) p.start = () => { p.timer = setTimeout(() => { pending.delete(id); restartWorker(); reject(Object.assign(new Error('The search took too long and was stopped. Try a simpler pattern.'), { code: 'timeout' })); }, timeout); };
       pending.set(id, p);
-      worker.postMessage({ id, op, ...payload }, transfer);
+      worker.postMessage({ id, op, ...payload, timed: !!timeout }, transfer);
     });
   }
   async function restartWorker() {
     worker?.terminate(); worker = null; failAll('The redaction engine was restarted.');
-    if (S.bytes) { try { await call('open', { bytes: S.bytes.slice(), password: S.password }); } catch { /* shown on the next action */ } }
+    if (S.bytes) {
+      try { await call('open', { bytes: S.bytes.slice(), password: S.password }); } catch { return; /* shown on the next action */ }
+      call('check').then((fake) => { S.fake = fake; renderBanners(); }, () => {});
+    }
   }
 
   // ---------- DOM ----------
@@ -194,10 +197,11 @@ export function mountRedact(container, ctx) {
   }
 
   function renderBanners() {
+    const consented = !!banners.querySelector('#rd-sigok')?.checked;
     banners.replaceChildren();
     const info = S.info; if (!info) return;
     if (info.signed) {
-      const consent = el('input', { type: 'checkbox', id: 'rd-sigok' });
+      const consent = el('input', { type: 'checkbox', id: 'rd-sigok', checked: consented });
       banners.append(el('div', { class: 'rd-banner' }, el('span', { class: 'rd-banner-icon' }, icon(ICONS.warn)),
         el('div', {}, el('strong', { text: 'This PDF is digitally signed' }), el('p', { text: 'Redacting changes the document, so the signature becomes invalid and is removed.' }),
           el('label', { class: 'rd-check' }, consent, el('span', { text: 'Redact anyway and remove the signature' })))));
@@ -290,7 +294,7 @@ export function mountRedact(container, ctx) {
     if (!S.draw || e.button > 0 || S.busy) return;
     const box = overlay.getBoundingClientRect();
     drag = { id: e.pointerId, start: toPt(e.clientX - box.left, e.clientY - box.top) };
-    overlay.setPointerCapture(e.pointerId);
+    try { overlay.setPointerCapture(e.pointerId); } catch { /* the pointer is already gone; moves still arrive on the overlay */ }
     e.preventDefault();
   });
   overlay.addEventListener('pointermove', (e) => {

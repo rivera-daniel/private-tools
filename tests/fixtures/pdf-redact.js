@@ -43,8 +43,9 @@ export function leaky() {
     catalog: '/Outlines 8 0 R /AcroForm << /Fields [10 0 R 11 0 R] /DA (/Helv 10 Tf 0 g) >> /StructTreeRoot 12 0 R /MarkInfo << /Marked true >> /PageLabels << /Nums [0 << /S /D /P (John Secretman-) >>] >> /Metadata 14 0 R',
     page1: '/Annots [10 0 R 11 0 R] /StructParents 0',
     extra: {
-      8: '<< /Type /Outlines /First 9 0 R /Last 9 0 R /Count 1 >>',
-      9: '<< /Title (Notes about John Secretman) /Parent 8 0 R /Dest [3 0 R /Fit] >>',
+      8: '<< /Type /Outlines /First 9 0 R /Last 15 0 R /Count 2 >>',
+      9: '<< /Title (Notes about John Secretman) /Parent 8 0 R /Next 15 0 R /Dest [3 0 R /Fit] >>',
+      15: '<< /Title (Appendix) /Parent 8 0 R /Prev 9 0 R /Dest [6 0 R /Fit] >>',
       // Under the mark at the name.
       10: '<< /Type /Annot /Subtype /Widget /FT /Tx /T (overlay) /V (John Secretman) /Rect [300 715 500 731] /P 3 0 R /DA (/Helv 10 Tf 0 g) >>',
       // Elsewhere on the page.
@@ -114,5 +115,14 @@ export function signed() {
       8: '<< /Type /Annot /Subtype /Widget /FT /Sig /T (sig) /V 9 0 R /Rect [0 0 0 0] /P 3 0 R >>',
       9: '<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /ByteRange [0 0 0 0] /Contents <00> >>',
     },
+  });
+}
+
+// A scanned page: a full-page JPEG with invisible OCR text (render mode 3) over it. jpeg is the image data.
+export function scanned(jpeg, width, height) {
+  return personal({
+    lines: ['q 612 0 0 792 0 0 cm /Scan Do Q', 'BT 3 Tr /F1 12 Tf 72 720 Td (Patient Ellen Scannedname DOB 1971-02-09) Tj ET', 'BT 3 Tr /F1 12 Tf 72 700 Td (Ward seven notes) Tj ET'].join('\n'),
+    resources: '/XObject << /Scan 8 0 R >>',
+    extra: { 8: stream(`<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode >>`, Buffer.from(jpeg)) },
   });
 }

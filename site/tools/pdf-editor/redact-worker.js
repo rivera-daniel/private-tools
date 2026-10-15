@@ -57,6 +57,8 @@ self.onmessage = async ({ data }) => {
   const { id, op } = data;
   try {
     await ready;
+    // Lets the page time a request from when it starts rather than from when it was queued.
+    if (data.timed) self.postMessage({ id, started: true });
     if (!Object.hasOwn(ops, op)) throw new R.RedactError('Unknown request.', 'op');
     const result = await ops[op](data);
     const transfer = [];

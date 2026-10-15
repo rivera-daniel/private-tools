@@ -108,6 +108,24 @@ try {
       await page.waitForFunction(() => document.querySelectorAll('.rd-card[aria-label="Marked for redaction"] .rd-item').length === 3);
       await page.click('.rd-card[aria-label="Marked for redaction"] button[aria-label^="Remove"][aria-label*="Area"]');
       await page.waitForFunction(() => document.querySelectorAll('.rd-card[aria-label="Marked for redaction"] .rd-item').length === 2);
+    } else {
+      // Touch: Draw starts off on touch screens so the page scrolls; switched on, a finger drag draws a box.
+      assert.equal(await page.getAttribute('.rd-toggle', 'aria-pressed'), 'false');
+      await page.click('.rd-toggle');
+      assert.equal(await page.getAttribute('.rd-toggle', 'aria-pressed'), 'true');
+      await page.locator('.rd-stage').scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
+      const scrollBefore = await page.evaluate(() => [scrollY, document.querySelector('.rd-stage').scrollTop]);
+      await page.evaluate(() => {
+        const o = document.querySelector('.rd-overlay'); const b = o.getBoundingClientRect();
+        const at = (type, fx, fy) => o.dispatchEvent(new PointerEvent(type, { pointerId: 7, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, button: type === 'pointermove' ? -1 : 0, clientX: b.left + b.width * fx, clientY: b.top + b.height * fy }));
+        at('pointerdown', 0.55, 0.45); at('pointermove', 0.65, 0.5); at('pointermove', 0.8, 0.55); at('pointerup', 0.8, 0.55);
+      });
+      await page.waitForFunction(() => document.querySelectorAll('.rd-card[aria-label="Marked for redaction"] .rd-item').length === 3);
+      assert.deepEqual(await page.evaluate(() => [scrollY, document.querySelector('.rd-stage').scrollTop]), scrollBefore, 'drawing did not scroll');
+      assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.rd-overlay')).touchAction), 'none');
+      await page.click('.rd-card[aria-label="Marked for redaction"] button[aria-label^="Remove"][aria-label*="Area"]');
+      await page.waitForFunction(() => document.querySelectorAll('.rd-card[aria-label="Marked for redaction"] .rd-item').length === 2);
     }
     await page.focus('.rd-overlay');
     await page.keyboard.press('Enter');

@@ -899,9 +899,12 @@ export function verifyRedaction(mupdf, data, { pages, marks, plan, label = '', l
 
     // Structure.
     const raw = latin(data);
+    // One cross-reference section and one version; /Prev elsewhere (outline siblings) is not a revision.
     const revisions = (raw.match(/startxref/g) ?? []).length;
-    if (revisions !== 1 || /\/Prev\s/.test(raw)) leftovers.push({ kind: 'The file still holds earlier revisions' }); else checks.push('The file is one revision with no earlier versions inside');
-    if (/\/Encrypt\b/.test(raw)) leftovers.push({ kind: 'The file is still encrypted' });
+    const trailer = obj(() => pdf.getTrailer());
+    if (revisions !== 1 || safe(() => pdf.countVersions(), 2) !== 1 || (trailer && !trailer.get('Prev').isNull())) leftovers.push({ kind: 'The file still holds earlier revisions' });
+    else checks.push('The file is one revision with no earlier versions inside');
+    if (trailer && !trailer.get('Encrypt').isNull()) leftovers.push({ kind: 'The file is still encrypted' });
     let marksLeft = 0;
     for (let i = 0; i < n; i++) for (const a of safe(() => pdf.loadPage(i).getAnnotations(), [])) if (safe(() => a.getType(), '') === 'Redact') marksLeft++;
     if (marksLeft) leftovers.push({ kind: `${marksLeft} redaction mark${marksLeft === 1 ? ' was' : 's were'} not applied` });

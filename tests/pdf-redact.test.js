@@ -96,13 +96,33 @@ test('outline titles, form values, structure and marked-content text, page label
   assert.ok(!/secretman/i.test(all), 'no trace in any object or stream');
   assert.ok(!/secretman/i.test(allText(r.data)));
   const d = open(r.data);
-  assert.deepEqual(d.loadOutline().map((o) => o.title), ['Notes about [redacted]']);
+  assert.deepEqual(d.loadOutline().map((o) => o.title), ['Notes about [redacted]', 'Appendix']);
   assert.deepEqual(d.loadPage(0).getWidgets().map((w) => w.getValue()), ['', '']);
   assert.ok(allText(r.data).includes('[REDACTED]'), 'label drawn');
   const kinds = new Set(r.removed.map((x) => x.kind));
   for (const k of ['Title', 'Form field value', 'Alternate text', 'Actual text', 'Marked content text', 'Page label', 'Document info', 'XMP']) assert.ok(kinds.has(k), k);
   assert.ok(!all.includes('Records'), 'document info gone');
   assert.ok(allText(r.data).includes('Public line stays'));
+});
+
+test('a scanned page: the OCR word and the pixels under the mark go, and the check passes', async () => {
+  const w = 612; const h = 792;
+  const pix = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, w, h], false);
+  const px = pix.getPixels(); const stride = pix.getStride();
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = y * stride + x * 3; px[o] = 200 + (x % 50); px[o + 1] = 190 + (y % 60); px[o + 2] = (x * y) % 256; }
+  const jpeg = pix.asJPEG(75, false).slice();
+  const src = fx.scanned(jpeg, w, h);
+  const [m] = find(src, 'Scannedname');
+  assert.ok(m, 'OCR text is searchable');
+  const r = await redact(mupdf, src, [markOf(m)], { images: 'blank-pixels' });
+  assert.ok(r.ok, `${r.reason} ${JSON.stringify(r.verification?.leftovers)}`);
+  const text = allText(r.data);
+  assert.ok(!text.includes('Scannedname'));
+  assert.ok(text.includes('Ward seven notes') && text.includes('Patient'));
+  assert.ok(r.verification.checks.includes('No image shows anything under the marks'));
+  assert.deepEqual(checkRedactions(mupdf, open(r.data)).pages, []);
+  const c = [(m.rect[0] + m.rect[2]) / 2, (m.rect[1] + m.rect[3]) / 2];
+  assert.deepEqual(pixel(r.data, 0, c[0], c[1]), [0, 0, 0]);
 });
 
 test('earlier revisions holding the secret are gone', async () => {

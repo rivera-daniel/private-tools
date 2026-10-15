@@ -1,0 +1,10 @@
+MuPDF.js 1.28.1, the JavaScript and WebAssembly build of MuPDF by Artifex Software.
+License: GNU Affero General Public License v3.0 or later (see LICENSE).
+Source: https://www.npmjs.com/package/mupdf/v/1.28.1 and https://git.ghostscript.com/?p=mupdf.git
+Package tarball sha512: Gi11Ow2G1SlrXKJNZBL1eAIGFVih5+4ZKqjptamTVaj/5hnlrcVrVbyb7lHE2lfFKdxZPyv9ZtfOOq7XgjzEig==
+
+Files copied unchanged from the package's dist/ directory:
+5d237eadcb9640584e0050f6f958e547887b7a54d80a04043e12be9420931076  mupdf.js
+25382abbfbf5c52191e5ac59e1412a0da88647fecfab0c1d797bb5948443eea4  mupdf-wasm.js
+5a30ef7b027f541ea8fc54e7c73f16414b0b59940741a12efe5e55f1fd0a99d7  mupdf-wasm.wasm
+7f5be8db37e8f3844c24c8aada493b0bc3b8f3c37d58c6dafbfdecbc09c24a38  mupdf.d.ts

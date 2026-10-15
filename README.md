@@ -63,6 +63,7 @@ Creates and opens archives in the browser.
 | File Inspector | Available | Shows what any file reveals: its true type, hidden text, user names, build paths, signatures and metadata. |
 | Metadata Cleaner | Available | Removes metadata from photos, documents, PDFs, audio and video on your device and re-inspects the result. |
 | Archiver | Available | Creates and opens ZIP, 7z, tar and gzip archives and extracts RAR, xz, ISO and more, with AES-256 encryption. |
+| PDF Editor | Planned | Merges, splits, reorders, rotates, protects and compresses PDFs, removes redacted content for real, and adds annotations, form entries and signatures, using MuPDF in WebAssembly. |
 | Private OCR | Planned | Extracts text from images and scanned documents on your device. |
 | Image Converter | Planned | Converts, resizes and compresses images without uploading them. |
 | Resume ATS Preview | Planned | Shows the text an applicant tracking system extracts from a resume and flags formatting it cannot read. |
@@ -163,5 +164,6 @@ The code is licensed under the [GNU Affero General Public License v3.0](LICENSE)
 Third-party material:
 
 - Some test fixtures come from the [C2PA reference implementation](https://github.com/contentauth/c2pa-rs) under MIT or Apache-2.0. See `tests/fixtures/NOTICE.md`.
+- MuPDF.js is licensed under the AGPL-3.0. See `site/tools/vendor/mupdf/NOTICE`.
 - libarchive and the compression libraries in its WebAssembly build (zlib, liblzma, bzip2, zstd, lz4) are under permissive licenses. See `site/tools/vendor/libarchive/NOTICE`, which `site/tools/vendor/libarchive/build/build.sh` regenerates.
 - The Inter font is licensed under the SIL Open Font License. See `site/tools/assets/fonts/INTER-LICENSE.txt`.

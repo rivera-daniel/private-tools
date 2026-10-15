@@ -88,7 +88,6 @@ const groupName = Object.fromEntries(GROUPS.map((g) => [g.id, g.name]));
 const byStage = (a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage);
 const available = TOOLS.filter((t) => !t.stage);
 const planned = TOOLS.filter((t) => t.stage).sort(byStage);
-const plannedTools = planned.filter((t) => !t.update);
 const usedGroups = GROUPS.filter((g) => TOOLS.some((t) => t.group === g.id));
 let group = 'all';
 
@@ -168,19 +167,18 @@ for (const chip of chips) {
   button.setAttribute('aria-pressed', String(chip.id === group));
   button.addEventListener('click', () => setGroup(chip.id));
   $('groups').append(button);
+  const option = node('option', '', chip.label);
+  option.value = chip.id;
+  $('group-select').append(option);
 }
 
 const cards = available.map(card);
-const more = node('a', 'cat-more');
-more.href = '#roadmap';
-more.append(node('span', 'cat-more-count', `${plannedTools.length} more on the way`), node('span', 'cat-more-link', 'See the roadmap'), arrow());
-$('cards').append(...cards, more);
+$('cards').append(...cards);
 
 const roadmapGroups = usedGroups.filter((g) => planned.some((t) => t.group === g.id)).map((g) => {
   const items = planned.filter((t) => t.group === g.id);
   const section = node('section', 'cat-group');
   section.dataset.group = g.id;
-  section.dataset.size = String(Math.min(items.length, 4));
   section.setAttribute('aria-labelledby', `group-${g.id}`);
   const heading = node('h3', '', g.name);
   heading.id = `group-${g.id}`;
@@ -213,7 +211,6 @@ function render() {
   } else {
     let live = 0;
     for (const el of cards) { el.hidden = !inGroup(el); if (!el.hidden) live++; }
-    more.hidden = group !== 'all';
     let soon = 0;
     for (const section of roadmapGroups) {
       section.hidden = !inGroup(section);
@@ -221,8 +218,8 @@ function render() {
     }
     $('available').hidden = live === 0;
     $('roadmap').hidden = !roadmapGroups.some((s) => !s.hidden);
-    $('available-note').textContent = `${plural(live, 'tool')} you can use today. Everything runs in your browser.`;
-    $('roadmap-note').textContent = group === 'all' ? `${plural(soon, 'tool')} in development, grouped by job. Select one for details.` : `${plural(soon, 'tool')} in development. Select one for details.`;
+    $('available-note').textContent = `${plural(live, 'tool')} ready to use`;
+    $('roadmap-note').textContent = `${plural(soon, 'tool')} planned · Explore what’s next`;
     if (group !== 'all') status = `${groupName[group]}: ${live} available, ${soon} planned`;
   }
   if (query) { $('available').hidden = true; $('roadmap').hidden = true; }
@@ -239,12 +236,15 @@ function toListTop() {
 
 function setGroup(id) {
   group = id;
+  $('group-select').value = id;
   for (const button of $('groups').children) button.setAttribute('aria-pressed', String(button.dataset.group === id));
   if (search.value) search.value = '';
+  if (group !== 'all') $('roadmap').open = true;
   render();
   toListTop();
 }
 
+$('group-select').addEventListener('change', (event) => setGroup(event.target.value));
 search.addEventListener('input', () => { render(); toListTop(); });
 $('clear').addEventListener('click', () => { search.value = ''; render(); search.focus(); });
 search.addEventListener('keydown', (event) => {
@@ -256,10 +256,17 @@ document.addEventListener('keydown', (event) => {
 });
 // Roadmap links show the whole roadmap, whatever was filtered before.
 document.addEventListener('click', (event) => {
-  if (event.target.closest('a[href="#roadmap"]') && (group !== 'all' || search.value)) setGroup('all');
+  if (event.target.closest('a[href="#roadmap"]')) {
+    if (group !== 'all' || search.value) setGroup('all');
+    $('roadmap').open = true;
+  }
 });
 new IntersectionObserver(([entry]) => {
   bar.classList.toggle('stuck', !entry.isIntersecting && entry.boundingClientRect.top < 0);
 }).observe(sentinel);
 
 render();
+
+// Direct roadmap links reveal the disclosure before the browser scrolls to it.
+if (location.hash === '#roadmap') $('roadmap').open = true;
+window.addEventListener('hashchange', () => { if (location.hash === '#roadmap') $('roadmap').open = true; });

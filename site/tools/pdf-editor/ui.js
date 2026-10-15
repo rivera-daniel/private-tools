@@ -43,10 +43,13 @@ function spawn() {
     calls.delete(data.id);
     if (data.type === 'error') call.reject(new Error(data.message)); else call.resolve(data);
   };
+  // A crashed worker loses every open file: it is replaced and the editor starts over.
   worker.onerror = (event) => {
     event.preventDefault();
-    for (const call of calls.values()) call.reject(new Error('The PDF engine stopped unexpectedly. The browser may have run out of memory.'));
+    for (const call of calls.values()) call.reject(new Error('The PDF engine stopped unexpectedly, probably because the browser ran out of memory. Open your files again.'));
     calls.clear();
+    worker.terminate(); engineReady = false; spawn();
+    resetAll();
   };
 }
 spawn();
@@ -115,7 +118,8 @@ window.addEventListener('pagehide', () => { for (const u of urls) URL.revokeObje
 const isPdfName = (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
 const isImage = (f) => f.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|avif)$/i.test(f.name);
 async function sniffPdf(file) { const head = new Uint8Array(await file.slice(0, 1024).arrayBuffer()); return new TextDecoder('latin1').decode(head).includes('%PDF-'); }
-const openBytes = () => [...sources.values()].reduce((n, s) => n + s.bytes, 0);
+// Only files the user opened count toward the limit, not the versions kept for Undo.
+const openBytes = () => [...sources.values()].reduce((n, s) => n + (s.derived ? 0 : s.bytes), 0);
 
 async function addFiles(list) {
   const files = [...list];
@@ -186,8 +190,8 @@ function addSource(meta, label) {
 function askPassword(name, r) {
   const form = $('unlock');
   form.hidden = false; form.dataset.state = r.wrongPassword ? 'wrong' : '';
-  $('unlock-title').textContent = r.ownerPassword ? `${name} restricts changes` : `${name} is password protected`;
-  $('unlock-detail').textContent = r.wrongPassword ? 'That password is not correct. Try again.' : r.ownerPassword ? 'Its author limited what can be changed. Enter the owner password to edit it.' : 'Enter its password to open it.';
+  $('unlock-title').textContent = r.ownerPassword ? `${name} has restrictions` : `${name} is password protected`;
+  $('unlock-detail').textContent = r.wrongPassword ? 'That password is not correct. Try again.' : r.ownerPassword ? 'Its author limited printing, copying or changes. Enter the owner password to edit it.' : 'Enter its password to open it.';
   $('unlock-password').value = ''; $('unlock-password').focus();
   return new Promise((resolve) => {
     const finish = (value) => { form.hidden = true; form.onsubmit = null; $('unlock-skip').onclick = null; resolve(value); };
@@ -422,12 +426,16 @@ $('reset').addEventListener('click', () => { if (!busy) commit(keyed(original), 
 $('close').addEventListener('click', () => {
   if (busy) return;
   call({ type: 'drop', ids: [...sources.keys()] }).catch(() => {});
+  resetAll();
+  showError(null);
+});
+function resetAll() {
   sources.clear(); plan = []; original = []; steps = []; at = -1; selected = new Set(); notes.length = 0; letterCount = 0;
   for (const b of bitmaps.values()) b.close();
   bitmaps.clear(); for (const li of nodes.values()) observer.unobserve(li); nodes.clear(); list.replaceChildren(); visible.clear();
-  $('save-result').hidden = true; $('compress-result').hidden = true; showError(null);
+  $('save-result').hidden = true; $('compress-result').hidden = true;
   render();
-});
+}
 document.addEventListener('keydown', (e) => {
   if ($('editor').hidden || mode === 'redact' || e.target.closest('input, textarea, select, [contenteditable]')) return;
   if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
@@ -522,7 +530,7 @@ async function openRedact() {
 function replaceWith(meta, label) {
   const signed = usedSources().some((s) => s.signed);
   const letter = LETTERS[letterCount++ % LETTERS.length];
-  sources.set(meta.id, { ...meta, signed: meta.signed || signed, letter, name: usedSources()[0]?.name ?? meta.name });
+  sources.set(meta.id, { ...meta, derived: true, signed: meta.signed || signed, letter, name: usedSources()[0]?.name ?? meta.name });
   commit(keyed(fromSource(meta.id, meta.pageCount)), label, false);
 }
 

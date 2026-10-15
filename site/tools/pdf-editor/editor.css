@@ -101,8 +101,8 @@ input[type=range]{display:block;width:100%;margin:0;accent-color:var(--red)}
   .doc-actions .ghost{flex:1;white-space:nowrap;padding:8px 10px}
   .tool-button{padding:8px 9px}
   .tool-button .label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-  .modes{justify-content:flex-start;overflow-x:auto;scrollbar-width:none}
-  .modes button{flex:none;padding:8px 13px}
+  .modes{display:grid;grid-template-columns:repeat(3,1fr);width:100%;gap:2px}
+  .modes button{padding:8px 6px}
   .select-bar{padding:10px 12px}
   .pages{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));padding:12px;gap:10px 6px;max-height:64vh}
   .page{padding:6px}

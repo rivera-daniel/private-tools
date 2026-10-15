@@ -153,6 +153,14 @@ test('password: AES-256 (V 5, R 6), reopen with password, permissions, remove pa
   // A restricted file asks for the owner password before it can be edited.
   assert.equal(openPdf(locked).needsPassword, true);
   assert.equal(openPdf(locked, 'open sesame').ownerPassword, true);
+  // Print and copy restrictions also need the owner password, with or without a user password.
+  assert.equal(openPdf(protectPdf(plain, { userPassword: 'u', allow: { copy: false } }), 'u').ownerPassword, true);
+  const src = open(plain).asPDF();
+  const ownerOnly = src.saveToBuffer(`encrypt=aes-256,owner-password=o,permissions=${permissionValue({ print: false })}`).asUint8Array().slice();
+  assert.equal(open(ownerOnly).needsPassword(), false, 'opens without a password');
+  assert.equal(openPdf(ownerOnly).ownerPassword, true);
+  assert.equal(openPdf(ownerOnly, 'wrong').wrongPassword, true);
+  assert.equal(openPdf(ownerOnly, 'o').pageCount, 2);
   // With every permission allowed the user password also owns the file.
   const open2 = protectPdf(plain, { userPassword: 'pw' });
   assert.equal(open(open2).authenticatePassword('pw') & 4, 4);

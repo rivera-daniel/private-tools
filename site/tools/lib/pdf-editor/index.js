@@ -30,10 +30,11 @@ function openRaw(bytes) {
   return pdf;
 }
 
-const ALL_EDITS = ['edit', 'assemble', 'annotate', 'form'];
+// Any restriction the author set, which saving without encryption would lift.
+const ALL_EDITS = ['print', 'copy', 'edit', 'assemble', 'annotate', 'form'];
 
 // Opens a PDF. Returns { needsPassword, wrongPassword, ownerPassword } without a document when a password
-// is needed: ownerPassword means the file opens but its author restricted changes, which only the owner
+// is needed: ownerPassword means the file opens but its author restricted printing, copying or changes, which only the owner
 // password lifts. Otherwise { source, pageCount, sizes, encrypted, signed, repaired }.
 export function openPdf(bytes, password = null) {
   const data = u8(bytes);

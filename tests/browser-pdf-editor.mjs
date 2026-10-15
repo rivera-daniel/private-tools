@@ -54,8 +54,6 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   assert.ok(loaded.includes(`${base}/tools/vendor/mupdf/mupdf-wasm.wasm`), 'MuPDF loaded');
   assert.equal(await page.title(), 'PDF Editor — Private Tools');
   await page.screenshot({ path: `${shots}/pdf-editor-${label}-empty.png`, fullPage: label === 'mobile' });
-  // Everything is loaded: the rest works offline.
-  await context.setOffline(true);
 
   const save = async (click) => { const [d] = await Promise.all([page.waitForEvent('download'), click()]); const p = join(dir, `${label}-${d.suggestedFilename()}`); await d.saveAs(p); return { name: d.suggestedFilename(), bytes: readFileSync(p) }; };
   const labels = () => page.$$eval('#pages li.page', (lis) => lis.map((li) => li.getAttribute('aria-label')));
@@ -88,6 +86,16 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
     await page.dragAndDrop('#pages li.page:nth-child(5)', '#pages li.page:nth-child(1)', { targetPosition: { x: 5, y: 40 } });
     await page.waitForFunction(() => /from bravo/.test(document.querySelector('#pages li.page')?.getAttribute('aria-label') ?? ''));
   }
+  // Redact mode mounts the redaction module or says it is not available. Checked online, since the
+  // redaction module is fetched when the tab is first opened.
+  redactAsked = true;
+  await page.click('#tab-redact');
+  await page.waitForFunction(() => document.getElementById('redact-panel').children.length > 0);
+  await page.click('#tab-organize');
+
+  // Everything else is loaded: the rest works offline.
+  await context.setOffline(true);
+
   await page.screenshot({ path: `${shots}/pdf-editor-${label}-organize.png`, fullPage: label === 'mobile' });
 
   // Save the merge with hidden data removed: right pages in the right order, no author left.
@@ -162,14 +170,6 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
     assert.match(await page.textContent('#compress-result'), /smaller/);
     await page.screenshot({ path: `${shots}/pdf-editor-${label}-compress.png` });
   }
-
-  // Redact mode mounts the redaction module or says it is not available.
-  redactAsked = true;
-  await page.click('#tab-redact');
-  await page.waitForFunction(() => document.getElementById('redact-panel').children.length > 0);
-  const redactText = await page.textContent('#redact-panel');
-  assert.ok(/not available in this build/.test(redactText) || redactText.trim().length > 0);
-  await page.click('#tab-organize');
 
   // A password-protected PDF asks for its password; a wrong one is refused.
   await page.click('#close');

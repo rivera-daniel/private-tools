@@ -90,7 +90,7 @@ const rawName = (file) => file.name.replace(/\.(xz|bz2|bzip2|zst|zstd|lzma|lz4)$
 export async function listArchive(file, format, { cancelled = () => false, password = null } = {}) {
   const M = await load();
   const a = open(M, file, format, password);
-  const entries = []; const warnings = [];
+  const entries = []; const warnings = []; let declared = 0;
   try {
     for (;;) {
       if (cancelled()) throw new Cancelled();
@@ -108,6 +108,14 @@ export async function listArchive(file, format, { cancelled = () => false, passw
       const kind = M._ar_hardlink() ? 'hardlink' : TYPE[M._ar_type()] ?? 'other';
       const { path, note } = safePath(name);
       entries.push({ id: entries.length, name, path, note: kind === 'directory' && note === 'empty' ? null : note, kind, size: kind === 'file' ? (size >= 0 ? size : null) : 0, compressedSize: null, modified: mtime > 0 ? new Date(mtime * 1000) : null, encrypted: M._ar_encrypted() === 1, weak: false, method: null });
+      // Skipping an entry of a compressed tar decompresses it, so declared sizes are checked first: a tiny
+      // file claiming terabytes would otherwise keep the reader busy with nothing to show for it.
+      if (size > 0) declared += size;
+      if (declared > LIMITS.diskTotal || (declared > LIMITS.ratioFloor && declared / Math.max(1, file.size) > LIMITS.maxRatio)) {
+        throw new LimitError(`This archive claims to expand more than ${LIMITS.maxRatio.toLocaleString('en-US')} times its size, which is how zip bombs work, so it was not opened.`);
+      }
+      // A raw compressed file has one entry; skipping it would decompress the whole file for nothing.
+      if (raw) break;
       if (M._ar_skip(a) < WARN) { warnings.push(`The listing stopped early. ${friendly(text(M, M._ar_error(a)), format)}`); break; }
     }
     const decrypts = format === '7z';

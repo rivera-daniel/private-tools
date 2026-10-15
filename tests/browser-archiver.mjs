@@ -47,6 +47,13 @@ const have7z = tool(sevenZip, ['a', '-bso0', 'files.7z', 'notes.txt', 'folder'])
 const plainTar = await collect(tarStream([{ name: 'xz/inside.txt', size: 9, source: [enc.encode('xz inside')], mtime: 0 }]));
 writeFileSync(`${dir}/plain.tar`, plainTar);
 const haveXz = tool(has('xz') && 'xz', ['-kf', 'plain.tar']);
+// A tar.xz whose only header claims 50 GB: listing must stop with the bomb message, not decompress.
+const bomb = (await collect(tarStream([{ name: 'huge.bin', size: 4, source: [enc.encode('tiny')], mtime: 0 }]))).slice();
+bomb.set(enc.encode(`${(50 * 2 ** 30).toString(8).padStart(11, '0')}\0`), 124);
+let bombSum = 0; for (let i = 0; i < 512; i++) bombSum += i >= 148 && i < 156 ? 32 : bomb[i];
+bomb.set(enc.encode(`${bombSum.toString(8).padStart(6, '0')}\0 `), 148);
+writeFileSync(`${dir}/bomb.tar`, bomb);
+const haveBomb = tool(has('xz') && 'xz', ['-kf', 'bomb.tar']);
 for (const [name, bytes] of Object.entries(LIBARCHIVE_SAMPLES)) writeFileSync(`${dir}/${name}`, bytes);
 if (!have7z || !haveXz) console.log(`skipping ${[!have7z && '7z', !haveXz && 'tar.xz'].filter(Boolean).join(' and ')} fixtures: no tool installed`);
 
@@ -179,6 +186,12 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
     assert.match(await page.textContent('#archive-facts'), /^tar\.xz archive · 1 file/);
     const inside = await save(() => page.click('button[aria-label="Save xz/inside.txt"]'));
     assert.equal(inside.bytes.toString(), 'xz inside');
+  }
+  if (haveBomb) {
+    await page.click('#open-another').catch(() => {});
+    await page.setInputFiles('#open-file', `${dir}/bomb.tar.xz`);
+    await page.waitForSelector('#open-error:not([hidden])', { timeout: 10000 });
+    assert.match(await page.textContent('#open-error'), /zip bombs/);
   }
   await openAndWait(`${dir}/sevenZipEncrypted`);
   assert.match(await page.textContent('#archive-facts'), /7z archive · 1 file .* AES encrypted/);

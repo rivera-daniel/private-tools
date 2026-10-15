@@ -126,3 +126,10 @@ export function scanned(jpeg, width, height) {
     extra: { 8: stream(`<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode >>`, Buffer.from(jpeg)) },
   });
 }
+
+// Lines set closer than their font size, as in dense manuals: each character's box reaches into the lines
+// above and below, and words sit right against punctuation.
+export function tightLines() {
+  const rows = ['Copyright 2002-2008 Xiph.org Foundation', 'Written by Jean-Marc Valin, preprocessor notes', 'Universit\\351 de Sherbrooke, copy, distribute', 'The preprocessor, the echo canceller and more'];
+  return personal({ lines: `BT /F1 12 Tf 9 TL 72 720 Td ${rows.map((r) => `(${r}) Tj T*`).join(' ')} ET` });
+}

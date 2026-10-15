@@ -7,7 +7,7 @@ import { parseJumbf } from '../c2pa.js';
 
 const C2PA_UUID = 'd8fec3d61b0e483c92975828877ec481';
 const CANON_UUID = '85c0b687820f11e08111f4ce462b6a48';
-const AUX_TYPES = { 'urn:mpeg:hevc:2015:auxid:1': 'Alpha', 'urn:mpeg:mpegB:cicp:systems:auxiliary:alpha': 'Alpha', 'urn:mpeg:hevc:2015:auxid:2': 'Depth', 'urn:mpeg:mpegB:cicp:systems:auxiliary:depth': 'Depth', 'urn:com:apple:photo:2020:aux:hdrgainmap': 'HDR gain map (Apple)', 'urn:com:apple:photo:2018:aux:portraiteffectsmatte': 'Portrait matte (Apple)', 'urn:com:apple:photo:2019:aux:semanticskinmatte': 'Skin matte (Apple)', 'urn:com:apple:photo:2019:aux:semantichairmatte': 'Hair matte (Apple)', 'urn:com:apple:photo:2019:aux:semanticteethmatte': 'Teeth matte (Apple)', 'urn:com:apple:photo:2020:aux:semanticskymatte': 'Sky matte (Apple)' };
+export const AUX_TYPES = { 'urn:mpeg:hevc:2015:auxid:1': 'Alpha', 'urn:mpeg:mpegB:cicp:systems:auxiliary:alpha': 'Alpha', 'urn:mpeg:hevc:2015:auxid:2': 'Depth', 'urn:mpeg:mpegB:cicp:systems:auxiliary:depth': 'Depth', 'urn:com:apple:photo:2020:aux:hdrgainmap': 'HDR gain map (Apple)', 'urn:com:apple:photo:2018:aux:portraiteffectsmatte': 'Portrait matte (Apple)', 'urn:com:apple:photo:2019:aux:semanticskinmatte': 'Skin matte (Apple)', 'urn:com:apple:photo:2019:aux:semantichairmatte': 'Hair matte (Apple)', 'urn:com:apple:photo:2019:aux:semanticteethmatte': 'Teeth matte (Apple)', 'urn:com:apple:photo:2020:aux:semanticskymatte': 'Sky matte (Apple)' };
 
 export function* boxes(b, start, end, depthGuard = { n: 0 }) {
   let o = start;
@@ -82,16 +82,23 @@ function parseMeta(b, meta, r) {
   if (pixi) { const f = fullBox(b, pixi); const n = b.u8at(f.body); r.field('Container', 'Bits per channel', Array.from({ length: Math.min(n, 8) }, (_, k) => b.u8at(f.body + 1 + k)).join(', ')); }
   r.field('Container', 'Primary item', primary === null ? 'None' : String(primary));
   r.field('Container', 'Items', String(items.size));
-  for (const [id, it] of [...items].slice(0, 200)) {
+  const refsFrom = new Map();
+  for (const x of refs) { if (!refsFrom.has(x.from)) refsFrom.set(x.from, []); refsFrom.get(x.from).push(x); }
+  // Only the first 200 items are listed, but every item's metadata is reported, so the cleaner sees it all.
+  let listed = 0;
+  for (const [id, it] of items) {
     const aux = propOf(id, 'auxC');
     const auxType = aux ? cstr(b, fullBox(b, aux).body, aux.end).text : '';
     const extent = it.extents?.reduce((n, e) => n + e.length, 0) ?? 0;
-    const relations = refs.filter((x) => x.from === id).map((x) => `${x.type} → ${x.to.join(', ')}`);
+    const relations = (refsFrom.get(id) ?? []).map((x) => `${x.type} → ${x.to.join(', ')}`);
     const desc = [it.type, id === primary && 'primary', it.contentType, auxType && (AUX_TYPES[auxType] ?? auxType), it.name && `"${it.name}"`, extent && fmtBytes(extent), ...relations].filter(Boolean).join(' · ');
-    r.field('Items', `Item ${id}`, desc);
+    if (listed++ < 200) r.field('Items', `Item ${id}`, desc);
     if (auxType && /depth|matte|gainmap/i.test(auxType)) r.signal('privacy', 'Hidden auxiliary images', `The file contains ${AUX_TYPES[auxType] ?? auxType} images that viewers do not show. Depth maps and mattes can reveal the shape of people and scenes.`, 'HEIF items', 'hidden auxiliary images');
     const data = () => readItem(b, it, idat);
-    if (it.type === 'Exif') {
+    if ((refsFrom.get(id) ?? []).some((x) => x.type === 'thmb')) {
+      for (const e of it.extents ?? []) r.block('Thumbnail', it.method === 0 ? e.offset : undefined, e.length, { container: `HEIF item ${id}` });
+      r.signal('privacy', 'Embedded thumbnail preview', 'A small copy of the image is stored in the file. After cropping or editing, it can still show the original picture.', `HEIF item ${id}`, 'an embedded thumbnail');
+    } else if (it.type === 'Exif') {
       const bytes = data(); if (!bytes) continue;
       const skip = bytes.length >= 4 ? 4 + new DataView(bytes.buffer, bytes.byteOffset).getUint32(0) : 0;
       const ids = (it.extents ?? []).map((e) => r.block('EXIF', it.method === 0 ? e.offset : undefined, e.length, { container: `HEIF item ${id}` }));

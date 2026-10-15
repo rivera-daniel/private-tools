@@ -57,7 +57,8 @@ function readDirectory(ctx, { offset, dir, chain, index }, queue) {
   let thumb = {};
   for (const e of entries) {
     const name = names[e.tag] ?? hex(e.tag);
-    if (dir !== 'GPS' && dir !== 'Interop' && POINTERS[e.tag]) { queue.push({ offset: e.raw(), dir: POINTERS[e.tag] }); continue; }
+    // By value, not raw field bytes: a 4-byte pointer sits in the first half of a BigTIFF's 8-byte field.
+    if (dir !== 'GPS' && dir !== 'Interop' && POINTERS[e.tag]) { queue.push({ offset: e.unreadable ? 0 : Number(e.value()), dir: POINTERS[e.tag] }); continue; }
     if (e.tag === 0x014a && dir !== 'GPS') { const offs = [].concat(e.value()); offs.slice(0, 16).forEach((o, i) => queue.push({ offset: o, dir: `SubIFD${offs.length > 1 ? i + 1 : ''}` })); r.field(source, name, `${offs.length} sub-image${offs.length === 1 ? '' : 's'}`); continue; }
     if (dir === 'GPS') ctx.gps[e.tag] = e.value();
     if (e.tag === 0x010f && dir.startsWith('IFD')) ctx.make = clean(String(e.value() ?? ''));

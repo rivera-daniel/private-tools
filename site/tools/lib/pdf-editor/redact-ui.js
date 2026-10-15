@@ -538,6 +538,12 @@ export function mountRedact(container, ctx) {
   load('');
 
   return {
+    // Called when the Redact tab is opened again. Reloads only if the editor's document changed meanwhile.
+    async refresh() {
+      if (S.destroyed || !S.bytes) return;
+      const bytes = await ctx.getBytes();
+      if (!sameBytes(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), S.bytes)) { S.marks = []; await load(); }
+    },
     unmount() {
       S.destroyed = true;
       resizeObserver.disconnect(); clearTimeout(resizeTimer);

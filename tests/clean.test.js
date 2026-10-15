@@ -95,8 +95,8 @@ test('GIF: comment and application extensions removed', async () => {
 });
 
 test('unsupported, damaged and non-image input is refused with a reason', async () => {
-  const tif = await cleanImage(readFileSync(new URL('./fixtures/formats/pii.tif', import.meta.url)));
-  assert.equal(tif.ok, false); assert.match(tif.reason, /cannot be cleaned yet/);
+  const jxl = await cleanImage(readFileSync(new URL('./fixtures/formats/pii.jxl', import.meta.url)));
+  assert.equal(jxl.ok, false); assert.match(jxl.reason, /cannot be cleaned yet/);
   assert.equal((await cleanImage(Buffer.from('not an image at all'))).ok, false);
   assert.equal((await cleanImage(pngWith(tEXt('a', 'b')).subarray(0, 60))).ok, false);
 });

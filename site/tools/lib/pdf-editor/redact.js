@@ -238,11 +238,18 @@ export function normalizeMarks(marks, pages) {
     } else throw new RedactError(`Mark ${i + 1} has no area.`, 'marks');
     const rects = quads.map(quadRect);
     const text = typeof m.text === 'string' ? m.text.slice(0, 2000) : '';
-    return { page, quads, rects, rect: unionRect(rects), text };
+    // A search match: its quads are the matched characters' boxes, which reach into the lines above and below.
+    const match = !!text && Array.isArray(m.quads) && m.quads.length > 0;
+    return { page, quads, rects, rect: unionRect(rects), text, match };
   });
 }
 
 const hits = (rect, rects) => rects.some((r) => overlaps(rect, r));
+// A character counts as under a mark when the centre of its box is inside it. MuPDF removes every glyph
+// whose box touches a redaction area, so these are always removed; characters a box only grazes (the
+// line above or below a search match, a letter cut at the edge of a drawn box) were not meant and are
+// not required gone.
+const centred = (q, rects) => { const r = quadRect(q); const x = (r[0] + r[2]) / 2; const y = (r[1] + r[3]) / 2; return rects.some((m) => inside(x, y, m)); };
 
 // ---------- Planning ----------
 
@@ -283,8 +290,7 @@ export function planRedaction(doc, marks) {
     for (const line of lines) {
       let run = '';
       for (const ch of line) {
-        const r = quadRect(ch.q);
-        const covering = pm.length ? pm.map((m) => hits(r, m.rects)) : [];
+        const covering = pm.length ? pm.map((m) => centred(ch.q, m.rects)) : [];
         const covered = covering.some(Boolean);
         covering.forEach((c, k) => { if (c) under[k].push(ch.c); });
         pageFull += ch.c;
@@ -319,7 +325,7 @@ export function otherOccurrences(doc, marks, plan) {
   for (const s of plan.strings) {
     if (!s.scrub || !s.elsewhere) continue;
     const { matches } = findText(doc, s.text, { wholeWord: true, limit: 500 });
-    const free = matches.filter((m) => !marks.some((k) => k.page === m.page && m.quads.some((q) => hits(quadRect(q), k.rects))));
+    const free = matches.filter((m) => !marks.some((k) => k.page === m.page && m.quads.some((q) => centred(q, k.rects))));
     if (free.length) out.push({ text: s.text, count: free.length, matches: free });
   }
   return out;
@@ -556,18 +562,23 @@ export async function redact(mupdf, bytes, marks, options = {}) {
         imagesHit += events.filter((e) => e.type === 'image' && pm.some((m) => hits(e.rect, m.rects))).length;
       }
       clearWidgets(page, pm, scrubRes, removed, i);
-      for (const m of pm) {
-        const annot = page.createAnnotation('Redact');
-        if (m.quads.length === 1 && isAxisRect(m.quads[0])) annot.setRect(quadRect(m.quads[0])); else annot.setQuadPoints(m.quads);
-        annot.update();
+      // MuPDF removes every glyph whose box touches a redaction area. Text is removed first through the core
+      // of each search match (the middle of the line, inset at the ends), so that the neighbouring lines and
+      // the punctuation next to a word are left alone. Images and line art are then redacted under the full
+      // mark, and the black boxes are drawn afterwards over the full mark.
+      addRedactAnnots(page, pm, (m) => (m.match ? m.quads.map(core) : m.quads));
+      page.applyRedactions(false, 0, 0, 0);
+      if (o.images !== 'none' || o.lineArt !== 'none') {
+        const again = pdf.loadPage(i);
+        addRedactAnnots(again, pm, (m) => m.quads);
+        again.applyRedactions(false, IMAGE_METHOD[o.images], LINE_ART_METHOD[o.lineArt], 1);
       }
-      page.applyRedactions(!!o.fill, IMAGE_METHOD[o.images], LINE_ART_METHOD[o.lineArt], 0);
     }
     for (const s of plan.strings) for (const p of s.pages) if (s.text) removed.push({ kind: 'Page text', page: p, text: s.text });
     if (imagesHit) removed.push({ kind: 'Images', detail: `${imagesHit} image${imagesHit === 1 ? '' : 's'} under the marks ${o.images === 'blank-pixels' ? 'had the covered pixels blanked' : 'removed'}` });
 
     let labels = 0;
-    if (label && o.fill) for (const [i, pm] of byPage) labels += drawLabels(mupdf, pdf, pdf.loadPage(i), pm, label);
+    if (o.fill) for (const [i, pm] of byPage) labels += drawBoxes(mupdf, pdf, pdf.loadPage(i), pm, { boxes: o.mode === 'remove', label });
     scrubStrings(pdf, scrubRes, removed);
     scrubMarkedContent(pdf, scrubRes, removed);
 
@@ -795,20 +806,52 @@ function removePageAnnotations(pdf, po) {
 
 const num = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(4).replace(/0+$/, '').replace(/\.$/, ''));
 
-// Writes the label (such as "[REDACTED]") in white inside each black box that is big enough.
-function drawLabels(mupdf, pdf, page, pm, label) {
+function addRedactAnnots(page, pm, quadsOf) {
+  for (const m of pm) {
+    const quads = quadsOf(m);
+    const annot = page.createAnnotation('Redact');
+    if (quads.length === 1 && isAxisRect(quads[0])) annot.setRect(quadRect(quads[0])); else annot.setQuadPoints(quads);
+    annot.update();
+  }
+}
+
+// A thin band through the middle of a character quad (45 to 55 percent of its height), inset at both ends
+// by about 0.03 em. MuPDF's glyph box spans roughly 0.15 em below the baseline to 0.95 em above it, and the
+// glyph's own ink across; the band crosses every matched glyph's box but no box of a line set closer than
+// about 0.65 em, and stops short of the punctuation after a word. Quad order: upper left, upper right,
+// lower left, lower right.
+function core(q) {
+  const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const ul = [q[0], q[1]]; const ur = [q[2], q[3]]; const ll = [q[4], q[5]]; const lr = [q[6], q[7]];
+  const h = Math.hypot(ll[0] - ul[0], ll[1] - ul[1]); const w = Math.hypot(ur[0] - ul[0], ur[1] - ul[1]);
+  const t = w > 0 ? Math.min(0.2, (h * 0.022) / w) : 0;
+  const a = lerp(ul, ur, t); const b = lerp(ul, ur, 1 - t); const c = lerp(ll, lr, t); const d = lerp(ll, lr, 1 - t);
+  return [...lerp(a, c, 0.45), ...lerp(b, d, 0.45), ...lerp(a, c, 0.55), ...lerp(b, d, 0.55)];
+}
+
+// Draws a black box over each mark (when boxes is set) and writes the label, such as "[REDACTED]", in white
+// inside each box that is big enough. Returns how many labels were written.
+function drawBoxes(mupdf, pdf, page, pm, { boxes, label }) {
   const font = new mupdf.Font('Helvetica');
   const po = page.getObject();
   let res = po.get('Resources');
   if (!res.isDictionary()) { const inherited = po.getInheritable('Resources'); res = pdf.newDictionary(); if (inherited.isDictionary()) inherited.forEach((v, k) => res.put(k, v)); po.put('Resources', res); }
   let fonts = res.get('Font');
   if (!fonts.isDictionary()) { fonts = pdf.newDictionary(); res.put('Font', fonts); }
-  if (fonts.get(LABEL_FONT).isNull()) fonts.put(LABEL_FONT, pdf.addSimpleFont(font, 'Latin'));
+  if (label && fonts.get(LABEL_FONT).isNull()) fonts.put(LABEL_FONT, pdf.addSimpleFont(font, 'Latin'));
   let width = 0;
   for (const ch of label) width += font.advanceGlyph(font.encodeCharacter(ch.codePointAt(0)), 0);
   const toUser = mupdf.Matrix.invert(page.getTransform());
   let ops = ''; let n = 0;
+  if (boxes) {
+    ops += '0 g\n';
+    for (const m of pm) for (const q of m.quads) {
+      const p = [[q[0], q[1]], [q[2], q[3]], [q[6], q[7]], [q[4], q[5]]].map(([x, y]) => apply(toUser, x, y).map(num).join(' '));
+      ops += `${p[0]} m ${p[1]} l ${p[2]} l ${p[3]} l h f\n`;
+    }
+  }
   for (const m of pm) {
+    if (!label) break;
     const r = m.rect; const bw = r[2] - r[0]; const bh = r[3] - r[1];
     const size = Math.min(bh * 0.7, 14, (bw * 0.9) / Math.max(width, 0.1));
     if (size < 4) continue;
@@ -818,7 +861,7 @@ function drawLabels(mupdf, pdf, page, pm, label) {
     ops += `BT /${LABEL_FONT} 1 Tf 1 g ${tm.map(num).join(' ')} Tm (${label.replace(/[()\\]/g, '\\$&')}) Tj ET\n`;
     n++;
   }
-  if (!n) return 0;
+  if (!ops) return 0;
   const contents = po.get('Contents');
   const list = pdf.newArray();
   list.push(pdf.addStream('q\n', pdf.newDictionary()));

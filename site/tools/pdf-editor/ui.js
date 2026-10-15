@@ -13,6 +13,17 @@
 //   pageCount(): number
 //   pageSize(i): { width, height }        page i in PDF points as displayed, after rotation
 //   renderPage(i, scale): Promise<ImageBitmap>   page i as displayed, scale 1 = 72 dpi
+//   originalBytes(): Promise<Uint8Array|null>   the exact stored bytes when the working document is one
+//                                         source with every page in order and unrotated (a file as opened, or
+//                                         the result of setBytes), otherwise null
+//
+// View mode imports /tools/lib/pdf-editor/view-ui.js and calls mountView(container, viewCtx) with
+// <section id="view-panel">; viewCtx is documented in that module. It opens first for every new document.
+//
+// Sign mode follows the same contract with /tools/lib/pdf-editor/sign-ui.js, mountSign and
+// <section id="sign-panel">. After signing it calls setBytes(signed, 'Signed') and the panel fires
+// 'pdf-signed' with { bytes }. While Undo stands on that step, Save downloads those bytes unchanged: no
+// cleaning, no password and no MuPDF save, which would all break the signature.
 import { clearFile, takeFile } from '/tools/lib/handoff.js';
 import { fromSource, rotatePages, removePages, duplicatePages, insertBlank, pickPages, movePagesTo, movePagesBy, entrySize } from '/tools/lib/pdf-editor/plan.js';
 import { parseRanges, splitEvery, onePerPage, groupLabel, PageRangeError } from '/tools/lib/pdf-editor/ranges.js';
@@ -64,6 +75,8 @@ const sources = new Map(); // id -> { id, name, pageCount, sizes, encrypted, sig
 let plan = []; let original = []; let steps = []; let at = -1;
 let selected = new Set(); let focusKey = null; let anchorKey = null;
 let nextKey = 1; let letterCount = 0; let busy = false; let mode = 'organize';
+let signedState = null; // { step, bytes }: the undo step made by signing and the signed bytes
+const isSignedState = () => Boolean(signedState) && steps[at] === signedState.step;
 const notes = [];
 const keyed = (entries) => entries.map((e) => ({ ...e, key: nextKey++ }));
 const sizeOf = (e) => (e.blank ? e.blank : sources.get(e.src).sizes[e.page]);
@@ -183,7 +196,7 @@ function addSource(meta, label) {
   original = [...original, ...pages.map((e) => ({ ...e }))];
   const first = !plan.length;
   commit([...plan, ...pages], label);
-  if (first) { $('save-name').value = `${baseName()}-edited`; $('save-result').hidden = true; }
+  if (first) { $('save-name').value = `${baseName()}-edited`; $('save-result').hidden = true; selectMode($('tab-view')); }
 }
 
 // Resolves with the password typed, or null when the file is skipped.
@@ -209,7 +222,7 @@ for (const type of ['dragenter', 'dragover']) dropzone.addEventListener(type, (e
 for (const type of ['dragleave', 'drop']) dropzone.addEventListener(type, () => dropzone.classList.remove('over'));
 dropzone.addEventListener('drop', (e) => { e.preventDefault(); addFiles(e.dataTransfer.files); });
 window.addEventListener('dragover', (e) => e.preventDefault());
-window.addEventListener('drop', (e) => { e.preventDefault(); if (!$('editor').hidden && !dragKeys && e.dataTransfer.files.length && !e.target.closest('#redact-panel')) addFiles(e.dataTransfer.files); });
+window.addEventListener('drop', (e) => { e.preventDefault(); if (!$('editor').hidden && !dragKeys && e.dataTransfer.files.length && !e.target.closest('#redact-panel, #sign-panel, #view-panel .vw-scroll')) addFiles(e.dataTransfer.files); });
 
 /* Thumbnails: rendered by the worker a few at a time, only for pages near the visible area. */
 const list = $('pages');
@@ -303,7 +316,7 @@ function render() {
   const same = ordered.length === list.children.length && ordered.every((li, i) => list.children[i] === li);
   if (!same) list.replaceChildren(...ordered);
   if (!plan.length) list.replaceChildren(el('li', 'empty-pages', 'No pages left. Undo, reset or add files.'));
-  renderDoc(); updateTools(); pumpThumbs();
+  renderDoc(); updateTools(); pumpThumbs(); syncView();
 }
 
 function renderDoc() {
@@ -318,12 +331,15 @@ function renderDoc() {
   files.hidden = used.length < 2;
   files.replaceChildren(...(used.length < 2 ? [] : used.map((s) => { const li = el('li'); li.append(el('span', 'badge', s.letter), el('span', '', `${s.name} · ${plural(s.pageCount, 'page')}`)); return li; })));
   const warn = [];
-  for (const s of used) if (s.signed) warn.push(`${s.name} is digitally signed. Saving rewrites the file, so its signature will no longer be valid.`);
+  const keepSigned = isSignedState();
+  if (!keepSigned) for (const s of used) if (s.signed) warn.push(`${s.name} is digitally signed. Saving rewrites the file, so its signature will no longer be valid.`);
   for (const n of notes) warn.push(n.text);
   $('notes').hidden = !warn.length; $('notes').replaceChildren(...warn.map((t) => el('p', '', t)));
   const signed = used.filter((s) => s.signed);
-  $('sign-note').hidden = !signed.length;
-  $('sign-note').textContent = signed.length ? `Saving invalidates the digital signature in ${signed.map((s) => s.name).join(', ')}${$('clean').checked ? ', and removing hidden data drops it' : ''}.` : '';
+  $('clean').disabled = keepSigned;
+  $('sign-note').hidden = !keepSigned && !signed.length;
+  $('sign-note').textContent = keepSigned ? 'Saved exactly as signed, so the signature stays valid: hidden data is not removed and no password is added. Any other edit removes this.'
+    : signed.length ? `Saving invalidates the digital signature in ${signed.map((s) => s.name).join(', ')}${$('clean').checked ? ', and removing hidden data drops it' : ''}.` : '';
   updateProtect();
   $('undo').disabled = at <= 0; $('redo').disabled = at >= steps.length - 1;
   $('reset').disabled = at <= 0;
@@ -437,7 +453,7 @@ function resetAll() {
   render();
 }
 document.addEventListener('keydown', (e) => {
-  if ($('editor').hidden || mode === 'redact' || e.target.closest('input, textarea, select, [contenteditable]')) return;
+  if ($('editor').hidden || mode === 'redact' || mode === 'sign' || mode === 'view' || e.target.closest('input, textarea, select, [contenteditable]')) return;
   if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
   else if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
 });
@@ -478,11 +494,14 @@ const tabs = [...document.querySelectorAll('.modes [role=tab]')];
 function selectMode(tab) {
   mode = tab.id.replace('tab-', '');
   for (const t of tabs) { const on = t === tab; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; $(t.getAttribute('aria-controls')).hidden = !on; }
-  $('layout').hidden = mode === 'redact';
+  const panelMode = mode === 'redact' || mode === 'sign' || mode === 'view';
+  $('layout').hidden = panelMode;
   $('page-tools').hidden = mode !== 'organize';
-  // The layout holding the Save card is hidden while redacting, so the card follows the redaction panel.
-  if (mode === 'redact') $('redact-panel').after($('save-form')); else document.querySelector('.side').append($('save-form'));
+  // The layout holding the Save card is hidden while redacting or signing, so the card follows the panel.
+  if (panelMode) $(`${mode}-panel`).after($('save-form')); else document.querySelector('.side').append($('save-form'));
   if (mode === 'redact') openRedact();
+  if (mode === 'sign') openSign();
+  if (mode === 'view') openView();
 }
 for (const t of tabs) {
   t.addEventListener('click', () => selectMode(t));
@@ -494,12 +513,25 @@ for (const t of tabs) {
 
 /* Redact mode (see the contract at the top) */
 let redact = null;
+let built = null;
 const ctx = {
-  getBytes: async () => new Uint8Array((await call({ type: 'build', plan: plain(plan) })).data),
+  // A build is not byte-for-byte repeatable, so the result is kept until the page plan changes. The redaction
+  // panel compares bytes to tell whether the document changed while it was open.
+  getBytes: async () => {
+    const key = JSON.stringify(plain(plan));
+    if (built?.key !== key) built = { key, bytes: new Uint8Array((await call({ type: 'build', plan: plain(plan) })).data) };
+    return built.bytes.slice();
+  },
   setBytes: async (u8, label = 'Redacted') => {
     const data = u8.slice().buffer;
     const r = await call({ type: 'adopt', name: usedSources()[0]?.name ?? 'document.pdf', data }, [data]);
     replaceWith(r.source, label);
+  },
+  originalBytes: async () => {
+    const id = pristineSource();
+    if (id === null) return null;
+    const r = await call({ type: 'original', src: id });
+    return r.data ? new Uint8Array(r.data) : null;
   },
   pageCount: () => plan.length,
   pageSize: (i) => { const [width, height] = displayed(plan[i]); return { width, height }; },
@@ -524,6 +556,112 @@ async function openRedact() {
     redact.handle = (await mod.mountRedact(panel, ctx)) ?? null;
   } catch {
     const note = el('div', 'unavailable'); note.append(el('strong', '', 'Redaction is not available in this build.'), el('p', '', 'The other modes work as usual.'));
+    panel.replaceChildren(note);
+  }
+}
+
+// The source whose pages make up the whole plan in order and unrotated, or null.
+function pristineSource() {
+  const first = plan[0];
+  if (!first || first.blank) return null;
+  const src = sources.get(first.src);
+  if (!src || src.pageCount !== plan.length) return null;
+  return plan.every((e, i) => !e.blank && e.src === first.src && e.page === i && !e.rotate) ? first.src : null;
+}
+
+/* View mode */
+let view = null;
+const thumbRequests = new Map();
+const viewCtx = {
+  pageCount: () => plan.length,
+  pageSize: (i) => { const [width, height] = displayed(plan[i]); return { width, height }; },
+  pageRotation: (i) => (plan[i]?.rotate ?? 0) % 360,
+  renderPage: async (i, scale, rotate = 0) => {
+    const e = plan[i];
+    if (!e) throw new Error(`There is no page ${i + 1}.`);
+    const turn = ((e.rotate ?? 0) + rotate) % 360;
+    if (e.blank) {
+      const [w, h] = e.blank; const [cw, ch] = turn % 180 ? [h, w] : [w, h];
+      const c = new OffscreenCanvas(Math.max(1, Math.round(cw * scale)), Math.max(1, Math.round(ch * scale)));
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+      return c.transferToImageBitmap();
+    }
+    return (await call({ type: 'render', src: e.src, page: e.page, scale, rotate: turn })).bitmap;
+  },
+  pageText: async (i) => {
+    const e = plan[i];
+    if (!e || e.blank) { const [w, h] = e?.blank ?? [612, 792]; return { width: w, height: h, lines: [], links: [] }; }
+    const r = await call({ type: 'pageText', src: e.src, page: e.page });
+    // Links to pages of the same file point to where those pages are in the working document.
+    const links = r.links.map((l) => (l.url ? l : { ...l, page: plan.findIndex((p) => !p.blank && p.src === e.src && p.page === l.target) })).filter((l) => l.url || l.page >= 0);
+    return { width: r.width, height: r.height, lines: r.lines, links };
+  },
+  search: async (needle) => {
+    const items = []; const index = [];
+    plan.forEach((e, i) => { if (!e.blank) { items.push({ src: e.src, page: e.page }); index.push(i); } });
+    const r = await call({ type: 'search', items, needle });
+    return { hits: r.hits.map((h) => ({ page: index[h.index], quads: h.quads })), capped: r.capped };
+  },
+  outline: async () => {
+    const out = [];
+    for (const s of usedSources()) {
+      const r = await call({ type: 'outline', src: s.id });
+      const map = (list) => list.map((o) => ({ title: o.title, page: o.page < 0 ? -1 : plan.findIndex((p) => !p.blank && p.src === s.id && p.page === o.page), kids: map(o.kids) }));
+      out.push(...map(r.items));
+    }
+    return out;
+  },
+  thumbnail: async (i) => {
+    const e = plan[i];
+    if (!e || e.blank) return null;
+    const bk = bitmapKey(e);
+    if (bitmaps.has(bk)) return bitmaps.get(bk);
+    if (!thumbRequests.has(bk)) {
+      const [w, h] = sources.get(e.src).sizes[e.page];
+      thumbRequests.set(bk, call({ type: 'render', src: e.src, page: e.page, scale: Math.min(2, THUMB / Math.max(w, h, 1)) }).then((r) => {
+        if (!bitmaps.has(bk)) bitmaps.set(bk, r.bitmap); else r.bitmap.close();
+        if (bitmaps.size > MAX_BITMAPS) { const [oldest, bmp] = bitmaps.entries().next().value; bitmaps.delete(oldest); bmp.close(); }
+        // The page grid shares the cache, so its thumbnails are drawn too.
+        for (const p of plan) if (!p.blank && bitmapKey(p) === bk && nodes.has(p.key)) draw(nodes.get(p.key), p);
+        return bitmaps.get(bk);
+      }).finally(() => thumbRequests.delete(bk)));
+    }
+    return thumbRequests.get(bk);
+  },
+};
+async function openView() {
+  if (view) { syncView(); return; }
+  view = { handle: null, plan };
+  const panel = $('view-panel');
+  try {
+    const mod = await import('/tools/lib/pdf-editor/view-ui.js');
+    if (typeof mod.mountView !== 'function') throw new Error('missing mountView');
+    view.handle = mod.mountView(panel, viewCtx);
+  } catch {
+    const note = el('div', 'unavailable'); note.append(el('strong', '', 'The viewer is not available in this build.'), el('p', '', 'The other modes work as usual.'));
+    panel.replaceChildren(note);
+  }
+}
+// The viewer reloads when the pages changed since it last showed them.
+function syncView() {
+  if (!view?.handle || mode !== 'view' || view.plan === plan) return;
+  view.plan = plan;
+  view.handle.refresh();
+}
+
+/* Sign mode (same contract as Redact) */
+let sign = null;
+async function openSign() {
+  if (sign) { sign.handle?.refresh?.(); return; }
+  sign = { handle: null };
+  const panel = $('sign-panel');
+  panel.addEventListener('pdf-signed', (e) => { signedState = { step: steps[at], bytes: e.detail.bytes }; renderDoc(); });
+  try {
+    const mod = await import('/tools/lib/pdf-editor/sign-ui.js');
+    if (typeof mod.mountSign !== 'function') throw new Error('missing mountSign');
+    sign.handle = (await mod.mountSign(panel, ctx)) ?? null;
+  } catch {
+    const note = el('div', 'unavailable'); note.append(el('strong', '', 'Signing is not available in this build.'), el('p', '', 'The other modes work as usual.'));
     panel.replaceChildren(note);
   }
 }
@@ -666,6 +804,7 @@ $('numbers-form').addEventListener('submit', async (e) => {
 $('save-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!plan.length) return;
+  if (isSignedState()) { saveSigned(); return; }
   let options; try { options = outputOptions(); } catch (error) { showError(error.message); selectMode($('tab-protect')); return; }
   const name = `${($('save-name').value.trim() || `${baseName()}-edited`).replace(/\.pdf$/i, '').replace(/[\\/:*?"<>|]+/g, '-')}.pdf`;
   $('save-result').hidden = true;
@@ -675,6 +814,18 @@ $('save-form').addEventListener('submit', async (e) => {
     showSaved(r, name, options);
   });
 });
+
+function saveSigned() {
+  const name = `${($('save-name').value.trim() || `${baseName()}-signed`).replace(/\.pdf$/i, '').replace(/[\\/:*?"<>|]+/g, '-')}.pdf`;
+  const { bytes } = signedState;
+  download(bytes, name, 'application/pdf');
+  $('save-result').hidden = false;
+  $('save-title').textContent = name;
+  $('save-detail').textContent = [plural(plan.length, 'page'), size(bytes.length), 'digitally signed'].join(' · ');
+  $('save-report').replaceChildren(el('li', '', 'Saved exactly as signed: hidden data was not removed and no password was added, since either would break the signature.'));
+  $('save-report').hidden = false;
+  announce(`Saved ${name}.`);
+}
 
 function showSaved(r, name, options) {
   $('save-result').hidden = false;

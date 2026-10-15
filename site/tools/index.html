@@ -8,6 +8,7 @@
 <meta name="color-scheme" content="light dark">
 <title>Private Tools</title>
 <link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/tools/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/tools/assets/site.css">
 <script src="/tools/assets/theme.js"></script>
 </head>
@@ -15,35 +16,65 @@
 <header class="header wrap">
   <a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
   <nav aria-label="Primary">
-    <a class="nav-text" href="https://github.com/rivera-daniel/private-tools#roadmap">Roadmap</a>
+    <a class="nav-text" href="#roadmap">Roadmap</a>
     <a class="nav-text" href="https://github.com/rivera-daniel/private-tools">GitHub</a>
     <button type="button" class="icon-button" id="theme-toggle" aria-label="Change theme"></button>
   </nav>
 </header>
 
 <main>
-  <section class="catalog wrap" aria-labelledby="catalog-title">
-    <div class="hero">
-      <h1 id="catalog-title">Your files. Your device. <span>Your tools.</span></h1>
-      <p>Browser tools that run on your device. No uploads. No accounts.</p>
-    </div>
-    <label class="search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
-      <span class="visually-hidden">Search tools</span>
-      <input type="search" id="search" placeholder="Search tools" autocomplete="off">
-      <kbd>/</kbd>
-    </label>
-    <div class="filters" role="group" aria-label="Filter tools">
-      <button type="button" class="active" data-filter="all" aria-pressed="true">All tools</button>
-      <button type="button" data-filter="images" aria-pressed="false">Images</button>
-      <button type="button" data-filter="documents" aria-pressed="false">Documents</button>
-      <button type="button" data-filter="privacy" aria-pressed="false">Privacy</button>
-      <button type="button" data-filter="forensics" aria-pressed="false">Forensics</button>
-      <button type="button" data-filter="careers" aria-pressed="false">Careers</button>
-    </div>
-    <div class="cards" id="cards"></div>
-    <p class="empty" id="empty" hidden>No tools match that search.</p>
+  <section class="cat-intro wrap" aria-labelledby="catalog-title">
+    <h1 id="catalog-title">Your files. Your device. <span>Your tools.</span></h1>
+    <p>Browser tools that run on your device. No uploads. No accounts.</p>
+    <ol class="cat-flow" aria-label="How it works">
+      <li><a href="/tools/file-inspector/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span><strong>Inspect</strong><span class="cat-flow-tool"> with File Inspector</span></span></a></li>
+      <li><a href="/tools/metadata-cleaner/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg><span><strong>Clean</strong><span class="cat-flow-tool"> with Metadata Cleaner</span></span></a></li>
+      <li><a href="/tools/archiver/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/></svg><span><strong>Package</strong><span class="cat-flow-tool"> with Archiver</span></span></a></li>
+    </ol>
   </section>
+
+  <div class="cat-body">
+    <div class="cat-sentinel" id="bar-sentinel"></div>
+    <div class="cat-bar" id="bar">
+      <div class="cat-bar-inner wrap">
+        <div class="cat-groups" id="groups" role="group" aria-label="Show tools by job"></div>
+        <label class="cat-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+          <span class="visually-hidden">Search all tools, including planned ones</span>
+          <input type="search" id="search" placeholder="Search tools" autocomplete="off" aria-controls="results">
+          <button type="button" class="cat-clear" id="clear" aria-label="Clear search" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
+          <kbd>/</kbd>
+        </label>
+      </div>
+      <p class="visually-hidden" id="search-status" role="status" aria-live="polite"></p>
+    </div>
+
+    <section class="cat-section wrap" id="available" aria-labelledby="available-title" hidden>
+      <div class="cat-head">
+        <h2 id="available-title">Available now</h2>
+        <p id="available-note"></p>
+      </div>
+      <div class="cat-grid" id="cards"></div>
+    </section>
+
+    <section class="cat-roadmap" id="roadmap" aria-labelledby="roadmap-title" hidden>
+      <div class="wrap">
+        <div class="cat-head">
+          <h2 id="roadmap-title">On the roadmap</h2>
+          <p id="roadmap-note"></p>
+        </div>
+        <div id="roadmap-groups"></div>
+      </div>
+    </section>
+
+    <section class="cat-section wrap" id="results" aria-labelledby="results-title" hidden>
+      <div class="cat-head">
+        <h2 id="results-title">Results</h2>
+        <p id="results-note"></p>
+      </div>
+      <div class="cat-rows" id="result-rows"></div>
+    </section>
+  </div>
 </main>
 
 <footer class="footer">
@@ -88,12 +119,12 @@
   </div>
 </footer>
 
-<dialog id="tool-dialog">
+<dialog id="tool-dialog" aria-labelledby="dialog-title">
   <form method="dialog"><button class="close" aria-label="Close">×</button></form>
   <p class="eyebrow" id="dialog-status"></p>
   <h2 id="dialog-title"></h2>
   <p id="dialog-copy"></p>
-  <p>This tool is not available yet. Follow its progress on the <a href="https://github.com/rivera-daniel/private-tools#roadmap"><u>roadmap</u></a>.</p>
+  <p>Not available yet. Follow its progress on the <a href="https://github.com/rivera-daniel/private-tools#roadmap"><u>roadmap</u></a>.</p>
   <form method="dialog"><button class="button">Back to tools</button></form>
 </dialog>
 

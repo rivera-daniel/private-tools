@@ -125,6 +125,26 @@ test('a scanned page: the OCR word and the pixels under the mark go, and the che
   assert.deepEqual(pixel(r.data, 0, c[0], c[1]), [0, 0, 0]);
 });
 
+test('lines set closer than the font size: matches go, neighbouring lines and punctuation stay', async () => {
+  const src = fx.tightLines();
+  const words = (bytes) => pagesText(bytes)[0].split(/\s+/).filter(Boolean);
+  for (const query of ['Jean-Marc', 'preprocessor']) {
+    const ms = find(src, query);
+    const r = await redact(mupdf, src, ms.map(markOf));
+    assert.ok(r.ok, `${query}: ${r.reason}`);
+    const before = words(src).filter((w) => !w.includes(query));
+    const after = words(r.data);
+    assert.ok(!after.some((w) => w.includes(query)), query);
+    assert.deepEqual(before.filter((w) => !after.includes(w)), [], `${query}: nothing else removed`);
+    assert.deepEqual(r.removed.filter((x) => x.kind === 'Page text').map((x) => x.text), [query], `${query}: only the match is reported`);
+  }
+  // A drawn box over a word in the dense lines may clip letters it grazes; it must still verify.
+  const [m] = find(src, 'Jean-Marc');
+  const drawn = await redact(mupdf, src, [{ page: 0, rect: [m.rect[0] - 2, m.rect[1] - 2, m.rect[2] + 2, m.rect[3] + 2] }]);
+  assert.ok(drawn.ok, drawn.reason);
+  assert.ok(!allText(drawn.data).includes('Jean-Marc'));
+});
+
 test('earlier revisions holding the secret are gone', async () => {
   const src = fx.revised();
   assert.ok(Buffer.from(src).toString('latin1').includes('Draft note'));

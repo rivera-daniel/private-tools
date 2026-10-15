@@ -247,7 +247,8 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   await page.route(`${base}/tools/file-inspector/`, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>File Inspector</title>' }));
   await Promise.all([page.waitForURL(`${base}/tools/file-inspector/#from-inspector`), page.click('#inspect-open')]);
   await page.unroute(`${base}/tools/file-inspector/`);
-  const handed = await page.evaluate(() => new Promise((resolve) => { const r = indexedDB.open('private-tools'); r.onsuccess = () => { const g = r.result.transaction('handoff').objectStore('handoff').get('file'); g.onsuccess = () => resolve(g.result?.file?.name ?? null); }; }));
+  // The stored copy is encrypted; read it the way the File Inspector does.
+  const handed = await page.evaluate(async () => (await (await import('/tools/lib/handoff.js')).takeFile())?.name ?? null);
   assert.equal(handed, 'photo.jpg', 'photo handed to the File Inspector');
 
   // Dark theme screenshots.

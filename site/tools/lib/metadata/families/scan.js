@@ -117,7 +117,8 @@ function appended(r, u8, type) {
     if (inner) r.field(source, 'Content', Article(inner.name), { flag: 'privacy' });
     else if (tail.length >= 4096 && entropy(tail, 0, Math.min(tail.length, 1048576)) > 7.5) r.field(source, 'Content', 'Looks compressed or encrypted');
     r.field(source, 'Starts with', hexPreview(tail, 24));
-    if (inner) r.signal('privacy', 'A file is hidden inside', `The data after the end of this file is ${article(inner.name)}.`, source, 'a hidden file');
+    // Installers and self-extracting programs carry their payload this way by design.
+    if (inner && r.category !== 'Program') r.signal('privacy', 'A file is hidden inside', `The data after the end of this file is ${article(inner.name)}.`, source, 'a hidden file');
   });
   return existing.map((t) => [t.offset, t.offset + t.length]);
 }
@@ -139,7 +140,7 @@ function embedded(r, u8, type, trailers) {
     r.field('Embedded files', `${h.type} at 0x${h.offset.toString(16).toUpperCase()}`, inTrailer(h.offset) ? 'After the end of the file' : 'Inside the file');
     r.struct(`Embedded ${h.type}`, h.offset, 0, 'Signature found');
   }
-  const hidden = hits.filter((h) => inTrailer(h.offset) || category === 'Image' || !type);
+  const hidden = hits.filter((h) => (inTrailer(h.offset) && category !== 'Program') || category === 'Image' || !type);
   if (hidden.length) r.signal('privacy', 'A file is hidden inside', `${Article(hidden[0].type)} starts at byte ${hidden[0].offset.toLocaleString('en-US')}${hidden.length > 1 ? `, with ${plural(hidden.length - 1, 'more embedded file')}` : ''}. The same bytes can open as a different kind of file.`, 'Embedded files', 'a hidden file');
 }
 
@@ -230,7 +231,7 @@ function details(r, u8, type, decoded, trailers) {
     text = extractStrings(u8, ranges, { skipDense: !image }).text;
   }
   if (!text) return;
-  const { matches, users } = findDetails(text, { phones: Boolean(decoded) || image });
+  const { matches, users } = findDetails(text, { phones: Boolean(decoded) || image, publicIps: Boolean(decoded) || image });
   const flagged = new Set(['Email address', 'User folder path', 'Network share', 'Internal host name', 'MAC address', 'Phone number', 'GPS coordinates', 'Possible secret', 'Private key']);
   for (const m of matches) r.field(FOUND, m.kind, m.value, flagged.has(m.kind) || m.internal ? { flag: 'privacy' } : {});
   const of = (k) => matches.filter((m) => m.kind === k);

@@ -123,7 +123,7 @@ const PATTERNS = [
 
 // Finds details in text. strict limits phone numbers to text files, where they are least noisy.
 // Returns { matches: [{ kind, value, flag? }], users: Set, notes: Map(kind -> extra info) }.
-export function findDetails(text, { phones = true } = {}) {
+export function findDetails(text, { phones = true, publicIps = true } = {}) {
   const matches = []; const users = new Set(); const seen = new Set(); const counts = new Map(); const extra = [];
   for (const [kind, re, accept] of PATTERNS) {
     if (kind === 'Phone number' && !phones) continue;
@@ -141,6 +141,8 @@ export function findDetails(text, { phones = true } = {}) {
       if (kind === 'User folder path') { const u = pathUser(value); if (u) users.add(u); }
       if (kind === 'IP address' && value.includes('.') && DOC_IPV4.test(value)) item.doc = true;
       if (kind === 'IP address' && ((value.includes('.') && ipv4Private(value)) || /^(fc|fd|fe[89ab])/i.test(value))) item.internal = true;
+      // In binary data, dotted version numbers look like public addresses. Only private ones are kept there.
+      if (kind === 'IP address' && !item.internal && !publicIps) continue;
       if (kind === 'URL') { try { const host = new URL(value).hostname.replace(/^\[|\]$/g, ''); if (INTERNAL_SUFFIX.test(host) || (/^\d+\.\d+\.\d+\.\d+$/.test(host) && ipv4Private(host))) item.internal = true; } catch { /* listed as is */ } }
       if (kind === 'Internal host name') item.internal = true;
       if (kind === 'GUID') { const v1 = uuidV1(value); if (v1) { item.mac = v1.mac; extra.push({ kind: 'MAC address', value: `${v1.mac.toUpperCase()} (inside time-based GUID ${value}${v1.date ? `, created ${v1.date}` : ''})`, fromGuid: true }); } }

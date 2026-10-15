@@ -63,47 +63,53 @@ export const HIDDEN_KINDS = {
 
 // Every hidden or unusual character: { at (string index), end, cp, kind, removable }.
 // Removability depends only on neighbours that are never removed themselves, so one pass is a fixed point.
+// Characters hiddenRuns() looks at. Text without any of them is skipped in one regex pass.
+const CANDIDATE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\xa0\xad\u061c\u115f\u1160\u1680\u180e\u2000-\u200f\u202a-\u202f\u205f-\u2064\u2066-\u2069\u3000\u3164\ufe00-\ufe0f\ufeff\uffa0\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/gu;
+
+// Every hidden or unusual character: { at (string index), end, cp, kind, removable }.
+// Removability depends only on neighbours that are never removed themselves, so one pass is a fixed point.
 export function hiddenRuns(text, { encoding = 'UTF-8', limit = 200000 } = {}) {
   const out = [];
-  const cps = [];
-  for (let i = 0; i < text.length;) { const cp = text.codePointAt(i); cps.push([cp, i]); i += cp > 0xffff ? 2 : 1; }
   const rtl = RTL.test(text);
-  const ch = (k) => (k >= 0 && k < cps.length ? String.fromCodePoint(cps[k][0]) : '');
+  const cpAt = (i) => (i >= 0 && i < text.length ? text.codePointAt(i) : -1);
+  const prev = (i) => (i <= 0 ? -1 : i >= 2 && /[\udc00-\udfff]/.test(text[i - 1]) && /[\ud800-\udbff]/.test(text[i - 2]) ? i - 2 : i - 1);
+  const next = (i) => i + (cpAt(i) > 0xffff ? 2 : 1);
+  const ch = (i) => (cpAt(i) < 0 ? '' : String.fromCodePoint(cpAt(i)));
   // Neighbours count only when they stay: a joiner next to a character that is itself removed is not legitimate.
   const gone = new Set();
-  const push = (k, kind, removable) => { if (removable) gone.add(k); if (out.length < limit) out.push({ at: cps[k][1], end: cps[k][1] + (cps[k][0] > 0xffff ? 2 : 1), cp: cps[k][0], kind, removable }); };
-  const joining = (k) => !gone.has(k) && JOINING.test(ch(k)) && !INVISIBLE.test(ch(k));
-  for (let k = 0; k < cps.length; k++) {
-    const c = cps[k][0];
-    if (c === 0xfeff && k === 0) push(k, 'bom', !encoding.startsWith('UTF-16'));
+  const push = (i, cp, kind, removable) => { if (removable) gone.add(i); if (out.length < limit) out.push({ at: i, end: i + (cp > 0xffff ? 2 : 1), cp, kind, removable }); };
+  const joining = (i) => !gone.has(i) && JOINING.test(ch(i)) && !INVISIBLE.test(ch(i));
+  const isTag = (c) => c >= 0xe0020 && c <= 0xe007e;
+  CANDIDATE.lastIndex = 0;
+  for (let m = CANDIDATE.exec(text); m; m = CANDIDATE.exec(text)) {
+    const i = m.index; const c = m[0].codePointAt(0);
+    if (c === 0xfeff && i === 0) push(i, c, 'bom', !encoding.startsWith('UTF-16'));
     // XMP packets open with begin="U+FEFF" as an encoding marker.
-    else if (c === 0xfeff && /begin=["']$/.test(text.slice(Math.max(0, cps[k][1] - 7), cps[k][1]))) push(k, 'bom', false);
-    else if (c === 0x200b || c === 0xfeff || c === 0x2060 || (c >= 0x2061 && c <= 0x2064) || c === 0x180e) push(k, 'zw', true);
+    else if (c === 0xfeff && /begin=["']$/.test(text.slice(Math.max(0, i - 7), i))) push(i, c, 'bom', false);
+    else if (c === 0x200b || c === 0xfeff || c === 0x2060 || (c >= 0x2061 && c <= 0x2064) || c === 0x180e) push(i, c, 'zw', true);
     else if (c === 0x200c || c === 0x200d) {
-      const prev = ch(k - 1); const next = ch(k + 1);
-      const legit = (c === 0x200d && !gone.has(k - 1) && PICTO.test(prev) && /\p{Extended_Pictographic}/u.test(next)) || (joining(k - 1) && joining(k + 1));
-      push(k, 'zw', !legit);
-    } else if ((c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069)) push(k, 'bidi', true);
-    else if (c === 0x200e || c === 0x200f || c === 0x061c) push(k, 'bidi', !rtl);
+      const p = prev(i); const n = next(i);
+      const legit = (c === 0x200d && !gone.has(p) && PICTO.test(ch(p)) && /\p{Extended_Pictographic}/u.test(ch(n))) || (joining(p) && joining(n));
+      push(i, c, 'zw', !legit);
+    } else if ((c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069)) push(i, c, 'bidi', true);
+    else if (c === 0x200e || c === 0x200f || c === 0x061c) push(i, c, 'bidi', !rtl);
     else if (c >= 0xe0000 && c <= 0xe007f) {
-      // Subdivision flags: black flag, tag letters, cancel tag.
-      let s = k; while (s > 0 && cps[s - 1][0] >= 0xe0020 && cps[s - 1][0] <= 0xe007e) s--;
-      let e = k; while (e < cps.length && cps[e][0] >= 0xe0020 && cps[e][0] <= 0xe007e) e++;
-      const legit = s > 0 && cps[s - 1][0] === 0x1f3f4 && e < cps.length && cps[e][0] === 0xe007f && e - s <= 7;
-      push(k, 'tag', !legit);
+      // Subdivision flags: black flag, up to seven tag letters, cancel tag.
+      let s = i; let count = 0; while (isTag(cpAt(prev(s))) && count++ < 64) s = prev(s);
+      let e = i; count = 0; while (isTag(cpAt(e)) && count++ < 64) e = next(e);
+      const legit = cpAt(prev(s)) === 0x1f3f4 && cpAt(e) === 0xe007f && (e - s) / 2 <= 7;
+      push(i, c, 'tag', !legit);
     } else if (isVs(c)) {
       // One selector after a character is normal. A run of them carries hidden bytes.
-      const runStart = isVs(cps[k - 1]?.[0] ?? 0);
-      const runNext = isVs(cps[k + 1]?.[0] ?? 0);
-      if (runStart || runNext) {
-        let s = k; while (s > 0 && isVs(cps[s - 1][0])) s--;
-        const keepFirst = (cps[s][0] === 0xfe0e || cps[s][0] === 0xfe0f) && s > 0 && PICTO.test(ch(s - 1));
-        if (!(keepFirst && s === k)) push(k, 'vs', true);
+      if (isVs(cpAt(prev(i))) || isVs(cpAt(next(i)))) {
+        let s = i; while (isVs(cpAt(prev(s)))) s = prev(s);
+        const keepFirst = (cpAt(s) === 0xfe0e || cpAt(s) === 0xfe0f) && s > 0 && PICTO.test(ch(prev(s)));
+        if (!(keepFirst && s === i)) push(i, c, 'vs', true);
       }
-    } else if (c === 0x3164 || c === 0xffa0 || c === 0x115f || c === 0x1160) push(k, 'filler', !(HANGUL.test(ch(k - 1)) || HANGUL.test(ch(k + 1))));
-    else if (c === 0x00a0 || c === 0x1680 || (c >= 0x2000 && c <= 0x200a) || c === 0x202f || c === 0x205f || c === 0x3000) push(k, 'space', false);
-    else if (c === 0x00ad) push(k, 'shy', false);
-    else if ((c < 0x20 && c !== 9 && c !== 10 && c !== 13) || (c >= 0x7f && c <= 0x9f)) push(k, 'control', false);
+    } else if (c === 0x3164 || c === 0xffa0 || c === 0x115f || c === 0x1160) push(i, c, 'filler', !(HANGUL.test(ch(prev(i))) || HANGUL.test(ch(next(i)))));
+    else if (c === 0x00a0 || c === 0x1680 || (c >= 0x2000 && c <= 0x200a) || c === 0x202f || c === 0x205f || c === 0x3000) push(i, c, 'space', false);
+    else if (c === 0x00ad) push(i, c, 'shy', false);
+    else if ((c < 0x20 && c !== 9 && c !== 10 && c !== 13) || (c >= 0x7f && c <= 0x9f)) push(i, c, 'control', false);
   }
   return out;
 }

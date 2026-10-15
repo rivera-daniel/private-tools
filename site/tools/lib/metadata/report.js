@@ -3,7 +3,7 @@ import { LIMITS, clip, inflate } from './bytes.js';
 // Sources that describe how the image is encoded rather than metadata about it.
 const TECHNICAL = /^(Container|Items|JPEG|JFIF|PNG|WebP|GIF|BMP|JPEG XL|Photoshop document|Adobe APP14|Multi-Picture|RAF|TIFF)$/;
 // Structure of any file: its detected type and program headers, sections and segments.
-const TECHNICAL_ANY = /^File type$| (header|sections|segments)$/;
+const TECHNICAL_ANY = /^File type$| (header|sections|segments|imports|libraries)$/;
 const technical = (name) => TECHNICAL.test(name) || TECHNICAL_ANY.test(name);
 const metadataFields = (r) => [...r.sources].filter(([name]) => !technical(name)).reduce((n, [, l]) => n + l.length, 0);
 // Image Inspector reports leave category unset. Any report with another category is not an image.

@@ -11,7 +11,7 @@
 //   node tests/independent/fuzz.mjs [--seed N] [--iterations N] [--jobs N] [--timeout ms] [--mem MB]
 //                                   [--external] [--case N] [--only id-substring]
 //
-// --case N replays one case of the given seed. Failing inputs go to test-results/fuzz/.
+// --case N replays one case of the given seed and saves its input. Failing inputs go to test-results/fuzz/.
 import { fork } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -275,6 +275,7 @@ function save(label, item, data) {
 }
 
 async function runCase(label, item, data, steps) {
+  if (CASE !== null) console.log(`replay input: test-results/fuzz/${save(`replay/${label}`, item, data)}\nmutations: ${steps.join('; ')}`);
   const secrets = item.secrets.length ? [...new Set(findSecrets(data, item.secrets).map((h) => h.secret))] : [];
   const res = await pool.run({ id: label, data, name: item.name, options: item.options });
   const s = stat(item.family); s.cases++;

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { inspectFile } from '../site/tools/lib/metadata/index.js';
 import { cleanFile } from '../site/tools/lib/clean/index.js';
-import { mp4, chunkOffsets, box, id3v2, id3Text, id3Frames, id3v1, apeTag, lyrics3, mp3Frames, adtsFrames, flac, wav, aiff, ogg, readOgg, mkv, crc32, jpeg, cat, u32 } from './fixtures/media.js';
+import { mp4, chunkOffsets, box, id3v2, id3Text, id3Frames, id3v1, apeTag, lyrics3, mp3Frames, adtsFrames, flac, wav, aiff, ogg, readOgg, oggCrc, mkv, crc32, jpeg, cat, u32 } from './fixtures/media.js';
 
 const hl = (r, group, key) => r.highlights.find((g) => g.name === group)?.fields.find((f) => f.key === key)?.value;
 const src = (r, source, key) => r.sources.find((g) => g.name === source)?.fields.find((f) => f.key === key)?.value;
@@ -407,4 +407,19 @@ test('MKV: elements the format does not define are voided; an unreadable Info pa
   const r2 = await inspectFile(broken, 'v.mkv');
   assert.ok(r2.warnings.some((w) => /Info element could not be read/.test(w)));
   assert.equal((await cleanFile(broken, 'v.mkv')).ok, false);
+});
+
+test('Ogg: a header page that fails its checksum, or a comment header moved to another stream, is refused', async () => {
+  const { file } = ogg({ codec: 'Opus' });
+  const page = Buffer.from(file).lastIndexOf('OggS', Buffer.from(file).indexOf('OpusTags'));
+  // A different serial number on the comment page: this parser would no longer see the tags, others would.
+  const moved = Buffer.from(file); moved[page + 14] ^= 1;
+  // The same with the checksum fixed: the Opus stream never gets its second header.
+  const fixed = Buffer.from(moved); const end = page + 27 + fixed[page + 26] + [...fixed.subarray(page + 27, page + 27 + fixed[page + 26])].reduce((a, x) => a + x, 0);
+  fixed.writeUInt32LE(0, page + 22); fixed.writeUInt32LE(oggCrc(fixed.subarray(page, end)), page + 22);
+  for (const bad of [moved, fixed]) {
+    const r = await inspectFile(bad, 'a.opus');
+    assert.ok(r.warnings.some((w) => /damaged/.test(w)), JSON.stringify(r.warnings));
+    assert.equal((await cleanFile(bad, 'a.opus')).ok, false);
+  }
 });

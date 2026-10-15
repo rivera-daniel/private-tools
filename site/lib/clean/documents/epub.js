@@ -1,13 +1,14 @@
 // EPUB cleaner: personal and vendor metadata out of the package document, store records and reading
 // positions dropped, remote resources removed from content documents and style sheets.
 import { writeZip } from '../../zip/index.js';
-import { parseXml, serialize } from '../../metadata/documents/xml.js';
+import { parseXml, serialize, rootOf, all, get, set, text, escapeText } from '../../metadata/documents/xml.js';
 import { planEpub, sanitizeOpf, sanitizeNcx, sanitizeContent, mayLoadRemote, contentParts } from '../../metadata/documents/epub.js';
 import { DOC_LIMITS, budget, readPart } from '../../metadata/documents/package.js';
 import { utf8 } from '../../metadata/bytes.js';
 import { refuse, copyEntry, cleanPicture, reopen, archiveRemovals } from './common.js';
 
 const enc = new TextEncoder();
+const DC = 'http://purl.org/dc/elements/1.1/';
 
 export async function cleanEpub(zip, report) {
   const b = budget(DOC_LIMITS.maxReadBytes);
@@ -23,6 +24,18 @@ export async function cleanEpub(zip, report) {
     if (s.fields.length) removed.push({ kind: 'Properties', container: plan.opfPath, bytes: 0 });
     if (s.remote.length) removed.push({ kind: 'Remote resource', container: plan.opfPath, bytes: 0 });
   }
+  // The identifier the package names is replaced with a fresh one on every clean, like a PDF's document ID,
+  // so copies of a book cannot be linked through it. toc.ncx repeats it and follows.
+  const root = rootOf(plan.opf);
+  const unique = root && get(root, 'unique-identifier');
+  const idEl = unique && all(root, (x) => x.ns === DC && x.local === 'identifier' && get(x, 'id') === unique)[0];
+  const oldId = idEl ? text(idEl).trim() : null;
+  const newId = `urn:uuid:${crypto.randomUUID()}`;
+  if (idEl) {
+    idEl.children = [{ type: 'text', raw: escapeText(newId), parent: idEl }];
+    out.set(plan.opfPath, serialize(plan.opf));
+    removed.push({ kind: 'Book identifier', container: 'Replaced with a fresh random ID', bytes: 0 });
+  }
   const images = budget(DOC_LIMITS.maxImageBytes);
   for (const { e, kind } of contentParts(zip, plan)) {
     if (kind === 'image') {
@@ -36,7 +49,11 @@ export async function cleanEpub(zip, report) {
     if (kind === 'ncx') {
       let doc;
       try { doc = parseXml(t); } catch (error) { refuse(`${e.name} is not well-formed (${error.message}), so the book was left untouched.`); }
-      if (sanitizeNcx(doc).changed) { out.set(e.name, serialize(doc)); removed.push({ kind: 'Properties', container: e.name, bytes: 0 }); }
+      const changed = sanitizeNcx(doc).changed;
+      let uid = false;
+      for (const m of all(doc, (x) => x.local === 'meta' && get(x, 'name') === 'dtb:uid')) if (oldId !== null && (get(m, 'content') ?? '').trim() === oldId) { set(m, 'content', '', newId); uid = true; }
+      if (changed || uid) out.set(e.name, serialize(doc));
+      if (changed) removed.push({ kind: 'Properties', container: e.name, bytes: 0 });
       continue;
     }
     if (!mayLoadRemote(t)) continue;

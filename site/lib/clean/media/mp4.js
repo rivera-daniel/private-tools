@@ -3,6 +3,7 @@
 // except that the samples of a removed metadata track, and media data no track uses, are overwritten with zeros.
 import { Bytes, concat } from '../../metadata/bytes.js';
 import { buildTree, sampleRanges, timeFields } from '../../metadata/media/isom.js';
+import { genericHandler } from '../../metadata/media/mp4.js';
 import { Refusal } from '../index.js';
 
 const BOX_KINDS = new Set(['User data', 'Metadata', 'XMP', 'C2PA', 'Vendor data', 'Unknown box']);
@@ -14,13 +15,14 @@ export function cleanMp4(u8, report, blocks) {
   const all = []; const walk = (list) => { for (const x of list) { all.push(x); if (x.children) walk(x.children); } }; walk(tree.boxes);
   const at = new Map(all.map((x) => [x.offset, x]));
   const mdats = tree.boxes.filter((x) => x.type === 'mdat');
-  const removes = []; const zeros = []; const dropped = new Set(); let dates = false; let trailer = null;
+  const removes = []; const zeros = []; const names = []; const dropped = new Set(); let dates = false; let trailer = null;
 
   for (const blk of blocks) {
     const box = at.get(blk.offset);
     if (blk.kind === 'Dates') dates = true;
     else if (blk.kind === 'Trailer') trailer = [blk.offset, u8.length];
     else if (blk.kind === 'Padding') { if (!box) throw locate(); zeros.push([box.start, box.end]); }
+    else if (blk.kind === 'Handler name') { if (!box || box.type !== 'hdlr' || box.end - box.start < 24) throw locate(); names.push(box); }
     else if (blk.kind === 'Unreferenced data') {
       if (!mdats.some((m) => blk.offset >= m.start && blk.offset + blk.length <= m.end)) throw locate();
       zeros.push([blk.offset, blk.offset + blk.length]);
@@ -69,6 +71,17 @@ export function cleanMp4(u8, report, blocks) {
 
   const out = new Uint8Array(u8); const view = new DataView(out.buffer);
   for (const [s, e] of zeros) out.fill(0, s, e);
+  // Handler names become the generic name for their type, in place: the box keeps its size, the name is
+  // zero-padded, and a counted (QuickTime) name gets its new length. A generic name that does not fit
+  // leaves the name empty.
+  for (const h of names) {
+    const from = h.start + 24; const len = h.end - from; const name = genericHandler(b, h);
+    const counted = len > 0 && u8[from] === len - 1;
+    out.fill(0, from, h.end);
+    if (name.length + 1 > len) continue;
+    if (counted) out[from] = name.length;
+    for (let i = 0; i < name.length; i++) out[from + (counted ? 1 : 0) + i] = name.charCodeAt(i);
+  }
   if (dates) for (const x of kept) if (['mvhd', 'tkhd', 'mdhd'].includes(x.type)) for (const [o, w] of timeFields(b, x)) out.fill(0, o, o + w);
 
   // Box sizes: every kept box shrinks by the bytes cut from inside it.
@@ -110,12 +123,26 @@ export function cleanMp4(u8, report, blocks) {
   const parts = []; let from = 0;
   for (const [s, e] of cuts) { parts.push(out.subarray(from, s)); from = e; }
   parts.push(out.subarray(from));
-  return { data: concat(parts), removed: blocks.map((blk) => ({ kind: blk.kind, container: blk.container ?? '', bytes: blk.kind === 'Dates' || blk.kind === 'Padding' ? 0 : blk.length })), kept: [...keptList(b, kept, dropped), ...report.blocks.filter((x) => x.kind === 'Metadata track' && x.removable === false).map((x) => `${x.container}: timed metadata${x.note ? ` (${x.note})` : ''}, kept because the file is fragmented`)] };
+  return { data: concat(parts), removed: blocks.map((blk) => ({ kind: blk.kind, container: blk.container ?? '', bytes: blk.kind === 'Dates' || blk.kind === 'Padding' || blk.kind === 'Handler name' ? 0 : blk.length })), kept: [...keptList(b, kept, dropped), ...contentNotes(report, kept, dropped, b), ...report.blocks.filter((x) => x.kind === 'Metadata track' && x.removable === false).map((x) => `${x.container}: timed metadata${x.note ? ` (${x.note})` : ''}, kept because the file is fragmented`)] };
 }
 
 function keptList(b, kept, dropped) {
   const tracks = kept.filter((x) => x.type === 'trak' && !dropped.has(x)).length;
   return [`${tracks} track${tracks === 1 ? '' : 's'} with their samples unchanged`, 'Track and codec descriptions'];
+}
+
+// What stays because it is content or part of the codec, named so the user sees it: chapter titles and
+// the compressor names in the sample descriptions.
+function contentNotes(report, kept, dropped, b) {
+  const fields = report.sources.flatMap((x) => x.fields);
+  const notes = [];
+  const chapters = fields.find((f) => f.key === 'Chapters')?.value;
+  const chapterTrack = kept.some((x) => x.type === 'chap' && x.parent?.type === 'tref' && !dropped.has(x.parent.parent));
+  if (chapters) notes.push(`Chapter titles: ${chapters}`);
+  else if (chapterTrack) notes.push('Chapter titles (a text track of chapter names)');
+  const compressors = [...new Set(fields.filter((f) => / compressor$/.test(f.key)).map((f) => f.value))];
+  if (compressors.length) notes.push(`Compressor name in the video description: ${compressors.join(', ')}`);
+  return notes;
 }
 
 const locate = () => new Refusal('A metadata block could not be located safely, so the file was left untouched.');

@@ -23,7 +23,7 @@ function emptyAt(out, el) {
   else { out[el.offset + el.idLen] = 0x80; voidAt(out, el.offset + el.idLen + 1, rest - 1); }
 }
 
-export function cleanMkv(u8, report, blocks) {
+export function cleanMkv(u8, report, blocks, options = {}) {
   const b = new Bytes(u8); const out = new Uint8Array(u8); let end = u8.length; const edits = [];
   for (const blk of blocks) {
     const el = element(b, blk.offset, u8.length);
@@ -36,9 +36,30 @@ export function cleanMkv(u8, report, blocks) {
     edits.push([el.offset, el.end, el.id]);
   }
 
+  // The segment UID is a random per-file identifier: it gets fresh random bytes. Links to the previous or
+  // next file of a split recording are kept only if the user lets the cleaner change how they join.
+  const head = element(b, 0, u8.length);
+  let uids = 0; let links = 0;
+  for (let o = head.end; o < end;) {
+    const seg = element(b, o, u8.length);
+    if (!seg || seg.id !== ID.Segment) break;
+    const segEnd = Math.min(seg.end, u8.length);
+    for (const top of children(b, seg.start, segEnd)) {
+      if (top.id !== ID.Info || edits.some(([s, e]) => s <= top.offset && e >= top.end)) continue;
+      for (const c of children(b, top.start, top.end)) {
+        if (c.id === ID.SegmentUID && c.end > c.start) { crypto.getRandomValues(out.subarray(c.start, c.end)); edits.push([c.offset, c.end, c.id]); uids++; }
+        else if (c.id === ID.PrevUID || c.id === ID.NextUID) {
+          if (!options.acceptChanges) throw new Refusal('This file is linked to the previous or next part of a split recording. Removing the links changes how players join the parts.', 'acceptChanges');
+          voidAt(out, c.offset, c.end - c.offset); edits.push([c.offset, c.end, c.id]); links++;
+        }
+      }
+    }
+    o = segEnd;
+    if (seg.unknown) break;
+  }
+
   // Seek entries that pointed at removed Tags or Attachments are voided too, then CRC-32 elements of every
   // edited top-level element are recomputed.
-  const head = element(b, 0, u8.length);
   for (let o = head.end; o < end;) {
     const seg = element(b, o, u8.length);
     if (!seg || seg.id !== ID.Segment) break;
@@ -67,7 +88,15 @@ export function cleanMkv(u8, report, blocks) {
   }
   return {
     data: end < out.length ? out.subarray(0, end) : out,
-    removed: blocks.map((x) => ({ kind: x.kind, container: x.container ?? '', bytes: x.kind === 'Software' || x.kind === 'Padding' ? 0 : x.length })),
-    kept: ['Tracks, clusters and cues unchanged', 'Chapters', 'Segment UID', 'Muxing and writing application fields (emptied)'],
+    removed: [...blocks.map((x) => ({ kind: x.kind, container: x.container ?? '', bytes: x.kind === 'Software' || x.kind === 'Padding' ? 0 : x.length })),
+      ...(uids ? [{ kind: 'Segment UID', container: 'Replaced with a fresh random ID', bytes: 0 }] : []),
+      ...(links ? [{ kind: 'Segment links', container: 'Previous and next segment IDs', bytes: 0 }] : [])],
+    kept: ['Tracks, clusters and cues unchanged', ...chapterNote(report), 'Muxing and writing application fields (emptied)'],
   };
+}
+
+// Chapter titles are content: kept, and named so the user sees them.
+function chapterNote(report) {
+  const titles = report.sources.find((x) => x.name === 'Container')?.fields.find((f) => f.key === 'Chapters')?.value;
+  return titles ? [`Chapter titles: ${titles}`] : [];
 }

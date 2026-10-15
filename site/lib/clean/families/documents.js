@@ -10,6 +10,9 @@ import { Refusal } from '../index.js';
 
 export const formats = new Set(['DOCX', 'DOCM', 'DOTX', 'DOTM', 'XLSX', 'XLSM', 'XLTX', 'XLTM', 'PPTX', 'PPTM', 'PPSX', 'PPSM', 'POTX', 'POTM', 'ODT', 'ODS', 'ODP', 'ODG', 'OTT', 'OTS', 'OTP', 'OTG', 'EPUB', 'ZIP']);
 
+// An EPUB's package identifier is replaced on every clean, even when nothing else is found.
+export const mustRewrite = (report) => report.format === 'EPUB';
+
 export async function clean(u8, report, ctx) {
   const options = ctx.options ?? {};
   let zip;

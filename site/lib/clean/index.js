@@ -58,7 +58,7 @@ export async function cleanImage(input) {
     bytesBefore: u8.length, bytesAfter: out.length,
     removed: blocks.map((b) => ({ kind: b.kind, container: b.container ?? '', bytes: b.length })),
     exposures: before.signals.filter((s) => s.kind === 'privacy' || s.kind === 'declared').map((s) => s.title),
-    kept: [...(orientation > 1 ? [`Orientation (${enumValue('Orientation', orientation)})`] : []), ...after.blocks.filter((b) => b.removable === false).map((b) => `${b.kind} (${b.container})`)],
+    kept: [...(orientation > 1 ? [`Orientation (${enumValue('Orientation', orientation)})`] : []), ...after.blocks.filter((b) => b.removable === false).map((b) => `${b.kind} (${b.container})`), ...iccText(after)],
     orientation,
   };
 }
@@ -125,6 +125,12 @@ export async function cleanFile(input, name = '', options = {}) {
     offer: result.offer ?? [],
     exposures: before.signals.filter((s) => s.kind === 'privacy' || s.kind === 'declared').map((s) => s.title),
   };
+}
+
+// A kept color profile carries its own text: description, copyright, device maker and model.
+function iccText(report) {
+  const fields = report.sources.find((s) => s.name === 'ICC profile')?.fields.filter((f) => ['Description', 'Copyright', 'Device manufacturer', 'Device model'].includes(f.key)) ?? [];
+  return fields.length ? [`Color profile text: ${fields.map((f) => `${f.key} "${f.value}"`).join(', ')}`] : [];
 }
 
 const refuse = (reason, option) => ({ ok: false, reason, ...(option ? { option } : {}) });

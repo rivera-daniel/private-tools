@@ -9,6 +9,15 @@ const src = (r, source, key) => r.sources.find((g) => g.name === source)?.fields
 const titles = (r) => r.signals.map((s) => s.title);
 const has = (u8, s) => Buffer.from(u8).includes(Buffer.from(s, 'latin1'));
 
+// The UID and the CRC-32 of the Info element that holds it.
+const withoutSegmentUid = (u8) => {
+  const b = Buffer.from(u8); if (b[0] !== 0x1a) return b;
+  const at = b.indexOf(Buffer.from([0x73, 0xa4, 0x90])); if (at >= 0) b.fill(0, at + 3, at + 19);
+  // In these fixtures the CRC-32 element sits right before the UID.
+  if (at >= 6 && b[at - 6] === 0xbf && b[at - 5] === 0x84) b.fill(0, at - 4, at);
+  return b;
+};
+
 // Cleaned output: nothing removable left, only technical sources, no privacy findings, then a second pass is a no-op.
 async function assertClean(data, name) {
   const after = await inspectFile(data, name);
@@ -18,7 +27,8 @@ async function assertClean(data, name) {
   assert.deepEqual(after.warnings, []);
   const again = await cleanFile(data, name);
   assert.ok(again.ok, again.reason);
-  assert.deepEqual(Buffer.from(again.data), Buffer.from(data), 'cleaning is idempotent');
+  // Matroska gets a fresh segment UID on every clean; everything else must come out byte for byte.
+  assert.deepEqual(withoutSegmentUid(again.data), withoutSegmentUid(data), 'cleaning is idempotent');
   return after;
 }
 
@@ -421,5 +431,68 @@ test('Ogg: a header page that fails its checksum, or a comment header moved to a
     const r = await inspectFile(bad, 'a.opus');
     assert.ok(r.warnings.some((w) => /damaged/.test(w)), JSON.stringify(r.warnings));
     assert.equal((await cleanFile(bad, 'a.opus')).ok, false);
+  }
+});
+
+// ---------- rulings on what is kept, replaced or refused ----------
+
+test('MKV: the segment UID gets fresh random bytes; links to other parts are refused unless changes are accepted', async () => {
+  const { file } = mkv();
+  const uid = (u8) => { const b = Buffer.from(u8); const at = b.indexOf(Buffer.from([0x73, 0xa4, 0x90])); return b.subarray(at + 3, at + 19).toString('hex'); };
+  const r = await cleanFile(file, 'v.mkv');
+  assert.ok(r.ok, r.reason);
+  assert.notEqual(uid(r.data), uid(file));
+  assert.ok(r.removed.some((x) => x.kind === 'Segment UID'));
+  assert.equal((await inspectFile(r.data, 'v.mkv')).warnings.length, 0);
+  // Give the segment a NextUID by turning the 16-byte Title element into one of the same size.
+  const b = Buffer.from(file); const t = b.indexOf(Buffer.from([0x7b, 0xa9]));
+  assert.equal(b[t + 2], 0x80 | 13);
+  const linked = Buffer.concat([b.subarray(0, t), Buffer.from([0x3e, 0xb9, 0x23, 0x80 | 12]), Buffer.alloc(12, 7), b.subarray(t + 16)]);
+  assert.equal(linked.length, b.length);
+  const refused = await cleanFile(linked, 'v.mkv');
+  assert.equal(refused.ok, false); assert.equal(refused.option, 'acceptChanges');
+  const done = await cleanFile(linked, 'v.mkv', { acceptChanges: true });
+  assert.ok(done.ok, done.reason);
+  assert.ok(!Buffer.from(done.data).includes(Buffer.from([0x3e, 0xb9, 0x23])));
+});
+
+test('MKV: chapter titles stay and are named in the kept list', async () => {
+  const r = await cleanFile(mkv().file, 'v.mkv');
+  assert.ok(r.ok, r.reason);
+  assert.ok(r.kept.some((k) => k === 'Chapter titles: Opening'), JSON.stringify(r.kept));
+  assert.ok(has(r.data, 'Opening'));
+});
+
+test('MP4: a handler name is rewritten in place, box sizes and samples unchanged', async () => {
+  const { file, video } = mp4({ metadataTrack: false, udta: false, mdta: false, times: 0 });
+  const b = Buffer.from(file); const at = b.indexOf('Handler\0'); b.write('JaneDoe\0', at, 'latin1');
+  const r0 = await inspectFile(b, 'clip.mp4');
+  assert.deepEqual(r0.blocks.map((x) => x.kind), ['Handler name']);
+  const res = await cleanFile(b, 'clip.mp4');
+  assert.ok(res.ok, res.reason);
+  assert.equal(res.bytesAfter, res.bytesBefore);
+  assert.ok(!has(res.data, 'JaneDoe'));
+  // VideoHandler does not fit in eight bytes, so the name is left empty rather than growing the box.
+  assert.deepEqual([...Buffer.from(res.data).subarray(at, at + 8)], Array(8).fill(0));
+  const [offset] = chunkOffsets(res.data);
+  assert.deepEqual(Buffer.from(res.data).subarray(offset, offset + video[0].length), video[0]);
+  await assertClean(res.data, 'clip.mp4');
+  // A name with room gets the generic one.
+  const roomy = Buffer.from(file); const at2 = roomy.indexOf('Handler\0');
+  const res2 = await cleanFile(roomy, 'clip.mp4');
+  assert.ok(res2.ok, res2.reason);
+  assert.equal(Buffer.from(res2.data).toString('latin1', at2, at2 + 8), 'Handler\0');
+});
+
+test('MP3 and ADTS: bytes after the last whole frame are cut along with trailing tags; the encoder is named in kept', async () => {
+  for (const [name, frames] of [['a.mp3', mp3Frames()], ['a.aac', adtsFrames()]]) {
+    const file = cat(frames, 'half a frame and NOTES-AFTER-AUDIO', id3v1());
+    const r = await inspectFile(file, name);
+    assert.ok(r.blocks.some((x) => x.kind === 'Leftover data' && x.container === 'After the last audio frame'), name);
+    const res = await cleanFile(file, name);
+    assert.ok(res.ok, res.reason);
+    assert.deepEqual(Buffer.from(res.data), Buffer.from(frames), name);
+    await assertClean(res.data, name);
+    if (name === 'a.mp3') assert.ok(res.kept.some((k) => /names the encoder: LAME3\.100/.test(k)), JSON.stringify(res.kept));
   }
 });

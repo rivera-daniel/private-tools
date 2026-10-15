@@ -169,7 +169,7 @@ async function documentItems() {
     { id: 'pptx-fixture', name: 'fixture.pptx', format: 'PPTX', family: 'ooxml', source: 'built-in', data: p, secrets: fixtureSecrets(p) },
     { id: 'odt-fixture', name: 'fixture.odt', format: 'ODT', family: 'odf', source: 'built-in', data: o, secrets: fixtureSecrets(o) },
     { id: 'odt-tracked', name: 'tracked.odt', format: 'ODT', family: 'odf', source: 'built-in', data: await odt({ tracked: true }), secrets: fixtureSecrets(o), options: { acceptChanges: true } },
-    { id: 'epub-fixture', name: 'fixture.epub', format: 'EPUB', family: 'epub', source: 'built-in', data: e, secrets: ['jane.doe@example.com', 'Canon EOS R5', 'calibre_bookmarks', 'Jane Doe'], policy: ['urn:uuid:12345678-90ab-cdef-1234-567890abcdef'] },
+    { id: 'epub-fixture', name: 'fixture.epub', format: 'EPUB', family: 'epub', source: 'built-in', data: e, secrets: ['jane.doe@example.com', 'Canon EOS R5', 'calibre_bookmarks', 'Jane Doe', 'urn:uuid:12345678-90ab-cdef-1234-567890abcdef'] },
   );
   // Every other Office and OpenDocument type: the fixture's parts under that type's main content type or
   // mimetype, repacked with archive metadata.
@@ -185,7 +185,7 @@ async function documentItems() {
     const data = zipWithArchiveMetadata(parts, format);
     items.push({ id: `${format.toLowerCase()}-zipmeta`, name: `zipmeta.${format.toLowerCase()}`, format, family: 'odf', source: 'built-in', data, secrets: [...fixtureSecrets(data), ...zipMetaSecrets(format)] });
   }
-  items.push({ id: 'epub-zipmeta', name: 'zipmeta.epub', format: 'EPUB', family: 'epub', source: 'built-in', data: zipWithArchiveMetadata(await unzipEntries(e), 'Epub'), secrets: ['jane.doe@example.com', 'Canon EOS R5', 'Jane Doe', ...zipMetaSecrets('Epub')], policy: ['urn:uuid:12345678-90ab-cdef-1234-567890abcdef'] });
+  items.push({ id: 'epub-zipmeta', name: 'zipmeta.epub', format: 'EPUB', family: 'epub', source: 'built-in', data: zipWithArchiveMetadata(await unzipEntries(e), 'Epub'), secrets: ['jane.doe@example.com', 'Canon EOS R5', 'Jane Doe', 'urn:uuid:12345678-90ab-cdef-1234-567890abcdef', ...zipMetaSecrets('Epub')] });
   // A plain archive: metadata lives in the archive structure and in OS leftovers. File contents are content.
   const files = [{ name: 'readme.txt', data: Buffer.from('visible archive content') }, { name: '.DS_Store', data: latin(S('ZipDsStore')) }, { name: '__MACOSX/._readme.txt', data: latin(S('ZipAppleDouble')) }, { name: 'Thumbs.db', data: latin(S('ZipThumbsDb')) }];
   items.push({ id: 'zip-builtin', name: 'archive.zip', format: 'ZIP', family: 'zip', source: 'built-in', data: zipWithArchiveMetadata(files, 'Zip'), secrets: [...zipMetaSecrets('Zip'), S('ZipDsStore'), S('ZipAppleDouble'), S('ZipThumbsDb')] });
@@ -425,11 +425,11 @@ function ffmpegItems(tools, dir) {
   const chapterIn = ['-i', chapters];
   // MP4 family: iTunes-style tags, QuickTime ©xyz location, chapters, cover art and stream handler names.
   gen('mp4-ffmpeg', 'ff.mp4', 'MP4', 'mp4', [...V, ...A, ...coverIn, ...chapterIn, '-map', '0:v', '-map', '1:a', '-map', '2:v', '-map_chapters', '3', '-map_metadata', '3', ...H264, '-c:a', 'aac', '-c:v:1', 'copy', '-disposition:v:1', 'attached_pic', ...tags('Mp4Ff'), '-metadata', `location=${GPS.iso}`, ...streamTitle('Mp4Ff')],
-    [...tagSecrets('Mp4Ff'), ...coverSecrets, S('Mp4FfStreamTitle')], [S('Mp4FfHandler'), S('MediaChapterTitle')]);
+    [...tagSecrets('Mp4Ff'), ...coverSecrets, S('Mp4FfStreamTitle'), S('Mp4FfHandler')], [S('MediaChapterTitle')]);
   gen('mov-ffmpeg', 'ff.mov', 'MOV', 'mp4', [...V, ...A, '-map', '0:v', '-map', '1:a', ...H264, '-c:a', 'aac', '-movflags', 'use_metadata_tags', ...tags('MovFf'), '-metadata', `com.apple.quicktime.location.ISO6709=${GPS.iso}`, '-metadata', `com.apple.quicktime.make=${S('MovFfMake')}`, '-metadata', `com.apple.quicktime.model=${S('MovFfModel')}`, '-metadata', `com.apple.quicktime.software=${S('MovFfSoftware')}`, '-metadata', `com.apple.quicktime.author=${S('MovFfAuthor')}`],
     [...tagSecrets('MovFf'), GPS.iso, S('MovFfMake'), S('MovFfModel'), S('MovFfSoftware'), S('MovFfAuthor')]);
   gen('mov-ffmpeg-udta', 'ff-udta.mov', 'MOV', 'mp4', [...V, ...A, '-map', '0:v', '-map', '1:a', ...H264, '-c:a', 'aac', ...tags('MovUdta'), '-metadata', `location=${GPS.iso}`], [...tagSecrets('MovUdta').filter((s) => !s.endsWith('Description')), GPS.iso]);
-  gen('m4a-ffmpeg', 'ff.m4a', 'M4A', 'mp4', [...A, ...coverIn, '-map', '0:a', '-map', '1:v', '-c:a', 'aac', '-c:v', 'copy', '-disposition:v:0', 'attached_pic', ...tags('M4aFf'), ...streamTitle('M4aFf')], [...tagSecrets('M4aFf'), ...coverSecrets], [S('M4aFfHandler')]);
+  gen('m4a-ffmpeg', 'ff.m4a', 'M4A', 'mp4', [...A, ...coverIn, '-map', '0:a', '-map', '1:v', '-c:a', 'aac', '-c:v', 'copy', '-disposition:v:0', 'attached_pic', ...tags('M4aFf'), ...streamTitle('M4aFf')], [...tagSecrets('M4aFf'), ...coverSecrets, S('M4aFfHandler')]);
   gen('3gp-ffmpeg', 'ff.3gp', '3GP', 'mp4', [...V, ...A, '-map', '0:v', '-map', '1:a', ...H264, '-c:a', 'aac', '-ac', '1', '-ar', '8000', ...tags('ThreeGpFf'), '-f', '3gp'], tagSecrets('ThreeGpFf').filter((s) => !s.endsWith('Description')));
   // MPEG audio: ID3v2 and ID3v1 with cover art. MP2 and ADTS get tags prepended and appended in code.
   gen('mp3-ffmpeg', 'ff.mp3', 'MP3', 'mpeg', [...A, ...coverIn, '-map', '0:a', '-map', '1:v', '-c:a', 'libmp3lame', '-c:v', 'copy', '-id3v2_version', '3', '-write_id3v1', '1', ...tags('Mp3Ff')], [...tagSecrets('Mp3Ff'), ...coverSecrets], ['LAME']);

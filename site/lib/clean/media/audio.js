@@ -18,7 +18,8 @@ function cut(u8, blocks) {
 }
 
 export function cleanMpeg(u8, report, blocks) {
-  return { data: cut(u8, blocks), removed: removedList(blocks), kept: ['Audio frames, including the encoder header frame'] };
+  const encoder = report.sources.flatMap((x) => x.fields).find((f) => f.key === 'Encoder (in the audio stream)')?.value;
+  return { data: cut(u8, blocks), removed: removedList(blocks), kept: [`Audio frames, including the encoder header frame${encoder ? ` (names the encoder: ${encoder})` : ''}`] };
 }
 
 // The audio payload must come out byte for byte, or the cut touched it.

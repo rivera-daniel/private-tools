@@ -73,7 +73,8 @@ async function cleanAndCheck(u8, name, options = {}) {
   assert.deepEqual(after.warnings, []);
   const again = await cleanFile(result.data, name, options);
   assert.ok(again.ok, again.reason);
-  assert.deepEqual(again.removed, [], 'cleaning a cleaned file removes nothing');
+  // A fresh book identifier is written on every clean; nothing else may be removed twice.
+  assert.deepEqual(again.removed.filter((x) => x.kind !== 'Book identifier'), [], 'cleaning a cleaned file removes nothing');
   await assertWellFormed(result.data);
   return { result, after };
 }

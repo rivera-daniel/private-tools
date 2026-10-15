@@ -8,7 +8,7 @@ import { XmlError } from './xml.js';
 export const DOC_LIMITS = {
   maxPartBytes: 32 * 1024 * 1024,   // one XML part
   maxReadBytes: 96 * 1024 * 1024,   // all parts read while inspecting or cleaning one file
-  maxImageBytes: 160 * 1024 * 1024, // all embedded images read for one file
+  maxImageBytes: 200 * 1024 * 1024, // all embedded images read for one file, matching the 200 MB file limit
   maxImages: 200,
   maxListed: 500,
 };

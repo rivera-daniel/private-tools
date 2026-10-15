@@ -494,8 +494,15 @@ for (const t of tabs) {
 
 /* Redact mode (see the contract at the top) */
 let redact = null;
+let built = null;
 const ctx = {
-  getBytes: async () => new Uint8Array((await call({ type: 'build', plan: plain(plan) })).data),
+  // A build is not byte-for-byte repeatable, so the result is kept until the page plan changes. The redaction
+  // panel compares bytes to tell whether the document changed while it was open.
+  getBytes: async () => {
+    const key = JSON.stringify(plain(plan));
+    if (built?.key !== key) built = { key, bytes: new Uint8Array((await call({ type: 'build', plan: plain(plan) })).data) };
+    return built.bytes.slice();
+  },
   setBytes: async (u8, label = 'Redacted') => {
     const data = u8.slice().buffer;
     const r = await call({ type: 'adopt', name: usedSources()[0]?.name ?? 'document.pdf', data }, [data]);

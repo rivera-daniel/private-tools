@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import * as mupdf from '../site/tools/vendor/mupdf/mupdf.js';
 import * as fx from './fixtures/pdf-redact.js';
 
@@ -196,5 +197,35 @@ try {
 } finally {
   await browser.close();
   for (const f of Object.values(files)) rmSync(f, { force: true });
+}
+
+// Redaction inside the real editor, where the document bytes come from the editor's build step. The second
+// document sets its lines closer than the font size, so each match's box reaches into the neighbouring lines.
+for (const [name, bytes, query] of [['editor', fx.personal(), 'Secretman'], ['editor tight lines', fx.tightLines(), 'preprocessor']]) {
+  const b = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/usr/sbin/chromium' });
+  const context = await b.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  const problems = [];
+  page.on('console', (m) => { if (m.type() === 'error') problems.push(m.text()); });
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  const file = join(tmpdir(), `editor-redact-${process.pid}.pdf`);
+  writeFileSync(file, bytes);
+  try {
+    await page.goto(`${base}/tools/pdf-editor/`);
+    await page.setInputFiles('#file', file);
+    await page.waitForSelector('#pages li.page');
+    await page.click('#tab-redact');
+    await page.waitForSelector('#rd-query');
+    await page.fill('#rd-query', query);
+    await page.press('#rd-query', 'Enter');
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some((x) => x.textContent === 'Mark all' && !x.disabled));
+    await page.click('button:text-is("Mark all")');
+    await page.click('.rd-apply');
+    await page.waitForFunction(() => /Verified|left unchanged/.test(document.querySelector('#redact-panel')?.textContent ?? ''), null, { timeout: 60000 });
+    const text = await page.textContent('#redact-panel');
+    assert.match(text, /Verified/, `${name}: redaction in the editor did not verify: ${text.slice(0, 400)}`);
+    assert.deepEqual(problems, [], `${name}: console problems in the editor`);
+    console.log(`ok ${name}`);
+  } finally { rmSync(file, { force: true }); await b.close(); }
 }
 console.log('browser redact check passed');

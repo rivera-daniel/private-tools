@@ -8,16 +8,17 @@ import * as pdf from './families/pdf.js';
 import * as media from './families/media.js';
 import * as text from './families/text.js';
 
-export const CLEANABLE = 'JPEG, PNG, WebP and GIF';
 const FORMATS = new Set(['JPEG', 'PNG', 'WebP', 'GIF']);
+const listJoin = (a) => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a.at(-1)}`);
+const IMAGES = listJoin([...FORMATS]);
 const ORIENTED = new Set(['JPEG', 'PNG', 'WebP']);
 
 export async function cleanImage(input) {
   const u8 = input instanceof Uint8Array ? input : new Uint8Array(input);
   if (u8.length > LIMITS.maxFileBytes) return refuse('This file is larger than 200 MB.');
   const before = await inspectImage(u8);
-  if (!before.format) return refuse(`This file is not an image the Metadata Cleaner supports. Supported formats: ${CLEANABLE}.`);
-  if (!FORMATS.has(before.format)) return refuse(`${before.format} files cannot be cleaned yet. The Metadata Cleaner supports ${CLEANABLE}.`);
+  if (!before.format) return refuse(`This file is not an image the Metadata Cleaner supports. Supported image formats: ${IMAGES}.`);
+  if (!FORMATS.has(before.format)) return refuse(`${before.format} images cannot be cleaned yet. Supported image formats: ${IMAGES}.`);
   if (before.warnings.some((w) => /damaged|truncated|past the end|Too many/.test(w))) return refuse('The file is damaged or unusually structured, so it was left untouched.');
 
   const blocks = before.blocks.filter((b) => b.removable !== false && !hasRemovableAncestor(before.blocks, b));
@@ -64,6 +65,23 @@ const FAMILIES = [documents, pdf, media, text];
 export class Refusal extends Error { constructor(message, option) { super(message); if (option) this.option = option; } }
 // Every format report.format can name that some cleaner rewrites.
 export const cleanableFormats = () => new Set([...FORMATS, ...FAMILIES.flatMap((f) => [...(f.formats ?? [])])]);
+
+// The cleanable formats in words, grouped the way people name them. Built from the families' own lists.
+export function describeCleanable(formats = cleanableFormats()) {
+  const pick = (list) => [...list].filter((f) => formats.has(f));
+  const docs = pick(documents.formats);
+  const parts = [
+    pick(FORMATS).length && `photos (${pick(FORMATS).join(", ")})`,
+    formats.has('PDF') && 'PDF',
+    docs.some((f) => /^(DOC|DOT|XLS|XLT|PPT|PPS|POT)/.test(f)) && 'Word, Excel and PowerPoint files',
+    docs.some((f) => /^O[DT][TSPG]$/.test(f)) && 'OpenDocument files',
+    ...pick(['EPUB', 'ZIP']),
+    pick(media.formats).length && `audio and video (${pick(media.formats).join(", ")})`,
+    formats.has('Text') && 'plain text',
+  ].filter(Boolean);
+  return listJoin(parts);
+}
+export const CLEANABLE = describeCleanable();
 
 // Any file the inspector can read. Images go through cleanImage. Other formats go through their family's
 // cleaner, and the result is inspected again before it is handed back.

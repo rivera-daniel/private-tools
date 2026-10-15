@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { inspectFile, inspectImage } from '../site/tools/lib/metadata/index.js';
-import { cleanFile, cleanableFormats } from '../site/tools/lib/clean/index.js';
+import { cleanFile, cleanableFormats, describeCleanable } from '../site/tools/lib/clean/index.js';
 import { cleanText, hiddenRuns } from '../site/tools/lib/metadata/scan/text.js';
 import { writeZip } from '../site/tools/lib/zip/index.js';
 import { Report } from '../site/tools/lib/metadata/report.js';
@@ -227,7 +227,11 @@ test('hidden-character rules are stable: one cleaning pass leaves nothing remova
 
 test('cleanable formats come from the clean module and include plain text', () => {
   const formats = cleanableFormats();
-  for (const f of ['JPEG', 'PNG', 'WebP', 'GIF', 'Text']) assert.ok(formats.has(f), f);
+  for (const f of ['JPEG', 'PNG', 'WebP', 'GIF', 'Text', 'PDF', 'DOCX', 'ODT', 'EPUB', 'ZIP', 'MP3', 'MP4', 'FLAC']) assert.ok(formats.has(f), f);
+  assert.ok(!formats.has('EXE') && !formats.has('TIFF'));
+  const words = describeCleanable();
+  for (const part of ['photos (JPEG, PNG, WebP, GIF)', 'PDF', 'Word, Excel and PowerPoint files', 'OpenDocument files', 'EPUB', 'MP3', 'plain text']) assert.ok(words.includes(part), part);
+  assert.equal(describeCleanable(new Set(['PNG', 'Text'])), 'photos (PNG) and plain text');
 });
 
 test('Image Inspector output keeps its provenance and image wording', async () => {

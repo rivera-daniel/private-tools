@@ -19,6 +19,7 @@ import * as programs from './families/programs.js';
 import { scanFile } from './families/scan.js';
 
 export { LIMITS };
+// Formats inspectImage reads. inspectFile reads any file.
 export const SUPPORTED = 'JPEG, PNG, WebP, HEIC, HEIF, AVIF, JPEG XL, GIF, TIFF, DNG and camera raw (CR2, CR3, NEF, ARW, ORF, RW2, PEF, RAF), PSD, BMP and SVG';
 const ISO_BRANDS = /^(heic|heix|heim|heis|hevc|hevx|mif1|msf1|avif|avis|crx |miaf|MiHE|MiHB)$/;
 

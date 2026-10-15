@@ -12,7 +12,7 @@
 //   reloads (see theme.js). The old cache is deleted when it takes over.
 //
 // Paths in the manifest are relative to the worker's scope, so the site can be served under any path.
-const VERSION = '26f58c2fab8effa6';
+const VERSION = '186b8ce771149b5a';
 const PREFIX = 'private-tools-';
 const CACHE = PREFIX + VERSION;
 const SCOPE = self.registration.scope;

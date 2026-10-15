@@ -12,7 +12,7 @@ export const DOC_LIMITS = {
   maxListed: 500,
 };
 
-// Formats cleanImage rewrites. Images in other formats are reported but kept.
+// Embedded-image formats the document cleaners rewrite. Images in other formats are reported but kept.
 export const IMAGE_CLEANABLE = new Set(['JPEG', 'PNG', 'WebP', 'GIF']);
 
 export const budget = (bytes) => ({ left: bytes });

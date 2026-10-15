@@ -4,7 +4,7 @@ import { clearFile, takeFile } from '/tools/lib/handoff.js';
 const $ = (id) => document.getElementById(id);
 const MAX_BYTES = 200 * 1024 * 1024;
 const TIMEOUT_MS = 120000;
-const KINDS = { EXIF: 'EXIF', XMP: 'XMP', IPTC: 'IPTC', C2PA: 'Content Credentials', Comment: 'comments', Text: 'text chunks', Thumbnail: 'thumbnails', Photoshop: 'Photoshop data', Trailer: 'hidden trailing data', Time: 'timestamps' };
+const KINDS = { EXIF: 'EXIF', XMP: 'XMP', IPTC: 'IPTC', C2PA: 'Content Credentials', Comment: 'comments', Text: 'text chunks', Thumbnail: 'thumbnails', Photoshop: 'Photoshop data', Trailer: 'hidden trailing data', Time: 'timestamps', 'Text tag': 'text tags', Tag: 'other tags', Location: 'location tags', MakerNote: 'maker notes', 'Item data': 'metadata items' };
 // Cleaner options by key. Refusals name the option that lifts them, and results list options that would
 // remove what was kept.
 const OPTIONS = {

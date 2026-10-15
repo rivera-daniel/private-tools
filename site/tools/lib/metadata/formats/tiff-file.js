@@ -1,7 +1,9 @@
 // TIFF and BigTIFF, the camera raw formats built on TIFF (DNG, CR2, NEF, ARW, ORF, RW2, PEF), and Fujifilm RAF.
-import { fmtBytes } from '../bytes.js';
+import { fmtBytes, hex } from '../bytes.js';
 import { parseTiff } from '../tiff.js';
+import { TIFF_TAGS } from '../tags.js';
 import { parseJpeg } from './jpeg.js';
+import { IMAGE_TAGS, SUB_DIRS, readLayout } from './tiff-layout.js';
 
 const RAW = { 0x4f52: 'ORF', 0x5352: 'ORF', 0x55: 'RW2' };
 
@@ -10,7 +12,8 @@ export async function parseTiffFile(b, r) {
   const magic = b.u16(2, le);
   r.format = RAW[magic] ?? (b.ascii(8, 2) === 'CR' ? 'CR2' : 'TIFF');
   r.struct('TIFF header', 0, magic === 43 ? 16 : 8);
-  r.within(r.block('EXIF', 0, b.length, { container: 'TIFF directories', removable: false, note: 'Metadata is interleaved with image directories' }), () => parseTiff(b, r, { label: 'TIFF', at: 0 }));
+  const dirs = r.block('EXIF', 0, b.length, { container: 'TIFF directories', removable: false, note: 'Metadata is interleaved with image directories' });
+  r.within(dirs, () => parseTiff(b, r, { label: 'TIFF', at: 0 }));
   const ifd0 = r.sources.get('TIFF IFD0') ?? [];
   const get = (k) => ifd0.find((f) => f.key === k)?.value;
   if (r.format === 'TIFF') {
@@ -31,6 +34,36 @@ export async function parseTiffFile(b, r) {
   const pages = [...r.sources.keys()].filter((k) => /^TIFF IFD\d+$/.test(k)).length;
   if (pages > 1) r.field('TIFF', 'Pages or sub-images', String(pages));
   if (r.embeddedJpeg) await parseEmbeddedJpeg(b, r, r.embeddedJpeg.at, r.embeddedJpeg.size, 'Embedded JPEG (JpgFromRaw)');
+  if (r.format === 'TIFF') r.within(dirs, () => tiffBlocks(b, r));
+}
+
+const KIND_BY_TAG = { 0x02bc: 'XMP', 0x83bb: 'IPTC', 0x8649: 'Photoshop', 0x935c: 'Photoshop', 0x927c: 'MakerNote', 0x8769: 'EXIF', 0x8825: 'EXIF', 0x014a: 'Thumbnail' };
+const GEO_TAGS = new Set([0x830e, 0x8482, 0x85d8, 0x87af, 0x87b0, 0x87b1]);
+
+// A plain TIFF's metadata is a set of tags among the image tags. Each tag outside the image tags, each
+// metadata or preview directory and any data after the last referenced byte is a removable block, so the
+// report says what the cleaner's rewrite drops.
+function tiffBlocks(b, r) {
+  let layout;
+  // The cleaner cannot follow what this cannot read, so a damaged layout is reported as such and the file is refused.
+  try { layout = readLayout(b.u8); } catch (error) { r.warn(`The TIFF directories are damaged (${error.message}).`); return; }
+  const taken = r.blocks.filter((x) => x.removable !== false && Number.isInteger(x.offset)).map((x) => [x.offset, x.offset + x.length]);
+  const add = (kind, at, length, container) => {
+    if (!length || taken.some(([s, e]) => at < e && at + length > s)) return;
+    taken.push([at, at + length]); r.block(kind, at, length, { container });
+  };
+  layout.pages.forEach((page, i) => {
+    if (i > 0 && page.reduced) { add('Thumbnail', page.offset, page.size, `TIFF IFD${i} (reduced-resolution copy)`); return; }
+    for (const e of page.entries) {
+      if (IMAGE_TAGS.has(e.tag)) continue;
+      const name = TIFF_TAGS[e.tag] ?? hex(e.tag);
+      if (SUB_DIRS[e.tag]) { for (const s of page.subs.filter((x) => x.tag === e.tag)) add(KIND_BY_TAG[e.tag] ?? 'Tag', s.dir.offset, s.dir.size, `TIFF ${SUB_DIRS[e.tag]} directory`); continue; }
+      const kind = KIND_BY_TAG[e.tag] ?? (GEO_TAGS.has(e.tag) ? 'Location' : e.type === 2 ? 'Text tag' : 'Tag');
+      add(kind, e.inline ? e.at : e.valueAt, e.inline ? layout.entryWidth : e.size, `TIFF IFD${i} ${name}`);
+    }
+  });
+  const tail = b.u8.subarray(layout.end);
+  if (tail.length > 16 || tail.some((x) => x !== 0)) add('Trailer', layout.end, tail.length, 'TIFF data after the last referenced byte');
 }
 
 const hasSubIfd = (r) => [...r.sources.keys()].some((k) => k.startsWith('TIFF SubIFD'));

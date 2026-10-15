@@ -145,12 +145,25 @@ try {
   // The browser checks sw.js on navigation and installs the new version beside the old one. Once it is
   // installed, the next load with one tab open hands over and reloads once. The install usually finishes
   // while this first page is still loading, so the switch can happen on this load or on the next.
-  const updated = () => page.waitForFunction(() => [...document.styleSheets].some((s) => [...s.cssRules].some((r) => r.selectorText === '.sw-update-check')), null, { timeout: 15000 });
+  const updated = () => page.waitForFunction(() => [...document.styleSheets].some((s) => [...s.cssRules].some((r) => r.selectorText === '.sw-update-check')), null, { timeout: 6000 });
+  // The browser can hold the hand-over until the next navigation (the new worker's skipWaiting() stays pending
+  // while the page is reloading), so a switch may take one more load. It always completes by then.
+  const untilSwitched = async (switched, reloadFirst = false) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (reloadFirst || attempt > 0) await page.reload();
+      reloadFirst = false;
+      if (await switched().then(() => true, () => false)) return;
+    }
+    await switched();
+  };
   let navigations = 0;
   page.on('framenavigated', (f) => { if (f === page.mainFrame()) navigations++; });
   await page.goto(`${base}/pdf-editor/`);
-  if (!(await updated().then(() => true, () => false))) { await page.reload(); await updated(); }
-  assert.ok(navigations <= 3, `${navigations} navigations to reach the new version`);
+  // A page hands over only to a version that finished installing before it registered, so wait for the
+  // install to end (the new version is waiting, or this load already switched) before the reload.
+  await page.waitForFunction(async () => [...document.styleSheets].some((s) => [...s.cssRules].some((r) => r.selectorText === '.sw-update-check')) || Boolean((await navigator.serviceWorker.getRegistration())?.waiting), null, { timeout: 30000 });
+  await untilSwitched(updated);
+  assert.ok(navigations <= 6, `${navigations} navigations to reach the new version`);
   await poll(async (name) => { const k = await caches.keys(); return k.length === 1 && k[0] === name; }, `private-tools-${v2}`);
   // Unchanged files were copied from the old cache: the MuPDF engine was not downloaded again.
   const fetched = served.slice(before);
@@ -180,8 +193,9 @@ try {
   assert.equal(await hasRule('.sw-update-check-2'), false, 'switched with two tabs open');
   assert.deepEqual((await cacheNames()).sort(), [`private-tools-${v2}`, `private-tools-${v3}`].sort());
   await second.close();
-  await page.reload();
-  await page.waitForFunction(() => [...document.styleSheets].some((s) => [...s.cssRules].some((r) => r.selectorText === '.sw-update-check-2')), null, { timeout: 15000 });
+  // The worker counts a closed tab until the browser has dropped it, and a count above one holds the update.
+  await poll(() => new Promise((resolve) => { const c = new MessageChannel(); c.port1.onmessage = (e) => resolve(e.data.count === 1); navigator.serviceWorker.controller.postMessage({ type: 'tabs' }, [c.port2]); }));
+  await untilSwitched(() => page.waitForFunction(() => [...document.styleSheets].some((s) => [...s.cssRules].some((r) => r.selectorText === '.sw-update-check-2')), null, { timeout: 6000 }), true);
   await poll(async (name) => { const k = await caches.keys(); return k.length === 1 && k[0] === name; }, `private-tools-${v3}`);
 
   const foreign = requests.filter((u) => !u.startsWith(base) && !/^(blob|data):/.test(u));

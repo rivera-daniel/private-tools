@@ -60,7 +60,8 @@ export async function cleanImage(input) {
 // It throws a Refusal to leave the file untouched. allowed marks blocks deliberately kept, which the check
 // afterwards accepts. ctx: { name, options }.
 const FAMILIES = [documents, pdf, media, text];
-export class Refusal extends Error {}
+// option: the cleaner option that lifts this refusal (acceptChanges, removeSignatures), when there is one.
+export class Refusal extends Error { constructor(message, option) { super(message); if (option) this.option = option; } }
 // Every format report.format can name that some cleaner rewrites.
 export const cleanableFormats = () => new Set([...FORMATS, ...FAMILIES.flatMap((f) => [...(f.formats ?? [])])]);
 
@@ -77,7 +78,7 @@ export async function cleanFile(input, name = '', options = {}) {
   if (!before.cleanable.blocks) return { ok: true, data: u8, format: before.format, bytesBefore: u8.length, bytesAfter: u8.length, removed: [], exposures: [], kept: [] };
   let result;
   try { result = await family.clean(u8, before, { name, options }); }
-  catch (error) { if (error instanceof Refusal) return refuse(error.message); throw error; }
+  catch (error) { if (error instanceof Refusal) return refuse(error.message, error.option); throw error; }
   const after = await inspectFile(result.data, name);
   const allowed = result.allowed ?? (() => false);
   const leftovers = after.blocks.filter((b) => b.removable !== false && !hasRemovableAncestor(after.blocks, b) && !allowed(b));
@@ -87,11 +88,13 @@ export async function cleanFile(input, name = '', options = {}) {
   return {
     ok: true, data: result.data, format: before.format, width: before.width, height: before.height,
     bytesBefore: u8.length, bytesAfter: result.data.length, removed: result.removed, kept: result.kept,
+    // Options that would remove what was kept here (removeMacros, clearForms).
+    offer: result.offer ?? [],
     exposures: before.signals.filter((s) => s.kind === 'privacy' || s.kind === 'declared').map((s) => s.title),
   };
 }
 
-const refuse = (reason) => ({ ok: false, reason });
+const refuse = (reason, option) => ({ ok: false, reason, ...(option ? { option } : {}) });
 
 function hasRemovableAncestor(blocks, b) {
   for (let p = b.parent; p !== null && p !== undefined; p = blocks[p]?.parent) if (blocks[p]?.removable !== false) return true;

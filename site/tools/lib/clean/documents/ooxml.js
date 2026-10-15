@@ -9,7 +9,7 @@ import { TRACKED, refuse, copyEntry, cleanPicture, reopen, archiveRemovals } fro
 const enc = new TextEncoder();
 
 export async function cleanOoxml(zip, report, options) {
-  if (report.blocks.some((b) => b.kind === 'Tracked changes') && !options.acceptChanges) refuse(TRACKED);
+  if (report.blocks.some((b) => b.kind === 'Tracked changes') && !options.acceptChanges) refuse(TRACKED, 'acceptChanges');
   const pkg = await openPackage(zip, budget(DOC_LIMITS.maxReadBytes));
   if (pkg.errors.length) refuse('Some relationship parts could not be read, so the document was left untouched.');
   const plan = await planPackage(pkg, options);
@@ -51,7 +51,7 @@ export async function cleanOoxml(zip, report, options) {
     let doc;
     try { doc = parseXml(t); } catch (error) { refuse(error.limit ? `${e.name} is too large to clean safely, so the document was left untouched.` : `${e.name} is not well-formed XML (${error.message}), so the document was left untouched.`); }
     const s = sanitizePart(doc, { name: lower, family: fam }, plan);
-    if (s.tracked && !options.acceptChanges) refuse(TRACKED);
+    if (s.tracked && !options.acceptChanges) refuse(TRACKED, 'acceptChanges');
     if (!s.changed) continue;
     out.set(lower, serialize(doc));
     removed.push(...rewrites(s, e.name));
@@ -70,7 +70,7 @@ export async function cleanOoxml(zip, report, options) {
   const keepMacros = !options.removeMacros && plan.macros.size > 0;
   const kept = report.blocks.filter((b) => b.removable === false).map((b) => `${b.kind} (${b.container})${b.note ? `: ${b.note}` : ''}`);
   if (keepMacros) kept.push(...[...plan.macros].map((m) => `Macros (${pkg.entries.get(m)?.name}): kept because removing them changes what the document does`));
-  return { data: result, removed, kept, allowed: (b) => keepMacros && b.kind === 'Macros' };
+  return { data: result, removed, kept, allowed: (b) => keepMacros && b.kind === 'Macros', offer: keepMacros ? ['removeMacros'] : [] };
 }
 
 function rewrites(s, name) {

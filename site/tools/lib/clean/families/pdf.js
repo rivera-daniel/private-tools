@@ -25,7 +25,7 @@ export async function clean(u8, report, ctx) {
   if (!cat || !(rootRef instanceof Ref)) throw new Refusal('The PDF has no readable document catalog, so it was left untouched.');
   const pageCount = doc.pages().length;
   const plan = planDrops(doc, options);
-  if (plan.signed && !options.removeSignatures) throw new Refusal('This PDF is digitally signed. Cleaning would invalidate the signature.');
+  if (plan.signed && !options.removeSignatures) throw new Refusal('This PDF is digitally signed. Cleaning would invalidate the signature.', 'removeSignatures');
 
   const map = new Map(); const roles = new Map(); const out = []; const queue = [];
   const refTo = (num, key, role) => {
@@ -119,7 +119,7 @@ export async function clean(u8, report, ctx) {
   for (const b of report.blocks) if ((b.removable === false && b.kind !== 'Document ID') || allowed(b)) keptCounts.set(b.kind, (keptCounts.get(b.kind) ?? 0) + 1);
   const why = { 'Form data': ['filled-in form field', 'kept unless form clearing is chosen'], Link: ['link', 'still clickable'], 'Hidden layer': ['hidden layer', 'its content stays in the pages'], 'Redaction mark': ['unapplied redaction mark', 'apply redactions in a PDF editor'], 'XFA form': ['XFA form', 'needed to show the form'], 'Image metadata': ['image with metadata', 'the image cleaner could not rewrite it'] };
   const kept = [...keptCounts].map(([kind, n]) => { const [noun, note] = why[kind] ?? [kind, '']; return `${n} ${noun}${n === 1 ? '' : 's'}${note ? `, ${note}` : ''}`; });
-  return { data, removed, kept, allowed };
+  return { data, removed, kept, allowed, offer: !options.clearForms && keptCounts.has('Form data') ? ['clearForms'] : [] };
 }
 
 function planDrops(doc, options) {

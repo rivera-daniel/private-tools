@@ -11,7 +11,7 @@ const enc = new TextEncoder();
 const REWRITES = { properties: 'Properties', fingerprints: 'Editing fingerprints', tracked: 'Tracked changes', printer: 'Printer settings', macros: 'Macros' };
 
 export async function cleanOdf(zip, report, options) {
-  if (report.blocks.some((b) => b.kind === 'Tracked changes') && !options.acceptChanges) refuse(TRACKED);
+  if (report.blocks.some((b) => b.kind === 'Tracked changes') && !options.acceptChanges) refuse(TRACKED, 'acceptChanges');
   const b = budget(DOC_LIMITS.maxReadBytes);
   const plan = await planOdf(zip, b, options);
   if (plan.encrypted) refuse('This document is password protected. It cannot be rewritten without the password, so it was left untouched.');
@@ -34,7 +34,7 @@ export async function cleanOdf(zip, report, options) {
     let doc;
     try { doc = parseXml(utf8.decode(data)); } catch (error) { refuse(error.limit ? `${e.name} is too large to clean safely, so the document was left untouched.` : `${e.name} is not well-formed XML (${error.message}), so the document was left untouched.`); }
     const s = sanitizeOdf(doc, kind, plan);
-    if (s.tracked && !options.acceptChanges) refuse(TRACKED);
+    if (s.tracked && !options.acceptChanges) refuse(TRACKED, 'acceptChanges');
     if (!s.changed) continue;
     out.set(e.name, serialize(doc));
     for (const [key, kindName] of Object.entries(REWRITES)) if (s[key]) removed.push({ kind: kindName, container: e.name, bytes: 0 });
@@ -69,7 +69,7 @@ export async function cleanOdf(zip, report, options) {
   const keepMacros = !options.removeMacros && plan.macros.size > 0;
   const keptList = report.blocks.filter((x) => x.removable === false).map((x) => `${x.kind} (${x.container})${x.note ? `: ${x.note}` : ''}`);
   if (keepMacros) keptList.push('Macros (Basic): kept because removing them changes what the document does');
-  return { data: result, removed, kept: keptList, allowed: (x) => keepMacros && x.kind === 'Macros' };
+  return { data: result, removed, kept: keptList, allowed: (x) => keepMacros && x.kind === 'Macros', offer: keepMacros ? ['removeMacros'] : [] };
 }
 
 function verify(u8, out, manifest) {

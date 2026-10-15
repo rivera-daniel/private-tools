@@ -28,3 +28,5 @@
 .option-list strong{display:block;font-size:14px;font-weight:600}
 .option-list small{display:block;font-size:13px;line-height:1.5;color:var(--muted);margin-top:3px}
 @media(max-width:650px){.job .retry{grid-column:2;justify-self:start}.options>summary{padding:14px 16px}.option-list label{padding:14px 16px}}
+.job-body p.offer{color:var(--muted)}
+.link-button{border:0;background:none;padding:0;font:inherit;font-weight:600;color:var(--red-text);cursor:pointer}.link-button:hover{text-decoration:underline}

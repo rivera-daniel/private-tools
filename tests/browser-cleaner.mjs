@@ -91,7 +91,8 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
     window.Worker = class extends Real {
       postMessage(message, ...rest) {
         if (message?.file?.name?.endsWith('.docx')) {
-          const reply = message.options?.acceptChanges ? { id: message.id, ok: true, data: new Uint8Array([1]), removed: [{ kind: 'Tracked changes' }], kept: [], bytesBefore: 2, bytesAfter: 1 } : { id: message.id, ok: false, reason: 'The document has tracked changes, so it was left untouched.' };
+          const done = { id: message.id, ok: true, data: new Uint8Array([1]), removed: [{ kind: 'Tracked changes' }], kept: [], bytesBefore: 2, bytesAfter: 1, offer: message.options?.removeMacros ? [] : ['removeMacros'] };
+          const reply = message.options?.acceptChanges ? done : { id: message.id, ok: false, reason: 'This document has tracked changes.', option: 'acceptChanges' };
           setTimeout(() => this.onmessage?.({ data: reply }), 10);
           return;
         }
@@ -108,6 +109,11 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   await retryPage.click('.job .retry');
   await retryPage.waitForFunction(() => document.querySelector('.job')?.dataset.state === 'done');
   assert.equal(await retryPage.getAttribute('.job .save', 'download'), 'report-clean.docx');
+  // Kept macros are offered for removal with one more click.
+  assert.match(await retryPage.textContent('.job .offer'), /Macros kept\. Enable “Remove macros” to strip them\./);
+  await retryPage.screenshot({ path: `${shots}/cleaner-${label}-offer.png`, fullPage: true });
+  await retryPage.click('.job .offer .link-button');
+  await retryPage.waitForFunction(() => document.querySelector('.job')?.dataset.state === 'done' && !document.querySelector('.job .offer'));
   await retryPage.close();
   console.log(`${label}: ok`);
 }

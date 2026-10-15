@@ -142,6 +142,7 @@ test('DOCX: tracked changes are refused by default and accepted on request', asy
   assert.ok(hl(r, 'People', 'Change author').includes(PERSON.editor));
   const refused = await cleanFile(u8, 'changes.docx');
   assert.equal(refused.ok, false); assert.match(refused.reason, /Accept or reject all changes/);
+  assert.equal(refused.option, 'acceptChanges');
   const { result } = await cleanAndCheck(u8, 'changes.docx', { acceptChanges: true });
   const doc = (await entries(result.data)).text('word/document.xml');
   assert.match(doc, /added words/, 'insertions kept');
@@ -159,6 +160,7 @@ test('DOCM: macros are kept by default, removed on request, and the format never
   const kept = await cleanFile(u8, 'macro.docm');
   assert.ok(kept.ok, kept.reason);
   assert.ok(kept.kept.some((k) => k.startsWith('Macros')));
+  assert.deepEqual(kept.offer, ['removeMacros']);
   assert.ok((await entries(kept.data)).files.has('word/vbaProject.bin'));
   const { result, after } = await cleanAndCheck(u8, 'macro.docm', { removeMacros: true });
   assert.equal(after.format, 'DOCM');

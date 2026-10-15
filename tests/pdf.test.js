@@ -180,6 +180,7 @@ test('form fields: values reported and kept by default, cleared on request', asy
   const kept = await cleaned(u8);
   assert.ok(has(kept.res.data, 'Jane Q. Public'));
   assert.ok(kept.res.kept.some((k) => /form/.test(k)));
+  assert.deepEqual(kept.res.offer, ['clearForms']);
   const cleared = await cleaned(u8, { clearForms: true });
   assert.ok(!has(cleared.res.data, 'Jane Q. Public'));
   assert.ok(has(cleared.res.data, '/NeedAppearances true'));
@@ -255,6 +256,7 @@ test('signature: signer and certificate subject read; refused unless signatures 
   const refused = await cleanFile(u8, 'x.pdf');
   assert.equal(refused.ok, false);
   assert.equal(refused.reason, 'This PDF is digitally signed. Cleaning would invalidate the signature.');
+  assert.equal(refused.option, 'removeSignatures');
   const { res } = await cleaned(u8, { removeSignatures: true });
   assert.ok(!has(res.data, 'Jane Signer') && !has(res.data, '/Sig'));
 });

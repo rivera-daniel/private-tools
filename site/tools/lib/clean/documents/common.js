@@ -5,7 +5,7 @@ import { IMAGE_CLEANABLE, readPart } from '../../metadata/documents/package.js';
 import { cleanImage, Refusal } from '../index.js';
 
 export const TRACKED = 'This document has tracked changes, which keep deleted text and the names of the people who made each change. Accept or reject all changes in your editor first, or choose to accept them here.';
-export const refuse = (message) => { throw new Refusal(message); };
+export const refuse = (message, option) => { throw new Refusal(message, option); };
 
 // An unchanged entry is copied still compressed. Times, extra fields and comments are not carried over.
 export function copyEntry(zip, e) {

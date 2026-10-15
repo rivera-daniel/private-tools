@@ -5,14 +5,15 @@ const $ = (id) => document.getElementById(id);
 const MAX_BYTES = 200 * 1024 * 1024;
 const TIMEOUT_MS = 120000;
 const KINDS = { EXIF: 'EXIF', XMP: 'XMP', IPTC: 'IPTC', C2PA: 'Content Credentials', Comment: 'comments', Text: 'text chunks', Thumbnail: 'thumbnails', Photoshop: 'Photoshop data', Trailer: 'hidden trailing data', Time: 'timestamps' };
-// Refusals the user can lift with an option. The family cleaners state the reason in words, so it is
-// matched by pattern: [option, label, pattern].
-const OPTIONS = [
-  ['acceptChanges', 'Accept tracked changes in documents', /tracked change|revision/i],
-  ['removeMacros', 'Remove macros', /macro|VBA/i],
-  ['removeSignatures', 'Remove digital signatures from PDFs', /signature|signed/i],
-  ['clearForms', 'Clear filled-in form fields in PDFs', /form field|filled-in|form data|\bforms?\b/i],
-];
+// Cleaner options by key. Refusals name the option that lifts them, and results list options that would
+// remove what was kept.
+const OPTIONS = {
+  acceptChanges: 'Accept tracked changes in documents',
+  removeMacros: 'Remove macros',
+  removeSignatures: 'Remove digital signatures from PDFs',
+  clearForms: 'Clear filled-in form fields in PDFs',
+};
+const OFFERS = { removeMacros: ['Macros kept.', 'to strip them'], clearForms: ['Filled-in form fields kept.', 'to empty them'] };
 const FILE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg>';
 
 // Jobs run one at a time. A spare worker stands by so a hung file can be cancelled offline.
@@ -82,18 +83,9 @@ function done(result) {
   const status = body.lastChild;
   if (!result.ok) {
     row.dataset.state = 'error';
-    const fix = OPTIONS.find(([option, , pattern]) => !job.options[option] && pattern.test(result.reason));
-    status.textContent = fix ? `${result.reason} Turn on “${fix[1]}” to clean it.` : result.reason;
-    if (fix) {
-      const retry = el('button', 'retry', 'Retry with option'); retry.type = 'button';
-      retry.setAttribute('aria-label', `Retry ${file.name} with “${fix[1]}”`);
-      retry.addEventListener('click', () => {
-        row.dataset.state = 'waiting'; status.textContent = 'Waiting…'; retry.replaceWith(el('span', 'state', ''));
-        waiting.push({ ...job, id: next++, options: { ...job.options, [fix[0]]: true } });
-        title(); pump();
-      });
-      row.lastChild.replaceWith(retry);
-    } else row.lastChild.replaceWith(el('span', 'state', 'Not cleaned'));
+    const option = OPTIONS[result.option] && !job.options[result.option] ? result.option : null;
+    status.textContent = option ? `${result.reason} Turn on “${OPTIONS[option]}” to clean it.` : result.reason;
+    row.lastChild.replaceWith(option ? retryButton(job, option, 'Retry with option') : el('span', 'state', 'Not cleaned'));
   } else {
     row.dataset.state = 'done';
     const found = result.removed.length;
@@ -103,11 +95,31 @@ function done(result) {
       status.textContent = `Removed ${plural(found, 'block')}: ${[...counts.keys()].join(', ')}. ${size(result.bytesBefore)} → ${size(result.bytesAfter)}.`;
     }
     if (result.kept?.length) body.append(el('p', 'kept', `Kept: ${result.kept.join(', ')}.`));
+    for (const option of (result.offer ?? []).filter((o) => OFFERS[o] && !job.options[o])) {
+      const offer = el('p', 'offer', `${OFFERS[option][0]} Enable “${OPTIONS[option]}” ${OFFERS[option][1]}. `);
+      offer.append(retryButton(job, option, 'Clean again'));
+      body.append(offer);
+    }
     const save = el('a', 'save', 'Save'); save.href = track(new Blob([result.data], { type: file.type || 'application/octet-stream' })); save.download = cleanName(file.name);
     save.setAttribute('aria-label', `Save cleaned ${file.name}`);
     row.lastChild.replaceWith(save);
   }
   title(); pump();
+}
+
+// Runs the job again with one more option turned on, in the same row.
+function retryButton(job, option, label) {
+  const button = el('button', label === 'Clean again' ? 'link-button' : 'retry', label); button.type = 'button';
+  button.setAttribute('aria-label', `${label}: ${job.file.name} with “${OPTIONS[option]}”`);
+  button.addEventListener('click', () => {
+    const { row, body } = job;
+    row.dataset.state = 'waiting';
+    body.replaceChildren(body.firstChild, el('p', '', 'Waiting…'));
+    row.lastChild.replaceWith(el('span', 'state', ''));
+    waiting.push({ ...job, id: next++, options: { ...job.options, [option]: true } });
+    title(); pump();
+  });
+  return button;
 }
 
 function reset() {

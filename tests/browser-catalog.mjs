@@ -1,8 +1,10 @@
-// Static content, real preview loading and catalog navigation. No real user files or external requests.
+// Static content, illustrated cards and catalog navigation. No real user files or external requests.
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { TOOLS, DETAILS } from '../site/tools/assets/catalog-data.js';
 const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
+const live=TOOLS.filter(t=>!t.stage), planned=TOOLS.filter(t=>t.stage), featured=live.slice(0,5);
+const slug=t=>t.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/-$/,'');
 const base=process.env.BASE ?? 'http://127.0.0.1:4176';
 const shots=process.env.SHOTS ?? 'test-results/catalog';
 await mkdir(shots,{recursive:true});
@@ -29,17 +31,17 @@ try {
    await page.evaluate(()=>window.scrollTo(0,0));
    await page.screenshot({path:`${shots}/${width}-${colorScheme}.jpg`,type:'jpeg',quality:80,fullPage:true});
   }
-  assert.equal(await page.locator('.app-shelf a').count(),5);
-  assert.equal(await page.locator('.app-shelf .tool-illustration').count(),5);
+  assert.equal(await page.locator('.app-shelf a').count(),featured.length);
+  assert.equal(await page.locator('.app-shelf .tool-illustration').count(),featured.length);
   assert.equal(await page.locator('.app-shelf .app-icon').count(),0);
-  await page.locator('.app-shelf a').last().click();assert.match(page.url(),/#pdf-editor$/);
+  await page.locator('.app-shelf a').last().click();assert.equal(new URL(page.url()).hash,'#'+slug(featured.at(-1)));
   await page.locator('#search').fill('Office');assert.equal(await page.getByRole('button',{name:/Office Viewer/}).count(),1);assert.match(await page.getByRole('button',{name:/Office Viewer/}).locator('.cat-tag').textContent(),/Planned/);
   await page.getByRole('button',{name:/Office Viewer/}).click();assert.ok(await page.locator('#tool-dialog').isVisible());await page.keyboard.press('Escape');assert.equal(await page.locator('#tool-dialog').isVisible(),false);
   await page.locator('#search').fill('<img src=x onerror=alert(1)>');assert.match(await page.locator('#results-note').textContent(),/No tools found/);assert.equal(await page.locator('#results img').count(),0);
   await page.locator('#search').press('Escape');await page.locator('#group-select').selectOption('forensics');assert.ok(await page.locator('#catalog-empty').isVisible());assert.equal(await page.locator('.cat-card:visible').count(),0);
   await page.locator('.app-shelf a').first().click();assert.ok(await page.locator('#image-inspector').isVisible());assert.equal(await page.locator('#group-select').inputValue(),'all');await page.locator('body').click({position:{x:3,y:3}});await page.keyboard.press('/');assert.ok(await page.locator('#search').evaluate(e=>e===document.activeElement));
-  await page.locator('.cat-teaser').click();await page.waitForURL(`${base}/tools/roadmap/`);assert.equal(await page.locator('#cards .cat-row').count(),24);
-  await page.locator('#group-select').selectOption('forensics');assert.equal(await page.locator('#cards .cat-row:visible').count(),8);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.locator('.cat-teaser').click();await page.waitForURL(`${base}/tools/roadmap/`);assert.equal(await page.locator('#cards .cat-row').count(),planned.length);
+  await page.locator('#group-select').selectOption('forensics');assert.equal(await page.locator('#cards .cat-row:visible').count(),planned.filter(t=>t.group==='forensics').length);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();console.log(`${width}px: light/dark, illustrated icons, search, filters, dialog, keyboard and roadmap passed`);
  }
 }finally{await browser.close();}

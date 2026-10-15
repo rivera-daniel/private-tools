@@ -164,7 +164,9 @@ npm test          # parser and cleaner tests
 
 `HOST` and `PORT` change the development server's address.
 
-### Catalog presentation and screenshots
+### Toolkit catalog workflow
+
+See [Adding tools to the Toolkit](docs/catalog-workflow.md) for the complete release, artwork and verification checklist.
 
 The catalog and roadmap include static headings, links and detailed descriptions for readers and crawlers without JavaScript. Edit `site/tools/assets/catalog-data.js`, then run `node scripts/render-catalog.mjs` to regenerate both pages. Catalog cards use scalable artwork from `site/tools/assets/catalog-illustrations.js`. The hero keeps five shortcuts while the grid includes every available tool.
 

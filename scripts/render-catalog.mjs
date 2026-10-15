@@ -1,7 +1,7 @@
 // Regenerate crawlable catalog and roadmap HTML after changing the shared registry.
 // Usage: node scripts/render-catalog.mjs. Does not fetch or upload anything.
-import { writeFile, mkdir } from 'node:fs/promises';
-import { illustration } from '../site/tools/assets/catalog-illustrations.js';
+import { writeFile, mkdir, access } from 'node:fs/promises';
+import { illustration, ILLUSTRATION_KINDS } from '../site/tools/assets/catalog-illustrations.js';
 import { GROUPS, STAGES, TOOLS, DETAILS } from '../site/tools/assets/catalog-data.js';
 import { ART, ARROW } from '../site/tools/assets/catalog-icons.js';
 const root = new URL('../site/tools/', import.meta.url);
@@ -11,6 +11,19 @@ const group = (t) => GROUPS.find((g) => g.id === t.group)?.name ?? t.group;
 const icon = (t, cls = '') => `<span class="app-icon ${cls} tone-${escape(t.art)}" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">${ART[t.art] ?? ART.files}</svg></span>`;
 const mark = '<svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>';
 const live = TOOLS.filter((t) => !t.stage);
+// Fail before writing either page if a released card is incomplete.
+const names = new Set(), slugs = new Set();
+for (const t of TOOLS) {
+ if (names.has(t.name) || slugs.has(slug(t))) throw new Error(`Duplicate tool name or slug: ${t.name}`);
+ names.add(t.name); slugs.add(slug(t));
+ if (!GROUPS.some(g => g.id === t.group) || !t.copy?.trim()) throw new Error(`Missing category or description: ${t.name}`);
+ if (t.stage && !(t.stage in STAGES)) throw new Error(`Unknown roadmap stage: ${t.name}`);
+ if (!t.stage) {
+  if (!DETAILS[t.name]?.trim() || !ILLUSTRATION_KINDS.includes(t.art)) throw new Error(`Released tool needs details and registered illustration: ${t.name}`);
+  if (!/^\/tools\/[a-z0-9-]+\/$/.test(t.href ?? '')) throw new Error(`Invalid local tool URL: ${t.name}`);
+  await access(new URL(`${t.href.slice('/tools/'.length)}index.html`, root));
+ }
+}
 const stages = Object.keys(STAGES);
 const planned = TOOLS.filter((t) => t.stage).sort((a,b) => stages.indexOf(a.stage)-stages.indexOf(b.stage));
 const options = `<option value="all">All categories</option>${GROUPS.filter((g) => TOOLS.some((t) => t.group === g.id)).map((g) => `<option value="${escape(g.id)}">${escape(g.short)}</option>`).join('')}`;

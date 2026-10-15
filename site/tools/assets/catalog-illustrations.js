@@ -1,4 +1,5 @@
 // Scalable catalog illustrations. Decorative artwork, never a simulated tool result.
+export const ILLUSTRATION_KINDS = ['inspector','files','cleaner','archiver','pdfedit'];
 export function illustration(kind, id) {
  const colors={inspector:['#55c6ff','#0871e8'],files:['#f4b69b','#bc6049'],cleaner:['#c5acff','#7660cc'],archiver:['#f7d77a','#c18b26'],pdfedit:['#b5d4ae','#54876b']};
  const [a,b]=colors[kind]??colors.files;

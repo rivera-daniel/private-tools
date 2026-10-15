@@ -295,7 +295,7 @@ async function runCase(label, item, data, steps) {
     if (leaked.length) {
       const became = res.inspect?.format !== item.format;
       // A PDF photo the image cleaner cannot rewrite is kept as is and listed as kept.
-      const disclosed = res.clean.kept.find((k) => /image with metadata|images with metadata/.test(k));
+      const disclosed = res.clean.kept.find((k) => /images? with metadata|image cleaner could not read/.test(k));
       const readable = became || disclosed ? [] : await readableBy(res.clean, item, leaked);
       if (readable.length) problems.push(`cleaned output still holds readable metadata: ${readable.join(', ')}`);
       else save(`review/${label}`, item, data), review.push({ label, item: item.id, steps, kind: became ? `became ${res.inspect?.format ?? 'unknown'}` : disclosed ? `kept and listed: ${disclosed}` : 'unrecognised bytes', leaked });

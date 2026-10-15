@@ -225,15 +225,21 @@ function textItems() {
   return [{ id: 'text-builtin', name: 'notes.txt', format: 'Text', family: 'text', source: 'built-in', data: Buffer.from(body, 'utf8'), secrets: [], hiddenText: true }];
 }
 
-// ---------- formats the cleaner must refuse ----------
+// ---------- HEIF family and TIFF ----------
+// The ExifTool-written fixtures carry EXIF, XMP and GPS. HEIF is the HEIC file with every brand set to mif1.
 
-function refusedItems() {
+const PII = ['Jane Doe', 'SN-0042-7781', 'Austin', 'Adobe Firefly', 'Canon EOS R5'];
+function heifItems() {
+  const heic = Buffer.from(sample('formats/pii.heic'));
+  const heif = Buffer.from(heic); const ftypEnd = heif.readUInt32BE(0);
+  for (let o = 8; o + 4 <= ftypEnd; o += 4) if (o !== 12) heif.write('mif1', o, 'latin1');
   return [
-    { id: 'heic-refused', name: 'pii.heic', format: 'HEIC', family: 'none', source: 'built-in', data: sample('formats/pii.heic'), secrets: [], expect: 'refuse' },
-    { id: 'tiff-refused', name: 'pii.tif', format: 'TIFF', family: 'none', source: 'built-in', data: sample('formats/pii.tif'), secrets: [], expect: 'refuse' },
+    { id: 'heic-builtin', name: 'pii.heic', format: 'HEIC', family: 'heif', source: 'built-in', data: heic, secrets: PII },
+    { id: 'heif-builtin', name: 'pii.heif', format: 'HEIF', family: 'heif', source: 'built-in', data: heif, secrets: PII },
+    { id: 'avif-builtin', name: 'pii.avif', format: 'AVIF', family: 'heif', source: 'built-in', data: sample('formats/pii.avif'), secrets: PII },
+    { id: 'tiff-builtin', name: 'pii.tif', format: 'TIFF', family: 'tiff', source: 'built-in', data: sample('formats/pii.tif'), secrets: PII },
   ];
 }
-
 
 // ---------- unusual placements ----------
 // Metadata in the places a parser is most likely to miss: extension segments, chunks after the image data,
@@ -531,7 +537,7 @@ function pythonItems(tools, dir) {
 }
 
 export async function makeCorpus(tools = {}, { external = true } = {}) {
-  const items = [jpegItem(), pngItem(), webpItem(), gifItem(), ...pdfItems(), ...(await documentItems()), ...mediaItems(), ...textItems(), ...refusedItems(), ...hostileImages(), ...hostilePdf(), ...(await hostileDocuments())];
+  const items = [jpegItem(), pngItem(), webpItem(), gifItem(), ...pdfItems(), ...(await documentItems()), ...mediaItems(), ...textItems(), ...heifItems(), ...hostileImages(), ...hostilePdf(), ...(await hostileDocuments())];
   const skipped = [];
   if (external) {
     const dir = mkdtempSync(join(tmpdir(), 'pt-corpus-'));

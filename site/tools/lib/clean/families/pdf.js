@@ -119,6 +119,11 @@ export async function clean(u8, report, ctx) {
   for (const b of report.blocks) if ((b.removable === false && b.kind !== 'Document ID') || allowed(b)) keptCounts.set(b.kind, (keptCounts.get(b.kind) ?? 0) + 1);
   const why = { 'Form data': ['filled-in form field', 'kept unless form clearing is chosen'], Link: ['link', 'still clickable'], 'Hidden layer': ['hidden layer', 'its content stays in the pages'], 'Redaction mark': ['unapplied redaction mark', 'apply redactions in a PDF editor'], 'XFA form': ['XFA form', 'needed to show the form'], 'Image metadata': ['image with metadata', 'the image cleaner could not rewrite it'] };
   const kept = [...keptCounts].map(([kind, n]) => { const [noun, note] = why[kind] ?? [kind, '']; return `${n} ${noun}${n === 1 ? '' : 's'}${note ? `, ${note}` : ''}`; });
+  // JPEG streams the image cleaner could not read are kept as they are; say so even when the inspector
+  // did not recognise them as photos.
+  const reported = new Set(report.blocks.filter((b) => b.kind === 'Image metadata').map((b) => b.key));
+  const unread = [...keptImages].filter((k) => !reported.has(k)).length;
+  if (unread) kept.push(`${unread} JPEG image${unread === 1 ? '' : 's'} the image cleaner could not read, kept as ${unread === 1 ? 'it is' : 'they are'}`);
   return { data, removed, kept, allowed, offer: !options.clearForms && keptCounts.has('Form data') ? ['clearForms'] : [] };
 }
 

@@ -157,3 +157,22 @@ test('PNG: thousands of compressed text chunks stop at the decompression count a
   assert.ok(before.warnings.some((w) => /Too many compressed metadata blocks/.test(w)));
   assert.equal((await cleanImage(file)).ok, false);
 });
+
+test('HEIC: a file cut off inside a box is refused, not passed through with its metadata', async () => {
+  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
+  const { inspectFile } = await import('../site/tools/lib/metadata/index.js');
+  const heic = readFileSync(new URL('./fixtures/formats/pii.heic', import.meta.url));
+  const cut = heic.subarray(0, 734);
+  assert.ok((await inspectFile(cut, 'a.heic')).warnings.some((w) => /truncated/.test(w)));
+  const r = await cleanFile(cut, 'a.heic');
+  assert.equal(r.ok, false);
+});
+
+test('a cleaner that trips over a malformed structure refuses instead of throwing', async () => {
+  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
+  const avif = Buffer.from(readFileSync(new URL('./fixtures/formats/pii.avif', import.meta.url)));
+  avif[276] = 16; // an item reference box that claims more entries than it holds
+  const r = await cleanFile(avif, 'a.avif');
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /could not be rewritten safely/);
+});

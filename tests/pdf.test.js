@@ -448,3 +448,11 @@ test('signature: a signed widget the form field list does not reach is still fou
     assert.ok(!has(res.data, 'Hidden Signer') && !has(res.data, 'Approval'));
   }
 });
+
+test('a JPEG stream the image cleaner cannot read is listed as kept', async () => {
+  const broken = Buffer.from(jpegWith(exifSegment(tiff([[0x013b, 2, 'Photo Artist']])))); broken[3] = 0xe0; broken[1] = 0xda;
+  const u8 = pdf(basic({ resources: '/XObject << /Im1 6 0 R >>', content: 'q 16 0 0 12 72 600 cm /Im1 Do Q', catalog: '/PieceInfo << /A << /Private (x) >> >>', extra: { 6: stream('<< /Type /XObject /Subtype /Image /Width 16 /Height 12 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode >>', broken) } }), { trailer: '/Root 1 0 R' });
+  const res = await cleanFile(u8, 'x.pdf');
+  assert.ok(res.ok, res.reason);
+  assert.ok(res.kept.some((k) => /image cleaner could not read/.test(k)), JSON.stringify(res.kept));
+});

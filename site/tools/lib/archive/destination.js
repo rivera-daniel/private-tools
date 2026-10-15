@@ -85,6 +85,9 @@ export function planExtraction(entries, { existing = new Map(), choices = {} } =
       collisions.push({ path, existing: found.kind, wanted: 'directory', replaceable: false, choice });
       if (choice === 'skip') { dirs.set(key, { skipped: true }); continue; }
       final = keepBothName(name, taken(parent.path));
+    } else if (plannedIn(parent.path).has(k)) {
+      // Another folder of this archive was renamed to this name: keep the two apart.
+      final = keepBothName(name, taken(parent.path));
     }
     const path = join(parent.path, final);
     plannedIn(parent.path).add(nameKey(final));

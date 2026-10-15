@@ -184,14 +184,14 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
     const root = await navigator.storage.getDirectory();
     await root.removeEntry('mine', { recursive: true }).catch(() => {});
     const d = await root.getDirectoryHandle('mine', { create: true });
-    for (const [name, text] of [['report.txt', 'VALUABLE ORIGINAL'], ['Notes.TXT', 'MY NOTES']]) { const w = await (await d.getFileHandle(name, { create: true })).createWritable(); await w.write(text); await w.close(); }
+    for (const [name, text] of [['report.txt', 'VALUABLE ORIGINAL'], ['Notes.TXT', 'MY NOTES'], ['.report.txt.partial', 'MY PARTIAL']]) { const w = await (await d.getFileHandle(name, { create: true })).createWritable(); await w.write(text); await w.close(); }
     window.pickFolder = 'mine';
   });
   const extractHere = async (path, here) => {
     await page.click('#open-another'); await page.setInputFiles('#open-file', path); await page.waitForSelector('#open-panel:not([hidden])');
     await page.setChecked('#extract-here', here); await page.click('#extract-folder');
   };
-  const original = { 'report.txt': 'VALUABLE ORIGINAL', 'Notes.TXT': 'MY NOTES' };
+  const original = { 'report.txt': 'VALUABLE ORIGINAL', 'Notes.TXT': 'MY NOTES', '.report.txt.partial': 'MY PARTIAL' };
   await seed();
   await extractHere(`${dir}/report.zip`, false);
   await page.waitForSelector('#open-done:not([hidden])');
@@ -241,7 +241,7 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   await page.click('#collide-run');
   await page.waitForSelector('#open-done:not([hidden])');
   assert.match(await page.textContent('#open-done'), /2 files replaced\./);
-  assert.deepEqual(await listing(), { 'report.txt': 'ARCHIVE REPORT', 'Notes.TXT': 'archive notes', 'fresh.txt': 'fresh' });
+  assert.deepEqual(await listing(), { 'report.txt': 'ARCHIVE REPORT', 'Notes.TXT': 'archive notes', 'fresh.txt': 'fresh', '.report.txt.partial': 'MY PARTIAL' });
   await page.setChecked('#extract-here', false);
   await page.evaluate(async () => { await (await navigator.storage.getDirectory()).removeEntry('mine', { recursive: true }); window.pickFolder = null; });
 

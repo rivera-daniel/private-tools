@@ -10,6 +10,7 @@ import { Aes, WinZipCtr, Sha1, HmacSha1, deriveKeys, WrongPassword } from '../si
 import { tarStream, readTar } from '../site/tools/lib/archive/tar.js';
 import { safePath, uniquePath } from '../site/tools/lib/archive/paths.js';
 import { planExtraction, portableName, freshFolderName, keepBothName, nameKey, foldersToScan, archiveBase } from '../site/tools/lib/archive/destination.js';
+import { writeEntry, freshFolder, createNew, removeCreated, scan } from '../site/tools/lib/archive/folder.js';
 import { MemorySink, BlobReader, collect, bytesChunks } from '../site/tools/lib/archive/streams.js';
 import { createArchive, listArchive, extractEntries, detectFormat, alreadyCompressed, LIMITS } from '../site/tools/lib/archive/index.js';
 import { zipCryptoZip, overlappingZip, understatedZip } from './fixtures/archive.js';
@@ -379,9 +380,105 @@ test('destination: existing names are kept unless Replace is chosen, and folders
   assert.equal(skipFolder.files.filter((f) => f.replace).length, 0, 'nothing is replaced without a choice');
 });
 
+test('destination: a folder renamed to keep both never merges with another folder of the archive', () => {
+  const plan = planExtraction([{ id: 1, path: 'a/x.txt', kind: 'file' }, { id: 2, path: 'a (1)/x.txt', kind: 'file' }], { existing: existingOf({ '': { a: 'file' } }) });
+  assert.deepEqual(plan.files.map((f) => f.path), ['a (1)/x.txt', 'a (1) (1)/x.txt']);
+});
+
 test('destination: only folders that will be written into are scanned', () => {
   const tree = foldersToScan([{ id: 1, path: 'A/b/c.txt', kind: 'file' }, { id: 2, path: 'top.txt', kind: 'file' }, { id: 3, path: 'empty', kind: 'directory' }]);
   assert.deepEqual([...tree.keys()], ['a', 'empty']); assert.deepEqual([...tree.get('a').keys()], ['b']); assert.equal(tree.get('a').get('b').size, 0);
+});
+
+// An in-memory folder with the File System Access behaviours extraction relies on: NotFoundError and
+// TypeMismatchError, writers that change the file only on close, non-recursive removeEntry, and move().
+// move: 'overwrite' or 'reject'. failClose: names whose writer fails on close.
+const fsError = (name) => Object.assign(new Error(name), { name });
+class MemFile {
+  constructor(dir, name) { this.dir = dir; this.name = name; this.kind = 'file'; }
+  async createWritable() {
+    const parts = []; const { dir, name } = this;
+    return {
+      async write(b) { parts.push(new Uint8Array(b instanceof Blob ? await b.arrayBuffer() : b)); },
+      async close() { if (dir.failClose.has(name)) throw fsError('QuotaExceededError'); dir.files.set(name, dec.decode(await new Blob(parts).arrayBuffer())); },
+      async abort() {},
+    };
+  }
+  async getFile() { return new Blob([this.dir.files.get(this.name)]); }
+  async move(name) {
+    if (this.dir.moveMode === 'reject') throw fsError('InvalidModificationError');
+    const data = this.dir.files.get(this.name); this.dir.files.delete(this.name); this.dir.files.set(name, data); this.name = name;
+  }
+}
+class MemDir {
+  constructor(options = {}) { this.files = new Map(); this.dirs = new Map(); this.kind = 'directory'; this.moveMode = options.move ?? 'overwrite'; this.failClose = new Set(options.failClose ?? []); }
+  async getFileHandle(n, o = {}) { if (this.dirs.has(n)) throw fsError('TypeMismatchError'); if (!this.files.has(n)) { if (!o.create) throw fsError('NotFoundError'); this.files.set(n, ''); } return new MemFile(this, n); }
+  async getDirectoryHandle(n, o = {}) { if (this.files.has(n)) throw fsError('TypeMismatchError'); if (!this.dirs.has(n)) { if (!o.create) throw fsError('NotFoundError'); this.dirs.set(n, new MemDir()); } return this.dirs.get(n); }
+  async removeEntry(n) { if (this.files.delete(n)) return; const d = this.dirs.get(n); if (!d) throw fsError('NotFoundError'); if (d.files.size || d.dirs.size) throw fsError('InvalidModificationError'); this.dirs.delete(n); }
+  async *keys() { yield* [...this.files.keys(), ...this.dirs.keys()]; }
+  async *entries() { for (const n of this.files.keys()) yield [n, new MemFile(this, n)]; yield* this.dirs; }
+}
+const memWith = (files, options) => { const d = new MemDir(options); for (const [n, v] of Object.entries(files)) d.files.set(n, v); return d; };
+const contents = (d) => Object.fromEntries(d.files);
+// Entry data that is cut off by a failed check after the bytes arrive, as a ZIP CRC mismatch is.
+async function* entryData(text, fail = false) { yield enc.encode(text); if (fail) throw new Error('checksum mismatch'); }
+
+test('folder: new files appear only when complete, and a failed one leaves nothing behind', async () => {
+  for (const canMove of [true, false]) {
+    const dir = memWith({ 'mine.txt': 'MINE' }); const created = [];
+    assert.equal(await writeEntry(dir, 'report.txt', false, entryData('NEW'), created, undefined, canMove), 'report.txt');
+    await assert.rejects(writeEntry(dir, 'bad.txt', false, entryData('HALF', true), created, undefined, canMove), /checksum/);
+    assert.deepEqual(contents(dir), { 'mine.txt': 'MINE', 'report.txt': 'NEW' }, `canMove ${canMove}`);
+    assert.deepEqual(created.map((c) => c.name), ['report.txt']);
+  }
+});
+
+test('folder: a failed replace keeps the original, a successful one swaps it, with or without move()', async () => {
+  for (const [canMove, move] of [[true, 'overwrite'], [true, 'reject'], [false, 'overwrite']]) {
+    const dir = memWith({ 'Report.TXT': 'VALUABLE ORIGINAL' }, { move }); const created = [];
+    await assert.rejects(writeEntry(dir, 'Report.TXT', true, entryData('ATTACKER', true), created, undefined, canMove), /checksum/);
+    assert.deepEqual(contents(dir), { 'Report.TXT': 'VALUABLE ORIGINAL' }, `failed replace, canMove ${canMove}, move ${move}`);
+    assert.equal(await writeEntry(dir, 'Report.TXT', true, entryData('REPLACED'), created, undefined, canMove), 'Report.TXT');
+    assert.deepEqual(contents(dir), { 'Report.TXT': 'REPLACED' }, `replace, canMove ${canMove}, move ${move}`);
+    assert.deepEqual(created, [], 'a replaced file is not this run\'s to remove');
+  }
+});
+
+test('folder: when move() is refused the finished file is copied, and a failed copy cleans up only its own files', async () => {
+  const dir = memWith({}, { move: 'reject' }); const created = [];
+  assert.equal(await writeEntry(dir, 'new.txt', false, entryData('COPIED'), created), 'new.txt');
+  assert.deepEqual(contents(dir), { 'new.txt': 'COPIED' });
+  const failing = memWith({ 'keep.txt': 'ORIGINAL' }, { move: 'reject', failClose: ['new.txt', 'keep.txt'] });
+  await assert.rejects(writeEntry(failing, 'new.txt', false, entryData('X'), []), /QuotaExceeded/);
+  await assert.rejects(writeEntry(failing, 'keep.txt', true, entryData('X'), []), /QuotaExceeded/);
+  assert.deepEqual(contents(failing), { 'keep.txt': 'ORIGINAL' });
+});
+
+test('folder: a file already at the temporary name, or at the target after planning, is left alone', async () => {
+  const dir = memWith({ '.report.txt.partial': 'USER FILE', 'late.txt': 'APPEARED' }); const created = [];
+  assert.equal(await writeEntry(dir, 'report.txt', false, entryData('NEW'), created), 'report.txt');
+  await assert.rejects(writeEntry(dir, 'other.txt', false, entryData('X', true), created), /checksum/);
+  assert.equal(await writeEntry(dir, 'late.txt', false, entryData('FROM ARCHIVE'), created), 'late (1).txt');
+  assert.deepEqual(contents(dir), { '.report.txt.partial': 'USER FILE', 'late.txt': 'APPEARED', 'report.txt': 'NEW', 'late (1).txt': 'FROM ARCHIVE' });
+  // A file where a folder is needed, or a folder where a file is needed, is never opened or replaced.
+  dir.dirs.set('sub', new MemDir());
+  assert.equal(await createNew(dir, 'late.txt', 'directory', created), null);
+  assert.equal(await writeEntry(dir, 'sub', true, entryData('X'), created), 'sub (1)');
+  assert.ok(dir.dirs.has('sub'));
+});
+
+test('folder: the new folder takes a free name, and cleanup removes only empty folders this run made', async () => {
+  const dir = memWith({ 'report (extracted)': 'A FILE' }); dir.dirs.set('report (extracted) 2', new MemDir());
+  const created = [];
+  const { name, handle } = await freshFolder(dir, 'report.zip', created);
+  assert.equal(name, 'report (extracted) 3');
+  await writeEntry(handle, 'a.txt', false, entryData('a'), created);
+  for (const item of [...created].reverse()) if (item.kind === 'directory') await removeCreated(created, item);
+  assert.ok(dir.dirs.has('report (extracted) 3'), 'a folder with files in it stays');
+  const empty = []; await freshFolder(dir, 'report.zip', empty);
+  await removeCreated(empty, empty[0]);
+  assert.equal(dir.dirs.has('report (extracted) 4'), false);
+  assert.deepEqual([...(await scan(dir, new Map())).get('').keys()].sort(), ['report (extracted)', 'report (extracted) 2', 'report (extracted) 3']);
 });
 
 // Cross-checks with other implementations, when they are installed.

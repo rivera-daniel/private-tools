@@ -40,6 +40,7 @@ The README lists every browser suite and what it covers. Run the suites for each
 - Keep a pull request to one change. Open an issue before starting large features or new tools.
 - Add tests with the change. Parser and cleaner fixes need a fixture that failed before the fix. Hostile-input fixes need the hostile input or a generator for it.
 - Do not commit personal files, real documents or images that carry metadata about real people. Generate fixtures in code where you can.
+- Run `node scripts/build-sw-manifest.mjs` after changing any file under `site/` and commit the result. The offline service worker installs only when its manifest matches the files, and `npm test` checks this.
 - Update the README when behaviour, formats or limits change.
 - Match the surrounding code. There is no formatter, so follow the style of the file you are editing.
 

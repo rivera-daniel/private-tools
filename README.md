@@ -38,6 +38,15 @@ Removes the metadata blocks the inspector finds, without decoding or re-encoding
 | Private OCR | Planned | Extracts text from images and scanned documents on your device. |
 | Image Converter | Planned | Converts, resizes and compresses images without uploading them. |
 | Resume ATS Preview | Planned | Shows the text an applicant tracking system extracts from a resume and flags formatting it cannot read. |
+| Hash & Verify | Planned | Calculates MD5, SHA-1, SHA-256 and SHA-512 hashes of any file and checks them against an expected value. |
+| Timestamp Decoder | Planned | Reads a raw number as Unix, Windows FILETIME, Apple, Chrome/WebKit, DOS and GPS time. |
+| Email Header Analyzer | Planned | Traces the servers an email passed through and checks SPF, DKIM and DMARC results for spoofing. |
+| Link & QR Inspector | Planned | Decodes QR codes, unwraps redirect links, flags look-alike domains and strips tracking parameters without opening the link. |
+| Hex Viewer | Planned | Shows a file's raw bytes with the inspector's metadata blocks, hidden data and structures marked. |
+| Windows Artifact Viewer | Planned | Parses shortcut files, Jump Lists, Prefetch, event logs, registry hives, thumbnail caches and browser history databases. |
+| Packet Capture Viewer | Planned | Lists hosts, DNS queries, TLS server names, HTTP requests and transferred files in PCAP and PCAPNG captures. |
+| Certificate & Token Decoder | Planned | Decodes PEM and DER certificates, certificate requests and JSON Web Tokens, with expiry and weak-key warnings. |
+| Image Forensics | Planned | Shows JPEG quantization tables, double-compression clues, error level and noise views. Reports evidence, never a verdict. |
 
 Planned improvements:
 

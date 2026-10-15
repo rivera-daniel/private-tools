@@ -246,7 +246,8 @@ function details(r, u8, type, decoded, trailers) {
   const sample = (list) => list.slice(0, 2).map((m) => m.value.slice(0, 120)).join(', ');
   const emails = of('Email address');
   if (emails.length) r.signal('privacy', 'Email addresses found', `${plural(emails.length, 'email address')} in the file, such as ${sample(emails)}.`, FOUND, 'email addresses');
-  if (users.size) r.signal('privacy', 'User names in file paths', `File paths name the account${users.size === 1 ? '' : 's'} ${[...users].slice(0, 3).map((u) => `“${u}”`).join(', ')} on the computer that made this file.`, FOUND, 'user names in file paths');
+  // The documents family reports the same finding for paths it reads itself.
+  if (users.size && !r.signals.some((s) => /^user ?names in file paths$/i.test(s.title))) r.signal('privacy', 'User names in file paths', `File paths name the account${users.size === 1 ? '' : 's'} ${[...users].slice(0, 3).map((u) => `“${u}”`).join(', ')} on the computer that made this file.`, FOUND, 'user names in file paths');
   const shares = of('Network share');
   if (shares.length) r.signal('privacy', 'Network share paths', `Paths to shared folders on a network, such as ${sample(shares)}, reveal server names.`, FOUND, 'network share paths');
   const internal = matches.filter((m) => m.internal);

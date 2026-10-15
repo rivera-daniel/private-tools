@@ -1,6 +1,6 @@
 # Private Tools
 
-Browser-based file utilities that run entirely on your device. Files are processed locally in the browser and are never uploaded.
+A suite of private tools that run entirely in your browser. Your files never leave your device: nothing is uploaded, processed on a server or stored in a database, and there are no accounts.
 
 Live at [danielrivera.ai/tools](https://danielrivera.ai/tools/).
 
@@ -18,23 +18,39 @@ Lists the metadata stored in an image file and highlights what it exposes.
 
 Each metadata block is reported with its byte offset and length.
 
+### File Inspector
+
+Shows what any file reveals, up to 200 MB. Every file gets a general scan, and formats with their own parser get a full report.
+
+- **Any file:** the true type from the file's content (about 90 signatures), names that contradict the content, data appended after the end of the file, files embedded inside it, private keys and certificates, and readable text that looks personal: emails, user names in file paths, network shares, internal host names, IP and MAC addresses, URLs and possible secrets such as API keys and tokens (shown masked).
+- **Documents:** Word, Excel and PowerPoint (including macro-enabled and template variants), OpenDocument and EPUB. Properties, authors and editors, template paths, comments and tracked changes with their authors, hidden text, sheets, rows and slides, speaker notes, editing-session IDs, macros, embedded objects, printer names, external links and data connections. Photos inside documents go through the image inspector.
+- **Remote content:** templates, images, links and fields that load from the internet when a document or PDF opens, which is how tracking pixels and canary tokens work.
+- **PDF:** document information and XMP, earlier versions kept by incremental saves, JavaScript and actions, attachments, comments, filled-in form values, digital signatures and their signers, hidden layers, fonts, encryption settings, photos inside, and text covered by black boxes (reported as a clue).
+- **Audio and video:** MP4, MOV, M4A and 3GP (including phone GPS location, make, model, creation dates and metadata tracks), MP3, AAC and MP2 (ID3, APE and Lyrics3 tags), FLAC, Ogg and Opus, WAV and AIFF (including Broadcast WAV and iXML), and Matroska and WebM tags and attachments. Cover art goes through the image inspector.
+- **Archives:** ZIP entries, host system, user and group IDs, timestamps, comments, encrypted entries and leftover system files.
+- **Programs:** Windows PE, ELF and Mach-O. Build times, compilers, debug file paths (which often contain a user name), version information, libraries, and code signatures with their signers. Signatures are read, not verified.
+- **Plain text:** zero-width characters, text direction controls, invisible tag characters with the hidden text decoded, look-alike letters from other alphabets and terminal escape codes.
+
 ### Metadata Cleaner
 
-Removes the metadata blocks the inspector finds, without decoding or re-encoding the image.
+Removes the metadata the inspectors find and copies everything else as is. Pixels, audio and video are never re-encoded.
 
-- **Formats:** JPEG, PNG, WebP and GIF, up to 200 MB. Other formats are refused with a reason and never altered.
-- **Removed:** EXIF, XMP, IPTC, PNG text chunks, Content Credentials, thumbnails, comments, Photoshop data, unknown application data and any data after the end of the image.
-- **Kept:** image data, ICC color profiles and the EXIF Orientation value, which is rewritten as a minimal EXIF block so rotated photos still display upright.
-- **Check:** every output is inspected again. If metadata remains, the dimensions change or the parser warns, no file is produced.
-- **Limits:** invisible watermarks are not metadata and stay. Removing a phone photo's trailing gain map can flatten an HDR image.
+- **Formats:** photos (JPEG, PNG, WebP, GIF), PDF, Word, Excel and PowerPoint files, OpenDocument files, EPUB, ZIP, audio and video (MP4, MOV, M4A, 3GP, MP3, MP2, AAC, WAV, AIFF, FLAC, Ogg, Opus, MKV, WebM) and plain text, up to 200 MB. Other files are refused with a reason and never altered.
+- **Photos:** EXIF, XMP, IPTC, PNG text chunks, Content Credentials, thumbnails, comments, Photoshop data and data after the end of the image are removed. ICC color profiles and the EXIF Orientation value are kept so photos still display upright.
+- **Documents:** properties, comments, people lists, editing-session IDs, document variables, thumbnails, printer settings and custom XML are removed, auto-loading remote content is cut off, photos inside are cleaned, and archive timestamps are reset. Hidden sheets, notes and embedded objects are document content and stay.
+- **PDF:** the file is saved as one fresh revision, which drops earlier versions and unused objects, along with document information, XMP, JavaScript and automatic actions, attachments and comments. Photos inside are cleaned. Links stay clickable.
+- **Audio and video:** tags, cover art, location, device details, metadata tracks and leftover data are removed, and creation times are zeroed. Container offsets are rewritten so the file still plays.
+- **Options:** tracked changes, macros, digital signatures and filled-in PDF form fields change what a document says or does, so they stay unless you choose to accept changes, remove macros, remove signatures or clear form fields. A refused file can be retried with the option that applies.
+- **Check:** every output is inspected again. If removable metadata remains, the format or dimensions change or the parser warns, no file is produced.
+- **Limits:** invisible watermarks are not metadata and stay. Removing a phone photo's trailing gain map can flatten an HDR image. Cleaning a PDF removes fast web view.
 
 ## Roadmap
 
 | Tool | Status | Description |
 |---|---|---|
 | Image Inspector | Available | Lists image metadata and flags what it exposes. |
-| Metadata Cleaner | Available | Removes metadata from JPEG, PNG, WebP and GIF files on your device and re-inspects the result. |
-| PDF Privacy Cleaner | Planned | Inspects PDF metadata, hidden content and embedded files, and prepares a cleaner copy to share. |
+| File Inspector | Available | Shows what any file reveals: its true type, hidden text, user names, build paths, signatures and metadata. |
+| Metadata Cleaner | Available | Removes metadata from photos, documents, PDFs, audio and video on your device and re-inspects the result. |
 | Private OCR | Planned | Extracts text from images and scanned documents on your device. |
 | Image Converter | Planned | Converts, resizes and compresses images without uploading them. |
 | Resume ATS Preview | Planned | Shows the text an applicant tracking system extracts from a resume and flags formatting it cannot read. |
@@ -57,9 +73,9 @@ Planned improvements:
 
 ## Privacy model
 
-- All parsing runs in a Web Worker in the browser. No file data leaves the device.
+- All parsing and cleaning runs in a Web Worker in the browser. No file data leaves the device.
 - Pages are served with a Content Security Policy of `default-src 'self'` and `connect-src 'none'`, so the page cannot make network requests. The site itself loads no third-party scripts, fonts or analytics.
-- Opening an inspected image in Metadata Cleaner passes the file through the browser's own storage (IndexedDB). The cleaner deletes it as soon as it reads it, and any tool page deletes a leftover copy when it loads.
+- Opening an inspected file in Metadata Cleaner passes the file through the browser's own storage (IndexedDB). The cleaner deletes it as soon as it reads it, and any tool page deletes a leftover copy when it loads.
 - Extracted values are rendered as text only and are never interpreted as HTML.
 - Parsers treat every input as hostile: reads are bounds-checked, directory loops are detected, and decompression, nesting depth and field counts are capped.
 
@@ -71,9 +87,11 @@ site/                    Deployable static site, served under /tools/
   tools/index.html       Tool catalog
   tools/assets/         Shared stylesheet, theme script, fonts and icons
   tools/image-inspector/ Image Inspector page, UI and worker
+  tools/file-inspector/  File Inspector page, UI and worker
   tools/metadata-cleaner/ Metadata Cleaner page, UI and worker
-  tools/lib/clean/       Lossless metadata removal
-  tools/lib/metadata/    Metadata parsers (ES modules, no dependencies)
+  tools/lib/metadata/    Parsers: images, families/ (documents, PDF, media, programs, general scan)
+  tools/lib/clean/       Metadata removal for each format family
+  tools/lib/zip/         ZIP reader and writer
 tests/                   Parser and browser tests, fixtures and reference data
 server.js                Development server
 wrangler.jsonc           Cloudflare Worker configuration
@@ -85,7 +103,7 @@ Requires Node.js 22 or later. The site has no runtime dependencies and no build 
 
 ```sh
 npm run dev       # serve site/ at http://127.0.0.1:4176/tools/ with the production headers
-npm test          # parser tests
+npm test          # parser and cleaner tests
 ```
 
 `HOST` and `PORT` change the development server's address.
@@ -103,6 +121,8 @@ BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium npm run test:browser
 ```sh
 BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium node tests/browser-cleaner.mjs
 ```
+
+`tests/browser-files.mjs` checks the File Inspector the same way, with generated documents, PDFs, audio, programs and text files.
 
 ### Reference data
 

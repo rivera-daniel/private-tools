@@ -3,16 +3,17 @@
 //
 // MuPDF finishes loading with a top-level await. Messages that arrive meanwhile would be lost if the handler
 // were set after it, so the handler is set first and the engine is imported dynamically.
-let mupdf; let R;
-const ready = Promise.all([import('/tools/vendor/mupdf/mupdf.js'), import('/tools/lib/pdf-editor/redact.js')]).then(([m, r]) => { mupdf = m; R = r; mupdf.setLog(() => {}); });
+let mupdf; let R; let G;
+const ready = Promise.all([import('/tools/vendor/mupdf/mupdf.js'), import('/tools/lib/pdf-editor/redact.js'), import('/tools/lib/pdf-editor/render-guard.js')]).then(([m, r, g]) => { mupdf = m; R = r; G = g; mupdf.setLog(() => {}); });
 let state = null; // { bytes, password, doc, view }
 
 const need = () => { if (!state) throw new R.RedactError('No document is open.', 'closed'); return state; };
 
-// The page as an ImageBitmap at the given scale, in the same orientation as the page bounds.
+// The page as an ImageBitmap at the given scale, in the same orientation as the page bounds. The scale is
+// lowered before drawing when the bitmap would exceed the preview pixel budget.
 async function render(page, scale) {
   const p = need().view.loadPage(page);
-  const s = Math.max(0.1, Math.min(scale, 6));
+  const { scale: s } = G.fitScale(p.getBounds(), Math.max(0.1, Math.min(Number(scale) || 1, 6)), { maxPixels: G.PREVIEW_PIXELS });
   const pix = p.toPixmap(mupdf.Matrix.scale(s, s), mupdf.ColorSpace.DeviceRGB, false, true);
   const w = pix.getWidth(); const h = pix.getHeight(); const stride = pix.getStride();
   const src = pix.getPixels();

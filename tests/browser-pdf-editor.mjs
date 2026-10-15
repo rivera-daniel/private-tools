@@ -12,6 +12,8 @@ import { protectPdf } from '../site/tools/lib/pdf-editor/index.js';
 import { readZip } from '../site/tools/lib/zip/index.js';
 import { inspectFile } from '../site/tools/lib/metadata/index.js';
 import { textPdf, orientedJpeg, photoPdf } from './fixtures/pdf-editor.js';
+import { pdf as rawPdf, basic, stream } from './fixtures/pdf.js';
+import { jpegWith, exifSegment, tiff } from './fixtures/build.js';
 import { makeIdentity, pem } from './fixtures/pdf-sign.js';
 import { verifyPdf } from '../site/tools/lib/pdf-editor/sign.js';
 import { spawnSync } from 'node:child_process';
@@ -28,6 +30,11 @@ writeFileSync(`${dir}/big.pdf`, textPdf(200, 'Big'));
 writeFileSync(`${dir}/locked.pdf`, protectPdf(textPdf(2, 'Locked'), { userPassword: 'letmein' }));
 writeFileSync(`${dir}/photo.jpg`, orientedJpeg(6, 80, 60));
 writeFileSync(`${dir}/photos.pdf`, photoPdf(1600, 1200));
+// A photo whose EXIF the cleaner can read but not rewrite safely (the JPEG is cut short): it is kept.
+const truncated = jpegWith(exifSegment(tiff([[0x010f, 2, 'SECRET-OWNER']]))).subarray(0, -50);
+writeFileSync(`${dir}/retained.pdf`, rawPdf(basic({ resources: '/XObject << /Im 8 0 R >>', content: 'q 100 0 0 100 0 0 cm /Im Do Q', extra: { 8: stream('<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode >>', truncated) } }), { trailer: '/Root 1 0 R' }));
+// A tiny file whose page claims to be 100,000 points square.
+writeFileSync(`${dir}/huge.pdf`, textPdf(1, 'Huge', { size: [100000, 100000] }));
 
 // A test signing certificate in a .p12 file, made with openssl at run time.
 const has = (cmd) => spawnSync('sh', ['-c', `command -v ${cmd}`]).status === 0;
@@ -197,6 +204,73 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
     await page.waitForSelector('#compress-result:not([hidden])');
     assert.match(await page.textContent('#compress-result'), /smaller/);
     await page.screenshot({ path: `${shots}/pdf-editor-${label}-compress.png` });
+
+    // Remove hidden data is on but an image keeps its metadata: save, split and extract list exactly what
+    // stays, and nothing is downloaded until that is accepted.
+    await page.click('#close');
+    await page.setInputFiles('#file', [`${dir}/retained.pdf`, `${dir}/alpha.pdf`]);
+    await page.waitForFunction(() => document.querySelectorAll('#pages li.page').length === 4);
+    await page.click('#tab-organize');
+    let downloads = 0; const counted = () => { downloads++; };
+    page.on('download', counted);
+    const declined = async (click) => {
+      const before = downloads;
+      await click();
+      await page.waitForSelector('#retained-dialog[open]');
+      const listed = await page.textContent('#retained-list');
+      await page.click('#retained-cancel');
+      await page.waitForSelector('#retained-dialog', { state: 'hidden' });
+      await page.waitForTimeout(400);
+      assert.equal(downloads, before, 'nothing downloaded before the retained data is accepted');
+      assert.match(await page.textContent('#announce'), /Nothing was saved/);
+      return listed;
+    };
+    const accepted = (click) => save(async () => { await click(); await page.waitForSelector('#retained-dialog[open]'); await page.click('#retained-accept'); });
+    assert.match(await declined(() => page.click('#save')), /1 image with metadata, the image cleaner could not rewrite it/);
+    const keptSave = await accepted(() => page.click('#save'));
+    assert.ok(keptSave.bytes.includes(Buffer.from('SECRET-OWNER')));
+    await page.waitForSelector('#save-result:not([hidden])');
+    assert.match(await page.textContent('#save-report'), /Kept: 1 image with metadata/);
+    await page.screenshot({ path: `${shots}/pdf-editor-${label}-retained-report.png` });
+    // Split: the warning names the file that holds the image, and each file's report is shown.
+    await page.fill('#split-ranges', '1, 2-');
+    await page.click('#split-form button[type=submit]');
+    await page.waitForSelector('#retained-dialog[open]');
+    const splitList = await page.textContent('#retained-list');
+    assert.match(splitList, /retained-page-1\.pdf: 1 image with metadata/);
+    assert.doesNotMatch(splitList, /pages-2-4/);
+    await page.screenshot({ path: `${shots}/pdf-editor-${label}-retained-dialog.png` });
+    await page.click('#retained-cancel');
+    await page.waitForSelector('#retained-dialog', { state: 'hidden' });
+    const splitZip = await accepted(() => page.click('#split-form button[type=submit]'));
+    assert.deepEqual(readZip(new Uint8Array(splitZip.bytes)).entries.map((e) => e.name), ['retained-page-1.pdf', 'retained-pages-2-4.pdf']);
+    assert.match(await page.textContent('#organize-report'), /retained-page-1\.pdf: Kept: 1 image with metadata/);
+    // Extract: the same for a single file.
+    await page.click('#pages li.page:nth-child(1)');
+    assert.match(await declined(() => page.click('#extract')), /1 image with metadata/);
+    await accepted(() => page.click('#extract'));
+    assert.match(await page.textContent('#organize-report'), /Kept: 1 image with metadata/);
+    // Pages without the image need no confirmation.
+    await page.click('#pages li.page:nth-child(1)'); await page.click('#pages li.page:nth-child(2)');
+    const clean = await save(() => page.click('#extract'));
+    assert.ok(!clean.bytes.includes(Buffer.from('SECRET-OWNER')));
+    page.off('download', counted);
+
+    // A page claiming 100,000 points square: its thumbnail and view render within the pixel budget, and an
+    // image export comes out at a lower resolution, which the page says.
+    await page.click('#close');
+    await page.setInputFiles('#file', `${dir}/huge.pdf`);
+    await page.waitForSelector('#view-panel .vw-page');
+    await page.click('#tab-organize');
+    await page.waitForFunction(() => document.querySelector('#pages li.page')?.dataset.drawn?.startsWith('b'));
+    await page.click('#tab-convert');
+    const hugeImage = await save(() => page.click('#export-images'));
+    assert.equal(hugeImage.name, 'huge-page-1.png');
+    const png = new DataView(hugeImage.bytes.buffer, hugeImage.bytes.byteOffset);
+    const [iw, ih] = [png.getUint32(16), png.getUint32(20)];
+    assert.ok(iw * ih <= 40e6 && iw <= 16384, `exported ${iw} x ${ih}`);
+    await page.waitForSelector('#export-note:not([hidden])');
+    assert.match(await page.textContent('#export-note'), /too large to render at 150 dpi/);
   }
 
   // A password-protected PDF asks for its password; a wrong one is refused.

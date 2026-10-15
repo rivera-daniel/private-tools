@@ -334,16 +334,36 @@ test('broken cross-reference: objects found by scanning and the cleaned file is 
   assert.ok(!has(res.data, 'Quarterly'));
 });
 
-test('idempotent: cleaning a cleaned PDF removes nothing more', async () => {
+test('idempotent: cleaning a cleaned PDF removes nothing more than a fresh document ID', async () => {
   const u8 = pdf(basic({ extra: infoObj }), { trailer: `/Root 1 0 R ${info} /ID [<AABB> <CCDD>]` });
   const first = await cleaned(u8);
   assert.ok(first.res.removed.some((b) => b.kind === 'Document ID'));
   assert.equal(first.after.cleanable.blocks, 0);
+  assert.notEqual(src(first.after, 'PDF document', 'Document ID'), 'AABB');
   const second = await cleanFile(first.res.data, 'test.pdf');
   assert.ok(second.ok);
-  assert.deepEqual(second.removed, []);
-  assert.ok(Buffer.from(second.data).equals(Buffer.from(first.res.data)));
-  assert.notEqual(src(first.after, 'PDF document', 'Document ID'), 'AABB');
+  assert.deepEqual(second.removed.map((b) => b.kind), ['Document ID']);
+  assert.equal(second.data.length, first.res.data.length);
+  const again = await inspectFile(second.data, 'test.pdf');
+  assert.notEqual(src(again, 'PDF document', 'Document ID'), src(first.after, 'PDF document', 'Document ID'));
+});
+
+test('a PDF whose only metadata is its document ID still gets a fresh ID', async () => {
+  const u8 = pdf(basic(), { trailer: '/Root 1 0 R /ID [<0123456789ABCDEF> <0123456789ABCDEF>]' });
+  assert.equal((await inspectFile(u8, 'id.pdf')).cleanable.blocks, 0);
+  const res = await cleanFile(u8, 'id.pdf');
+  assert.ok(res.ok);
+  assert.ok(res.removed.some((b) => b.kind === 'Document ID'));
+  const after = await inspectFile(res.data, 'id.pdf');
+  assert.notEqual(src(after, 'PDF document', 'Document ID'), '0123456789ABCDEF');
+  assert.ok(!Buffer.from(res.data).includes(Buffer.from('0123456789ABCDEF', 'latin1')));
+});
+
+test('a PDF without a document ID and nothing to remove is handed back unchanged', async () => {
+  const u8 = pdf(basic(), { trailer: '/Root 1 0 R' });
+  const res = await cleanFile(u8, 'plain.pdf');
+  assert.ok(res.ok);
+  assert.ok(Buffer.from(res.data).equals(Buffer.from(u8)));
 });
 
 test('real-number and name output stays valid PDF syntax', async () => {

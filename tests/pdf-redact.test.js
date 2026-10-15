@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import * as mupdf from '../site/tools/vendor/mupdf/mupdf.js';
 import { openPdf, findText, redact, checkRedactions, verifyRedaction, normalizeMarks, planRedaction, otherOccurrences, documentInfo, pageInfo, showAllLayers, PRESETS } from '../site/tools/lib/pdf-editor/redact.js';
 import * as fx from './fixtures/pdf-redact.js';
+import { deflateSync } from 'node:zlib';
+import { pdf as pdfOf, basic, stream } from './fixtures/pdf.js';
+import { base, jpegWith, exifSegment, tiff } from './fixtures/build.js';
 
 mupdf.setLog?.(() => {});
 
@@ -45,7 +48,7 @@ test('text under a mark is gone from the page text and the decompressed file; ot
   for (const kept of ['SSN', 'on file', 'Public line stays', 'Second page with ordinary text', 'John Secretman']) assert.ok(text.includes(kept), kept);
   assert.equal(open(r.data).countPages(), 2);
   assert.ok(r.verification.ok);
-  assert.ok(r.verification.checks.some((c) => /decompressed streams/.test(c)));
+  assert.ok(r.verification.checks.some((c) => /decoded streams/.test(c)));
   assert.deepEqual(r.removed.filter((x) => x.kind === 'Page text').map((x) => x.text), ['123-45-6789']);
 });
 
@@ -233,11 +236,11 @@ test('verification refuses: a mark that misses its text, and an output that stil
   const doc = open(src); showAllLayers(doc);
   const marks = normalizeMarks([markOf(m)], pageInfo(doc));
   const plan = planRedaction(doc, marks);
-  const v = verifyRedaction(mupdf, src, { pages: 2, marks, plan });
+  const v = await verifyRedaction(mupdf, src, { pages: 2, marks, plan });
   assert.equal(v.ok, false);
   assert.ok(v.leftovers.some((l) => l.kind === 'Page text' && l.text === '123-45-6789'));
   assert.ok(v.leftovers.some((l) => /revision/.test(l.kind)) === false);
-  const rev = verifyRedaction(mupdf, fx.revised(), { pages: 2, marks: [], plan: { strings: [] } });
+  const rev = await verifyRedaction(mupdf, fx.revised(), { pages: 2, marks: [], plan: { strings: [] } });
   assert.ok(rev.leftovers.some((l) => /earlier revisions/.test(l.kind)));
 });
 
@@ -342,4 +345,89 @@ test('hostile and odd input is refused cleanly', async () => {
   const empty = await redact(mupdf, src, [{ page: 1, rect: [300, 400, 400, 500] }]);
   assert.ok(empty.ok, empty.reason);
   assert.ok(allText(empty.data).includes('123-45-6789'));
+});
+
+// ---------- Image metadata and encoded copies ----------
+
+const SECRET = 'John Secretman';
+const utf16le = (s) => [...s].map((c) => `${c}\0`).join('');
+const photoPdf = (image, { content = 'q 100 0 0 100 200 200 cm /Im Do Q', extra = {}, filter = '/DCTDecode' } = {}) => pdfOf(basic({
+  resources: '/XObject << /Im 8 0 R >>', content,
+  extra: { 8: stream(`<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter ${filter} >>`, image), ...extra },
+}), { trailer: '/Root 1 0 R' });
+// A plan that requires SECRET gone, for checking crafted files directly (they never went through the cleaner).
+const secretPlan = { strings: [{ text: SECRET, pages: [1], before: 1, unmarked: 0, scrub: true, elsewhere: 0 }], misses: [] };
+const verifyCrafted = (bytes) => verifyRedaction(mupdf, bytes, { pages: 1, marks: [], plan: secretPlan, images: 'none' });
+
+test('redaction refuses when an image keeps metadata it cannot remove (truncated JPEG, UTF-16 EXIF)', async () => {
+  const photo = jpegWith(exifSegment(tiff([[0x010f, 2, utf16le(SECRET)]]))).subarray(0, -50);
+  const src = photoPdf(photo, { content: `BT /F1 12 Tf 72 720 Td (${SECRET}) Tj ET q 100 0 0 100 200 200 cm /Im Do Q` });
+  const marks = find(src, SECRET).map(markOf);
+  assert.equal(marks.length, 1);
+  const r = await redact(mupdf, src, marks);
+  assert.equal(r.ok, false);
+  assert.equal(r.code, 'clean');
+  assert.equal(r.data, undefined);
+  assert.match(r.reason, /image .*metadata/i);
+});
+
+test('verification fails on a truncated JPEG that still carries EXIF', async () => {
+  const photo = jpegWith(exifSegment(tiff([[0x010f, 2, 'Camera Maker']]))).subarray(0, -50);
+  const v = await verifyCrafted(photoPdf(photo));
+  assert.equal(v.ok, false);
+  assert.ok(v.leftovers.some((l) => /image still carries metadata/i.test(l.kind)));
+});
+
+test('verification finds a redacted string stored as UTF-16 inside image EXIF', async () => {
+  for (const encoded of [utf16le(SECRET), Buffer.from(SECRET, 'utf16le').swap16().toString('latin1')]) {
+    const v = await verifyCrafted(photoPdf(jpegWith(exifSegment(tiff([[0x010f, 2, encoded]])))));
+    assert.equal(v.ok, false);
+    assert.ok(v.leftovers.some((l) => l.kind === 'Image data' && l.text === SECRET), JSON.stringify(v.leftovers));
+  }
+});
+
+test('verification finds a redacted string inside an image behind another filter, and in any letter case', async () => {
+  const photo = jpegWith(exifSegment(tiff([[0x010e, 2, SECRET.toUpperCase()]])));
+  const v = await verifyCrafted(photoPdf(deflateSync(photo), { filter: '[/FlateDecode /DCTDecode]' }));
+  assert.equal(v.ok, false);
+  assert.ok(v.leftovers.some((l) => l.kind === 'Image data' && l.text === SECRET));
+});
+
+test('verification finds redacted strings stored as hex digits, PDFDocEncoding or UTF-16 in streams', async () => {
+  const hexOf = (b) => Buffer.from(b).toString('hex');
+  const cases = [
+    hexOf(Buffer.from(SECRET, 'latin1')).toUpperCase(),
+    `FEFF${hexOf(Buffer.from(SECRET, 'utf16le').swap16())}`,
+    hexOf(Buffer.from(utf16le(SECRET), 'latin1')).replace(/(..)/g, '$1 '),
+    utf16le(SECRET),
+  ];
+  for (const data of cases) {
+    const src = pdfOf(basic({ catalog: '/PieceInfo 8 0 R', extra: { 8: stream('<< >>', data, { flate: true }) } }), { trailer: '/Root 1 0 R' });
+    const v = await verifyCrafted(src);
+    assert.equal(v.ok, false, data);
+    assert.ok(v.leftovers.some((l) => l.text === SECRET), JSON.stringify(v.leftovers));
+  }
+  const accented = 'Zoë Müller-Œstrup';
+  const plan = { strings: [{ text: accented, pages: [1], before: 1, unmarked: 0, scrub: true, elsewhere: 0 }], misses: [] };
+  const pdfdoc = Buffer.from([...accented].map((c) => (c === 'Œ' ? 0x96 : c.charCodeAt(0))));
+  for (const data of [pdfdoc, Buffer.from(accented, 'utf8'), Buffer.from(accented, 'utf16le')]) {
+    const src = pdfOf(basic({ catalog: '/PieceInfo 8 0 R', extra: { 8: stream('<< >>', data) } }), { trailer: '/Root 1 0 R' });
+    const v = await verifyRedaction(mupdf, src, { pages: 1, marks: [], plan, images: 'none' });
+    assert.ok(v.leftovers.some((l) => l.text === accented), JSON.stringify(v.leftovers));
+  }
+});
+
+test('verification fails when a stream cannot be decoded to check it', async () => {
+  for (const dict of ['<< /Filter /FlateDecode >>', '<< /Filter /NoSuchDecode >>']) {
+    const src = pdfOf(basic({ catalog: '/PieceInfo 8 0 R', extra: { 8: stream(dict, 'this is not compressed data at all') } }), { trailer: '/Root 1 0 R' });
+    const v = await verifyCrafted(src);
+    assert.equal(v.ok, false, dict);
+    assert.ok(v.leftovers.some((l) => /could not be decoded/.test(l.kind)), JSON.stringify(v.leftovers));
+  }
+});
+
+test('verification passes a clean file and checks its images for metadata', async () => {
+  const v = await verifyCrafted(photoPdf(base.jpeg));
+  assert.equal(v.ok, true, JSON.stringify(v.leftovers));
+  assert.ok(v.checks.some((c) => /No image in the file carries metadata \(1 checked\)/.test(c)));
 });

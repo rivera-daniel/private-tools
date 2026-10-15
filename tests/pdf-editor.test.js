@@ -7,6 +7,7 @@ import {
 } from '../site/tools/lib/pdf-editor/index.js';
 import { addWatermark, addPageNumbers, winAnsi, isLatin } from '../site/tools/lib/pdf-editor/stamp.js';
 import { downsampleImages } from '../site/tools/lib/pdf-editor/compress.js';
+import { fitScale, fitsPixels, pixelSize, RenderSizeError, RENDER_PIXELS, PREVIEW_PIXELS, THUMB_PIXELS, MAX_SIDE } from '../site/tools/lib/pdf-editor/render-guard.js';
 import { fromSource, rotatePages, removePages, duplicatePages, insertBlank, pickPages, movePagesTo, movePagesBy, entrySize } from '../site/tools/lib/pdf-editor/plan.js';
 import { parseRanges, splitEvery, onePerPage, formatPageLabel, groupLabel, PageRangeError } from '../site/tools/lib/pdf-editor/ranges.js';
 import { cleanFile } from '../site/tools/lib/clean/index.js';
@@ -258,9 +259,45 @@ test('rendering: thumbnails and page images', () => {
   const turned = renderPage(doc, 0, 0.5, 90);
   assert.deepEqual([turned.width, turned.height], [50, 100]);
   const png = pageImage(doc, 0, { format: 'png', scale: 2 });
-  assert.equal(png[0], 0x89);
+  assert.equal(png.data[0], 0x89); assert.equal(png.clamped, false); assert.equal(png.scale, 2);
   const jpg = pageImage(doc, 0, { format: 'jpeg', scale: 1, quality: 80 });
-  assert.deepEqual([...jpg.subarray(0, 2)], [0xff, 0xd8]);
+  assert.deepEqual([...jpg.data.subarray(0, 2)], [0xff, 0xd8]);
+});
+
+test('rendering: the pixel budget is applied from the page bounds before anything is allocated', () => {
+  assert.deepEqual(pixelSize([0, 0, 200, 100], [0.5, 0, 0, 0.5, 0, 0]), { width: 100, height: 50 });
+  assert.deepEqual(pixelSize([0, 0, 200, 100], [0, 0.5, -0.5, 0, 0, 0]), { width: 50, height: 100 });
+  const huge = fitScale([0, 0, 100000, 100000], 0.25);
+  assert.equal(huge.clamped, true);
+  assert.ok(huge.width * huge.height <= RENDER_PIXELS && huge.width <= MAX_SIDE && huge.height <= MAX_SIDE);
+  const thumb = fitScale([0, 0, 100000, 100000], 0.25, { maxPixels: THUMB_PIXELS });
+  assert.ok(thumb.width * thumb.height <= THUMB_PIXELS);
+  const strip = fitScale([0, 0, 1e9, 10], 1);
+  assert.ok(strip.width <= MAX_SIDE && strip.height >= 1);
+  assert.equal(fitScale([0, 0, 612, 792], 2).clamped, false);
+  for (const bad of [[0, 0, NaN, 10], [0, 0, Infinity, 10], [0, 0, 0, 10], [10, 0, 0, 10], null]) assert.throws(() => fitScale(bad, 1), RenderSizeError);
+  for (const bad of [0, -1, NaN, Infinity]) assert.throws(() => fitScale([0, 0, 10, 10], bad), RenderSizeError);
+  assert.equal(fitsPixels(8000, 6000), false); assert.equal(fitsPixels(4000, 3000), true); assert.equal(fitsPixels(NaN, 1), false);
+
+  // A tiny file whose page claims 100,000 points square: the pixmap requested is within budget.
+  const doc = open(textPdf(1, 'R')).asPDF();
+  doc.findPage(0).put('MediaBox', [0, 0, 100000, 100000]);
+  const real = mupdf.PDFPage.prototype.toPixmap;
+  const asked = [];
+  mupdf.PDFPage.prototype.toPixmap = function (matrix, ...rest) {
+    const size = pixelSize(this.getBounds(), matrix);
+    asked.push(size);
+    if (size.width * size.height > RENDER_PIXELS) throw new Error('over budget');
+    return real.call(this, matrix, ...rest);
+  };
+  try {
+    const preview = renderPage(doc, 0, 0.25);
+    assert.equal(preview.clamped, true);
+    assert.ok(preview.width * preview.height <= PREVIEW_PIXELS);
+    const image = pageImage(doc, 0, { format: 'png', scale: 0.25 });
+    assert.equal(image.clamped, true); assert.ok(image.scale < 0.25);
+    assert.ok(asked.length === 2 && asked.every((a) => a.width * a.height <= RENDER_PIXELS));
+  } finally { mupdf.PDFPage.prototype.toPixmap = real; }
 });
 
 test('signed PDFs are detected', () => {

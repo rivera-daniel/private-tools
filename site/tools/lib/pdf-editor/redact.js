@@ -8,7 +8,12 @@ import { cleanFile } from '../clean/index.js';
 import { coveredContent, snippet } from '../metadata/pdf/content.js';
 import { Parser, Keyword, Dict, Str, PdfError, decodeText } from '../metadata/pdf/syntax.js';
 import { serialize } from '../clean/pdf/writer.js';
+import { PdfDocument } from '../metadata/pdf/document.js';
+import { decode, Budget } from '../metadata/pdf/filters.js';
+import { orientationOnly } from '../metadata/pdf/inspect.js';
+import { inspectImage } from '../metadata/index.js';
 import { LIMITS } from '../metadata/bytes.js';
+import { fitScale, RENDER_PIXELS } from './render-guard.js';
 
 export const MAX_MARKS = 5000;
 export const MAX_MATCHES = 2000;
@@ -271,6 +276,13 @@ export function scrubPattern(s) {
   return new RegExp(`(?<!${WORD})${chars.map(escape).join('\\s*')}(?!${WORD})`, 'giu');
 }
 
+// The same for bytes read as text (binary data around the string decodes to arbitrary letters): only an
+// ASCII letter or digit next to it makes it part of a longer word.
+function bytePattern(s) {
+  const chars = [...squash(s)];
+  return new RegExp(`(?<![A-Za-z0-9_])${chars.map(escape).join('\\s*')}(?![A-Za-z0-9_])`, 'giu');
+}
+
 // What a set of marks removes: the exact strings under them (and the text each mark was made for), with
 // how often each string also appears in text no mark touches.
 export function planRedaction(doc, marks) {
@@ -398,8 +410,9 @@ function paintEvents(mupdf, page, withAnnots) {
 // anything there: true when pixels inside it differ.
 function imageInk(mupdf, page, rects, scale = 2) {
   const b = page.getBounds();
+  // The check needs its full resolution: a page too large for the pixel budget is reported as unchecked.
+  if (fitScale(b, scale, { maxPixels: RENDER_PIXELS }).clamped) return rects.map(() => null);
   const box = [Math.floor(b[0] * scale), Math.floor(b[1] * scale), Math.ceil(b[2] * scale), Math.ceil(b[3] * scale)];
-  if ((box[2] - box[0]) * (box[3] - box[1]) > 40e6) return rects.map(() => null);
   const pix = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, box, false);
   pix.clear(255);
   const draw = new mupdf.DrawDevice(mupdf.Matrix.scale(scale, scale), pix);
@@ -554,7 +567,7 @@ export async function redact(mupdf, bytes, marks, options = {}) {
       const page = pdf.loadPage(i);
       if (o.mode === 'rasterize') {
         replaceWithImage(mupdf, pdf, page, rasters.get(i));
-        removed.push({ kind: 'Page rasterized', page: i + 1, detail: `Text, vector graphics, links and form fields on this page were replaced by a ${dpi} dpi image` });
+        removed.push({ kind: 'Page rasterized', page: i + 1, detail: `Text, vector graphics, links and form fields on this page were replaced by a ${rasters.get(i).dpi} dpi image${rasters.get(i).dpi < dpi ? ` (lower than ${dpi} dpi, since the page is too large)` : ''}` });
         continue;
       }
       if (o.images !== 'none') {
@@ -586,11 +599,12 @@ export async function redact(mupdf, bytes, marks, options = {}) {
     pdf.destroy?.();
     if (info.encrypted) removed.push({ kind: 'Encryption', detail: 'Saved without a password. Use Protect to add one again.' });
     if (info.signed) removed.push({ kind: 'Digital signature', detail: 'Removed, since redaction invalidates it' });
-    const cleaned = await cleanFile(saved, 'redacted.pdf', { removeSignatures: info.signed });
+    // Strict: an image whose metadata cannot be removed stops the redaction, since it could hold the text.
+    const cleaned = await cleanFile(saved, 'redacted.pdf', { removeSignatures: info.signed, strictImages: true });
     if (!cleaned.ok) return refuse('clean', `The redacted file could not be cleaned of metadata, so it was not produced. ${cleaned.reason ?? ''}`.trim());
     for (const r of cleaned.removed ?? []) removed.push({ kind: r.kind, detail: r.container || '' });
 
-    const verification = verifyRedaction(mupdf, cleaned.data, { pages: info.pages.length, marks: list, plan, label: labels ? label : '', labels, mode: o.mode, images: o.images, fill: !!o.fill });
+    const verification = await verifyRedaction(mupdf, cleaned.data, { pages: info.pages.length, marks: list, plan, label: labels ? label : '', labels, mode: o.mode, images: o.images, fill: !!o.fill });
     if (!verification.ok) return refuse('verification', `The check afterwards found redacted content still in the file, so it was not produced: ${verification.leftovers.map((l) => `${l.kind}${l.text ? ` "${clip(l.text)}"` : ''}`).slice(0, 3).join('; ')}.`, verification);
     return { ok: true, data: cleaned.data, removed: dedupe(removed), verification, pages: info.pages.length, encrypted: info.encrypted, signed: info.signed };
   } catch (error) {
@@ -740,11 +754,12 @@ function indexOf(u8, word, from = 0) {
   return -1;
 }
 
-// Draws the page as an image with the marks burned in.
+// Draws the page as an image with the marks burned in, at dpi or at the lower resolution that fits the
+// pixel budget. Returns { jpeg, bounds, dpi } with the resolution used.
 function rasterPage(mupdf, pdf, index, pm, dpi, fill) {
   const page = pdf.loadPage(index);
-  const scale = dpi / 72;
   const bounds = Array.from(page.getBounds());
+  const { scale } = fitScale(bounds, dpi / 72, { maxPixels: RENDER_PIXELS });
   const pix = page.toPixmap(mupdf.Matrix.scale(scale, scale), mupdf.ColorSpace.DeviceRGB, false, true);
   const draw = new mupdf.DrawDevice(mupdf.Matrix.scale(scale, scale), pix);
   for (const m of pm) {
@@ -760,7 +775,7 @@ function rasterPage(mupdf, pdf, index, pm, dpi, fill) {
   draw.close(); draw.destroy?.();
   const jpeg = pix.asJPEG(90, false).slice();
   pix.destroy?.();
-  return { jpeg, bounds };
+  return { jpeg, bounds, dpi: Math.floor(scale * 72) };
 }
 
 // Replaces a page's content with the rasterized image. Its annotations and form fields go too, since what
@@ -874,9 +889,11 @@ function drawBoxes(mupdf, pdf, page, pm, { boxes, label }) {
 // ---------- Verification ----------
 
 // Opens the finished file and checks that none of the redacted text is left: not in the text of any page,
-// not in any object's strings, not in any decompressed stream, that the page count is unchanged, that the
-// file is one revision without encryption or unapplied marks, and that images show nothing under the marks.
-export function verifyRedaction(mupdf, data, { pages, marks, plan, label = '', labels = 0, mode = 'remove', images = 'blank-pixels', fill = true }) {
+// not in any object's strings, not in any decoded stream or image (in several text encodings), and that no
+// image still carries metadata; that the page count is unchanged, that the file is one revision without
+// encryption or unapplied marks, and that images show nothing under the marks. Anything that cannot be
+// read or decoded to check it fails the check.
+export async function verifyRedaction(mupdf, data, { pages, marks, plan, label = '', labels = 0, mode = 'remove', images = 'blank-pixels', fill = true }) {
   const leftovers = []; const checks = [];
   let pdf;
   try { pdf = openPdf(mupdf, data); } catch { return { ok: false, leftovers: [{ kind: 'The redacted file does not open' }], checks }; }
@@ -918,26 +935,23 @@ export function verifyRedaction(mupdf, data, { pages, marks, plan, label = '', l
       if (o.isArray()) { for (let i = 0; i < o.length; i++) walk(o.get(i), depth + 1); return; }
       if (o.isDictionary()) o.forEach((v) => walk(v, depth + 1));
     };
-    let streams = 0;
     for (let num = 1; num < total && scan.length; num++) {
       const ref = obj(() => pdf.newIndirect(num));
       const o = obj(() => ref?.resolve());
       if (!o) continue;
       if (safe(() => ref.isStream(), false)) {
         walk(o, 0);
-        if (streamKind(o) !== 'content' && !isXmp(o)) continue;
+        if (streamKind(o) !== 'content') continue;
         let u8;
         try { u8 = ref.readStream().asUint8Array().slice(); } catch { leftovers.push({ kind: 'A stream in the file could not be read to check it' }); continue; }
-        streams++;
-        test(latin(u8), 'Stream data');
-        test(new TextDecoder('utf-8', { fatal: false }).decode(u8), 'Stream data');
         if (u8.length < 32 * 1048576) test(streamStrings(u8), 'Text drawn in a content stream');
       } else walk(o, 0);
     }
-    if (scan.length) {
-      test(latin(data), 'Raw file bytes');
-      checks.push(`No redacted string is in the file's ${total - 1} objects, ${streams} decompressed streams or raw bytes`);
-    }
+    // Every stream's bytes, images included, and the raw file, read independently of MuPDF.
+    const payload = await scanPayloads(data, scan, (text, where) => { if (!found.has(text + where)) found.set(text + where, { kind: where, text }); });
+    leftovers.push(...payload.leftovers);
+    if (!payload.leftovers.length) checks.push(`No image in the file carries metadata${payload.images ? ` (${payload.images} checked)` : ''}`);
+    if (scan.length) checks.push(`No redacted string is in the file's ${total - 1} objects, ${payload.streams} decoded streams and images or raw bytes, read as UTF-8, Latin-1, PDFDocEncoding, UTF-16 and hex`);
     for (const f of found.values()) leftovers.push(f);
 
     // Structure.
@@ -977,7 +991,88 @@ export function verifyRedaction(mupdf, data, { pages, marks, plan, label = '', l
 
 const latin = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode(...u8.subarray(i, i + 8192)); return s; };
 
-function isXmp(o) { const t = o.get('Type'); return t.isName() && t.asName() === 'Metadata'; }
+// Decoded bytes allowed for the check: each stream on its own, and all of them together. A file that needs
+// more cannot be checked, which fails the check.
+const VERIFY_STREAM_BYTES = 128 * 1048576;
+const VERIFY_TOTAL_BYTES = 4096 * 1048576;
+const HEX_RUN = /(?:[0-9A-Fa-f]{2}[\t\n\f\r ]*){4,}/g;
+
+// The ways a string can be stored as bytes, each read back as text so the scrub patterns (case-insensitive,
+// whitespace-tolerant) can be applied: Latin-1 (which covers ASCII and UTF-8 for ASCII text), the same with
+// NUL bytes dropped (UTF-16 of Latin-1 text in either byte order), hex digit runs decoded, and, when the
+// strings go beyond ASCII, UTF-8, PDFDocEncoding and UTF-16 in both byte orders and alignments.
+function* textViews(u8, wide, hex = true) {
+  const text = latin(u8);
+  yield text;
+  if (u8.includes(0)) yield latin(u8.filter((b) => b !== 0));
+  if (wide) {
+    yield new TextDecoder('utf-8').decode(u8);
+    yield decodeText(u8);
+    for (const enc of ['utf-16le', 'utf-16be']) for (const at of [0, 1]) yield new TextDecoder(enc).decode(u8.subarray(at, at + ((u8.length - at) & ~1)));
+  }
+  if (!hex) return;
+  const runs = [];
+  HEX_RUN.lastIndex = 0;
+  for (let m; (m = HEX_RUN.exec(text));) {
+    const digits = m[0].replace(/[^0-9A-Fa-f]/g, '');
+    const bytes = new Uint8Array(digits.length >> 1);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(digits.substr(i * 2, 2), 16);
+    runs.push(bytes, Uint8Array.of(10));
+  }
+  if (!runs.length) return;
+  const all = new Uint8Array(runs.reduce((a, r) => a + r.length, 0)); let o = 0;
+  for (const r of runs) { all.set(r, o); o += r.length; }
+  yield* textViews(all, wide, false);
+}
+
+// Reads every object of the finished file with the inspector's own PDF reader (not MuPDF) and decodes every
+// stream. JPEG images are inspected for metadata, which must be gone; every stream's bytes (an image's
+// encoded bytes, everything else decoded) and the raw file are searched for the redacted strings through
+// record(text, where). Returns { leftovers, streams, images }.
+async function scanPayloads(data, scan, record) {
+  const leftovers = []; let streams = 0; let images = 0;
+  const wide = scan.some((s) => /[^\x00-\x7f]/.test(s.text));
+  const res = scan.map((s) => ({ text: s.text, re: bytePattern(s.text) }));
+  const search = (u8, where) => {
+    if (!res.length) return;
+    for (const view of textViews(u8, wide)) for (const s of res) { s.re.lastIndex = 0; if (s.re.test(view)) record(s.text, where); }
+  };
+  let doc;
+  const problems = [];
+  try { doc = await PdfDocument.open(data, { warn: (m) => problems.push(m) }); } catch { return { leftovers: [{ kind: 'The redacted file could not be read to check it' }], streams, images }; }
+  const budget = new Budget(VERIFY_TOTAL_BYTES, VERIFY_STREAM_BYTES);
+  const resolve = (v) => doc.resolve(v);
+  let undecoded = 0; let tooLarge = 0; let unread = 0;
+  for (const [num, entry] of doc.entries) {
+    if (entry.type === 0) continue;
+    const v = doc.get(num);
+    if (!(v?.raw instanceof Uint8Array)) continue;
+    const type = v.dict.get('Type')?.name; const sub = v.dict.get('Subtype')?.name;
+    if (type === 'XRef' || type === 'ObjStm') continue; // read by the parser itself; their objects are checked one by one
+    if (v.dict.has('Length1') || v.dict.has('Length2') || ['Type1C', 'CIDFontType0C', 'OpenType'].includes(sub)) continue; // font programs, as in the page text check
+    let out;
+    try { out = await decode(v.raw, v.dict, { resolve, budget }); }
+    catch (error) { if (error instanceof RangeError) tooLarge++; else undecoded++; continue; }
+    streams++;
+    if (out.codec === 'DCTDecode') {
+      images++;
+      let inner = null;
+      try { inner = await inspectImage(out.data); } catch { inner = null; }
+      if (!inner || inner.format !== 'JPEG') unread++;
+      else if (inner.cleanable.blocks && !orientationOnly(inner)) {
+        const kinds = [...new Set(inner.blocks.filter((b) => b.removable !== false).map((b) => b.kind))].join(', ');
+        leftovers.push({ kind: 'An image still carries metadata', text: kinds });
+      }
+      search(out.data, 'Image data');
+    } else search(out.data, sub === 'Image' || out.codec ? 'Image data' : 'Stream data');
+  }
+  search(data, 'Raw file bytes');
+  if (problems.length || doc.unreadable || doc.recovered) leftovers.push({ kind: 'Part of the redacted file could not be read to check it' });
+  if (undecoded) leftovers.push({ kind: `${undecoded} stream${undecoded === 1 ? '' : 's'} in the file could not be decoded to check ${undecoded === 1 ? 'it' : 'them'}` });
+  if (tooLarge) leftovers.push({ kind: `${tooLarge} stream${tooLarge === 1 ? ' is' : 's are'} too large to check` });
+  if (unread) leftovers.push({ kind: `${unread} image${unread === 1 ? '' : 's'} could not be read to check for metadata` });
+  return { leftovers, streams, images };
+}
 
 // The strings a content stream shows, joined within each text object, so that text split by kerning
 // ([(Jo) -20 (hn)] TJ) reads as one.

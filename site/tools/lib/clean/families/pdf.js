@@ -11,16 +11,23 @@ import { writePdf } from '../pdf/writer.js';
 
 export const formats = new Set(['PDF']);
 
+// The trailer /ID is a stable identifier that links copies of a document, so it is always replaced.
+export const mustRewrite = (report) => report.blocks.some((b) => b.kind === 'Document ID');
+
 // Arrays where a dropped entry is left out rather than replaced by null.
 const LISTS = new Set(['Annots', 'Fields', 'Kids', 'K', 'CO']);
 const ROOT_DROP = new Set(['OpenAction', 'Collection', 'SpiderInfo']);
 
+const STUCK_IMAGE = 'An image in the PDF carries metadata that could not be removed safely, so the file was not produced.';
+
 // options: clearForms (empty filled-in form fields), removeSignatures (clean a signed PDF, dropping its
-// signatures).
+// signatures), strictImages (refuse rather than keep an image whose metadata cannot be removed, for
+// redaction, where that metadata could hold what was redacted).
 export async function clean(u8, report, ctx) {
   const options = ctx.options ?? {};
   const doc = await PdfDocument.open(u8);
   if (doc.encrypted) throw new Refusal('This PDF is encrypted. Remove the password in a PDF reader first, then clean the unlocked copy.');
+  if (options.strictImages && report.blocks.some((b) => b.kind === 'Image metadata' && b.removable === false)) throw new Refusal(STUCK_IMAGE);
   const cat = doc.catalog(); const rootRef = doc.trailer.get('Root');
   if (!cat || !(rootRef instanceof Ref)) throw new Refusal('The PDF has no readable document catalog, so it was left untouched.');
   const pageCount = doc.pages().length;
@@ -101,7 +108,7 @@ export async function clean(u8, report, ctx) {
   for (const at of jpegs) {
     const raw = out[at].data;
     const result = await cleanImage(raw);
-    if (!result.ok) { keptImages.add(imageKey(raw)); continue; }
+    if (!result.ok) { if (options.strictImages) throw new Refusal(STUCK_IMAGE); keptImages.add(imageKey(raw)); continue; }
     if (result.data.length !== raw.length || result.data.some((b, i) => b !== raw[i])) { out[at].data = result.data; out[at].dict.delete('DL'); }
   }
 
@@ -118,8 +125,12 @@ export async function clean(u8, report, ctx) {
   const keptCounts = new Map();
   for (const b of report.blocks) if ((b.removable === false && b.kind !== 'Document ID') || allowed(b)) keptCounts.set(b.kind, (keptCounts.get(b.kind) ?? 0) + 1);
   const why = { 'Form data': ['filled-in form field', 'kept unless form clearing is chosen'], Link: ['link', 'still clickable'], 'Hidden layer': ['hidden layer', 'its content stays in the pages'], 'Redaction mark': ['unapplied redaction mark', 'apply redactions in a PDF editor'], 'XFA form': ['XFA form', 'needed to show the form'], 'Image metadata': ['image with metadata', 'the image cleaner could not rewrite it'] };
-  const kept = [...keptCounts].map(([kind, n]) => { const [noun, note] = why[kind] ?? [kind, '']; return `${n} ${noun}${n === 1 ? '' : 's'}${note ? `, ${note}` : ''}`; });
-  return { data, removed, kept, allowed, offer: !options.clearForms && keptCounts.has('Form data') ? ['clearForms'] : [] };
+  // Links and filled-in fields show on the page. Everything else kept is hidden data.
+  const VISIBLE = new Set(['Form data', 'Link']);
+  const describe = ([kind, n]) => { const [noun, note] = why[kind] ?? [kind, '']; return `${n} ${noun}${n === 1 ? '' : 's'}${note ? `, ${note}` : ''}`; };
+  const kept = [...keptCounts].map(describe);
+  const keptHidden = [...keptCounts].filter(([kind]) => !VISIBLE.has(kind)).map(describe);
+  return { data, removed, kept, keptHidden, allowed, offer: !options.clearForms && keptCounts.has('Form data') ? ['clearForms'] : [] };
 }
 
 function planDrops(doc, options) {

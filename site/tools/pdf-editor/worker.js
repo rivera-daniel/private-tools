@@ -14,8 +14,10 @@ const loaded = Promise.all([
   import('/tools/lib/pdf-editor/compress.js'),
   import('/tools/lib/clean/index.js'),
   import('/tools/lib/zip/index.js'),
-]).then(([pdf, stamp, compress, clean, zip]) => {
-  lib = { ...pdf, ...stamp, ...compress, cleanFile: clean.cleanFile, writeZip: zip.writeZip };
+  import('/tools/lib/pdf-editor/render-guard.js'),
+  import('/tools/lib/metadata/index.js'),
+]).then(([pdf, stamp, compress, clean, zip, guard, metadata]) => {
+  lib = { ...pdf, ...stamp, ...compress, ...guard, cleanFile: clean.cleanFile, writeZip: zip.writeZip, inspectImage: metadata.inspectImage };
   self.postMessage({ type: 'ready' });
 }, () => self.postMessage({ type: 'fatal', message: 'The PDF engine could not be loaded. Reload the page to try again.' }));
 
@@ -36,7 +38,7 @@ async function pump() {
 }
 
 function describe(error) {
-  if (error instanceof lib.PdfError) return error.message;
+  if (error instanceof lib.PdfError || error instanceof lib.RenderSizeError) return error.message;
   const text = String(error?.message ?? error);
   if (/out of memory|memory access out of bounds|Cannot enlarge memory|Array buffer allocation/i.test(text)) return 'The browser ran out of memory. Try fewer or smaller files.';
   return 'Something went wrong while processing the PDF. The file may be damaged.';
@@ -60,8 +62,14 @@ async function open({ id, name, data, password = null }) {
 }
 
 // Browsers decode more image formats than MuPDF (WebP, GIF, AVIF and others): those are turned into PNG here.
+// The size is read from the file's header first when the format is known, so an image claiming huge
+// dimensions is not decoded; the decoded size is checked again before the canvas is made.
 async function toPng(data, type) {
+  const tooLarge = () => new lib.RenderSizeError('This image is too large to convert.');
+  const head = await lib.inspectImage(data).catch(() => ({}));
+  if (head.width && head.height && !lib.fitsPixels(head.width, head.height)) throw tooLarge();
   const bitmap = await createImageBitmap(new Blob([data], { type }));
+  if (!lib.fitsPixels(bitmap.width, bitmap.height)) { bitmap.close(); throw tooLarge(); }
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
   canvas.getContext('2d').drawImage(bitmap, 0, 0);
   bitmap.close();
@@ -74,7 +82,7 @@ async function images({ id, files, pageSize, margin, name }) {
     let bytes = new Uint8Array(file.data);
     const kind = lib.imageKind(bytes);
     if (kind !== 'jpeg' && kind !== 'png') {
-      try { bytes = await toPng(bytes, file.type); } catch { skipped.push({ name: file.name, reason: 'This browser cannot read this image.' }); continue; }
+      try { bytes = await toPng(bytes, file.type); } catch (error) { skipped.push({ name: file.name, reason: error instanceof lib.RenderSizeError ? error.message : 'This browser cannot read this image.' }); continue; }
     }
     prepared.push({ bytes, name: file.name });
   }
@@ -85,14 +93,11 @@ async function images({ id, files, pageSize, margin, name }) {
   reply({ type: 'opened', id, source: register(name, lib.openPdf(bytes)), skipped: [...skipped, ...made.skipped] });
 }
 
-const MAX_PIXELS = 16 * 1024 * 1024;
-
-async function render({ id, src, page, scale, rotate = 0 }) {
+// Thumbnails get a smaller pixel budget than pages shown at full size. Both are checked before drawing.
+async function render({ id, src, page, scale, rotate = 0, thumb = false }) {
   const source = sources.get(src);
   if (!source) throw new lib.PdfError('This page is no longer open.');
-  let s = scale;
-  let out = lib.renderPage(source.doc, page, s, rotate);
-  if (out.width * out.height > MAX_PIXELS) { s *= Math.sqrt(MAX_PIXELS / (out.width * out.height)); out = lib.renderPage(source.doc, page, s, rotate); }
+  const out = lib.renderPage(source.doc, page, scale, rotate, { maxPixels: thumb ? lib.THUMB_PIXELS : lib.PREVIEW_PIXELS });
   const bitmap = await createImageBitmap(new ImageData(out.pixels, out.width, out.height));
   reply({ type: 'rendered', id, bitmap }, [bitmap]);
 }
@@ -181,13 +186,15 @@ async function adopt({ id, name, data }) {
 }
 
 // Output: hidden data removed first (the cleaner cannot read encrypted files), then the password added.
+// The report says what was removed, what was kept (retained: the hidden part of it) and why cleaning was
+// refused, for the page to show and to ask about before anything is downloaded.
 async function finish(bytes, name, { clean, protection }) {
-  const report = { cleaned: false, removed: [], kept: [], refused: null, encrypted: false };
+  const report = { name, cleaned: false, removed: [], kept: [], retained: [], refused: null, encrypted: false };
   let data = bytes;
   if (clean) {
     const result = await lib.cleanFile(data, name, { removeSignatures: true });
     if (result.ok) {
-      report.cleaned = true; report.removed = result.removed ?? []; report.kept = result.kept ?? [];
+      report.cleaned = true; report.removed = result.removed ?? []; report.kept = result.kept ?? []; report.retained = result.keptHidden ?? report.kept;
       data = result.data;
       if (!protection) { const packed = lib.resave(data); if (packed.length < data.length) data = packed; }
     } else report.refused = result.reason;
@@ -202,30 +209,33 @@ async function save({ id, plan, name, options }) {
   reply({ type: 'saved', id, data: buffer(data), report, pages: plan.length }, [buffer(data)]);
 }
 
-// Several PDFs from groups of plan indexes, in a ZIP when there is more than one.
+// Several PDFs from groups of plan indexes, in a ZIP when there is more than one. Each file has its report.
 async function split({ id, plan, groups, names, options }) {
   const files = [];
   for (let i = 0; i < groups.length; i++) {
     const built = lib.buildBytes(sources, groups[i].map((k) => plan[k]), { compress: true });
-    const { data } = await finish(built, names[i], options);
-    files.push({ name: names[i], data });
+    const { data, report } = await finish(built, names[i], options);
+    files.push({ name: names[i], data, report });
   }
-  if (files.length === 1) { reply({ type: 'saved', id, data: buffer(files[0].data), single: true, count: 1 }, [buffer(files[0].data)]); return; }
+  const reports = files.map((f) => f.report);
+  if (files.length === 1) { reply({ type: 'saved', id, data: buffer(files[0].data), single: true, count: 1, reports }, [buffer(files[0].data)]); return; }
   const zip = await lib.writeZip(files.map((f) => ({ name: f.name, data: f.data, method: 8 })));
-  reply({ type: 'saved', id, data: buffer(zip), count: files.length }, [buffer(zip)]);
+  reply({ type: 'saved', id, data: buffer(zip), count: files.length, reports }, [buffer(zip)]);
 }
 
 async function toImages({ id, plan, indexes, format, scale, quality, names }) {
   const doc = lib.buildDocument(sources, indexes.map((i) => plan[i]));
   try {
-    const files = [];
+    const files = []; const reduced = [];
     for (let i = 0; i < indexes.length; i++) {
-      files.push({ name: names[i], data: lib.pageImage(doc, i, { format, scale, quality }) });
+      const image = lib.pageImage(doc, i, { format, scale, quality });
+      files.push({ name: names[i], data: image.data });
+      if (image.clamped) reduced.push({ name: names[i], dpi: Math.floor(72 * image.scale) });
       if (i % 5 === 4) reply({ type: 'progress', id, done: i + 1, total: indexes.length });
     }
-    if (files.length === 1) { reply({ type: 'saved', id, data: buffer(files[0].data), single: true, count: 1 }, [buffer(files[0].data)]); return; }
+    if (files.length === 1) { reply({ type: 'saved', id, data: buffer(files[0].data), single: true, count: 1, reduced }, [buffer(files[0].data)]); return; }
     const zip = await lib.writeZip(files.map((f) => ({ name: f.name, data: f.data, method: 0 })));
-    reply({ type: 'saved', id, data: buffer(zip), count: files.length }, [buffer(zip)]);
+    reply({ type: 'saved', id, data: buffer(zip), count: files.length, reduced }, [buffer(zip)]);
   } finally { doc.destroy(); }
 }
 

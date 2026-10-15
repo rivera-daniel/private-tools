@@ -100,6 +100,7 @@
           <h2>Extract</h2>
           <p class="hint">Save the selected pages as a new PDF. The pages here stay as they are.</p>
           <div class="run"><button type="button" class="ghost" id="extract" data-needs="selection">Extract selected pages</button></div>
+          <ul class="report organize-report" id="organize-report" hidden></ul>
         </div>
 
         <div class="mode-panel" id="panel-convert" role="tabpanel" aria-labelledby="tab-convert" hidden>
@@ -122,6 +123,7 @@
           <div class="field" id="out-quality-field" hidden><label class="field-label" for="out-quality">JPEG quality <span class="optional" id="out-quality-value">85</span></label><input type="range" id="out-quality" min="40" max="100" value="85"></div>
           <p class="hint" id="out-scope"></p>
           <div class="run"><button type="button" class="ghost" id="export-images">Export images</button></div>
+          <p class="hint warn" id="export-note" role="status" hidden></p>
         </div>
 
         <div class="mode-panel" id="panel-protect" role="tabpanel" aria-labelledby="tab-protect" hidden>
@@ -218,6 +220,14 @@
     <section id="sign-panel" role="tabpanel" aria-labelledby="tab-sign" hidden></section>
   </div>
 </section>
+
+<dialog id="retained-dialog" aria-labelledby="retained-title" aria-describedby="retained-detail">
+  <p class="eyebrow">Hidden data</p>
+  <h2 id="retained-title">Some hidden data would stay in the file</h2>
+  <p id="retained-detail">Remove hidden data is on, but this could not be removed. Nothing has been saved yet.</p>
+  <ul class="report" id="retained-list"></ul>
+  <div class="dialog-actions"><button type="button" class="ghost" id="retained-cancel">Don’t save</button><button type="button" class="primary" id="retained-accept">Save anyway</button></div>
+</dialog>
 
 <section class="about-tool wrap" aria-labelledby="about-title">
   <div class="about-intro">

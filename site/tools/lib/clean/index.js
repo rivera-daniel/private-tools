@@ -57,7 +57,8 @@ export async function cleanImage(input) {
 }
 
 // Each family module exports formats (a Set of report.format values) and
-// clean(u8, report, ctx) => { data, removed: [{ kind, container, bytes }], kept: [string], allowed?: (block) => boolean }.
+// clean(u8, report, ctx) => { data, removed: [{ kind, container, bytes }], kept: [string], allowed?: (block) => boolean },
+// and optionally mustRewrite(report) => true when the file must be rewritten even with no removable blocks.
 // It throws a Refusal to leave the file untouched. allowed marks blocks deliberately kept, which the check
 // afterwards accepts. ctx: { name, options }.
 const FAMILIES = [documents, pdf, media, text];
@@ -92,7 +93,8 @@ export async function cleanFile(input, name = '', options = {}) {
   const family = FAMILIES.find((f) => f.formats?.has(before.format));
   if (!family) return refuse(before.format ? `${before.format} files cannot be cleaned yet.` : 'This file type is not one the Metadata Cleaner can rewrite safely, so it was left untouched.');
   if (before.warnings.some((w) => /damaged|truncated|past the end|Too many/.test(w))) return refuse('The file is damaged or unusually structured, so it was left untouched.');
-  if (!before.cleanable.blocks) return { ok: true, data: u8, format: before.format, bytesBefore: u8.length, bytesAfter: u8.length, removed: [], exposures: [], kept: [] };
+  // A family can need a rewrite with nothing to remove (a PDF's stable document ID is replaced).
+  if (!before.cleanable.blocks && !family.mustRewrite?.(before)) return { ok: true, data: u8, format: before.format, bytesBefore: u8.length, bytesAfter: u8.length, removed: [], exposures: [], kept: [] };
   let result;
   try { result = await family.clean(u8, before, { name, options }); }
   catch (error) { if (error instanceof Refusal) return refuse(error.message, error.option); throw error; }
@@ -105,6 +107,8 @@ export async function cleanFile(input, name = '', options = {}) {
   return {
     ok: true, data: result.data, format: before.format, width: before.width, height: before.height,
     bytesBefore: u8.length, bytesAfter: result.data.length, removed: result.removed, kept: result.kept,
+    // What was kept that is not visible in the document itself (all of kept unless the family says).
+    keptHidden: result.keptHidden ?? result.kept,
     // Options that would remove what was kept here (removeMacros, clearForms).
     offer: result.offer ?? [],
     exposures: before.signals.filter((s) => s.kind === 'privacy' || s.kind === 'declared').map((s) => s.title),

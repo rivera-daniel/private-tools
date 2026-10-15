@@ -29,11 +29,21 @@ jobs:
           export CHROMIUM="$(node -p "require('playwright-core').chromium.executablePath()")"
           node server.js &
           until curl -fs http://127.0.0.1:4176/ > /dev/null; do sleep 1; done
+          failed=0
+          check() {
+            echo "== $1"
+            if ! node "tests/$1.mjs" > "$RUNNER_TEMP/$1.log" 2>&1; then
+              failed=1
+              tail -n 25 "$RUNNER_TEMP/$1.log"
+              echo "::error title=$1 failed::$(tail -n 12 "$RUNNER_TEMP/$1.log" | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')"
+            else
+              tail -n 1 "$RUNNER_TEMP/$1.log"
+            fi
+          }
           export BASE=http://127.0.0.1:4176
           for suite in browser browser-catalog browser-cleaner browser-files browser-archiver browser-pdf-editor browser-pdf-view browser-pdf-redact browser-pdf-sign; do
-            echo "== $suite"
-            node "tests/$suite.mjs"
+            check "$suite"
           done
           unset BASE
-          echo "== browser-offline"
-          node tests/browser-offline.mjs
+          check browser-offline
+          exit "$failed"

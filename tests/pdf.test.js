@@ -401,3 +401,50 @@ test('hostile: garbage after the header and truncated files do not throw', async
     if (res.ok && res.data !== u8) assert.equal((await inspectFile(res.data)).warnings.length, 0);
   }
 });
+
+test('stream filters stop at the decompression allowance, alone and chained', async () => {
+  const { decode, Budget } = await import('../site/tools/lib/metadata/pdf/filters.js');
+  const { Dict, Name } = await import('../site/tools/lib/metadata/pdf/syntax.js');
+  const dict = (...names) => new Dict([['Filter', names.length === 1 ? new Name(names[0]) : names.map((n) => new Name(n))]]);
+  const bombs = {
+    ASCII85Decode: Buffer.from(`${'z'.repeat(1 << 20)}~>`),
+    ASCIIHexDecode: Buffer.from(`${'00'.repeat(1 << 20)}>`),
+    RunLengthDecode: Buffer.from(Array.from({ length: 8192 }, (_, i) => (i & 1 ? 0 : 129))),
+    // Clear code, then codes that each extend the previous entry: output grows quadratically.
+    LZWDecode: (() => { const bits = []; const put = (c, w) => { for (let k = w - 1; k >= 0; k--) bits.push((c >> k) & 1); }; put(256, 9); put(0, 9); let next = 258; let w = 9; for (let i = 0; i < 3000; i++) { put(next, w); next++; if (next + 1 >= 1 << w && w < 12) w++; } const out = new Uint8Array(Math.ceil(bits.length / 8)); bits.forEach((b, i) => { out[i >> 3] |= b << (7 - (i & 7)); }); return out; })(),
+    FlateDecode: deflateSync(Buffer.alloc(1 << 20)),
+  };
+  for (const [name, data] of Object.entries(bombs)) {
+    const budget = new Budget(1024, 1024);
+    await assert.rejects(decode(data, dict(name), { budget }), RangeError, name);
+    assert.ok(budget.left >= 0, `${name} never spends past the allowance`);
+    const roomy = new Budget(1 << 30, 1 << 30);
+    assert.ok((await decode(data, dict(name), { budget: roomy })).data.length > 1024, `${name} decodes with room`);
+  }
+  // Exactly at the limit passes; one byte over does not.
+  assert.equal((await decode(Buffer.from('zz~>'), dict('ASCII85Decode'), { budget: new Budget(8, 8) })).data.length, 8);
+  await assert.rejects(decode(Buffer.from('zz!!~>'), dict('ASCII85Decode'), { budget: new Budget(8, 8) }), RangeError);
+  // A chain spends the allowance once per stage: hex inside ASCII85 stops at the first stage that passes it.
+  const chained = Buffer.from('00'.repeat(600));
+  const a85 = (b) => { let s = ''; for (let i = 0; i < b.length; i += 4) { let v = 0; for (let k = 0; k < 4; k++) v = v * 256 + (b[i + k] ?? 0); if (v === 0 && i + 4 <= b.length) { s += 'z'; continue; } const c = []; for (let k = 0; k < 5; k++) { c.unshift(String.fromCharCode(33 + (v % 85))); v = Math.floor(v / 85); } s += c.join('').slice(0, Math.min(5, b.length - i + 1)); } return Buffer.from(`${s}~>`); };
+  const twice = a85(chained);
+  assert.equal((await decode(twice, dict('ASCII85Decode', 'ASCIIHexDecode'), { budget: new Budget(4096, 4096) })).data.length, 600);
+  await assert.rejects(decode(twice, dict('ASCII85Decode', 'ASCIIHexDecode'), { budget: new Budget(1500, 4096) }), RangeError);
+});
+
+test('signature: a signed widget the form field list does not reach is still found and refused', async () => {
+  const sigObjects = (catalog) => basic({ catalog, page: '/Annots [7 0 R]', extra: {
+    7: '<< /FT /Sig /T (Signature1) /V 8 0 R /Type /Annot /Subtype /Widget /Rect [0 0 0 0] >>',
+    8: '<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached /Name (Hidden Signer) /Reason (Approval) /M (D:20261001093000Z) /ByteRange [0 100 200 50] /Contents <00> >>',
+  } });
+  for (const catalog of ['', '/Misc << /Fields [7 0 R] >>']) {
+    const u8 = pdf(sigObjects(catalog), { trailer: '/Root 1 0 R' });
+    const r = await inspectFile(u8);
+    assert.equal(src(r, 'PDF signatures', 'Signature1 signer name'), 'Hidden Signer');
+    assert.ok(kinds(r).includes('Signature'));
+    const refused = await cleanFile(u8, 'x.pdf');
+    assert.equal(refused.ok, false); assert.equal(refused.option, 'removeSignatures');
+    const { res } = await cleaned(u8, { removeSignatures: true });
+    assert.ok(!has(res.data, 'Hidden Signer') && !has(res.data, 'Approval'));
+  }
+});

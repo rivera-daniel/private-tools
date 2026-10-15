@@ -130,7 +130,10 @@ function planDrops(doc, options) {
     for (const a of annots) {
       if (!(a instanceof Ref)) continue;
       const d = doc.resolve(a);
-      if (removedAnnotation(d) || (options.removeSignatures && d instanceof Dict && fieldType(doc, d) === 'Sig')) drop.add(a.num);
+      // A signed widget counts even when the form's field list does not reach it.
+      const sig = d instanceof Dict && fieldType(doc, d) === 'Sig';
+      if (sig && doc.dict(d.get('V'))) signed = true;
+      if (removedAnnotation(d) || (options.removeSignatures && sig)) drop.add(a.num);
     }
   }
   const form = doc.dict(doc.catalog().get('AcroForm'));

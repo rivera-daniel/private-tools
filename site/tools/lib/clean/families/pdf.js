@@ -5,7 +5,7 @@
 import { Refusal, cleanImage } from '../index.js';
 import { PdfDocument } from '../../metadata/pdf/document.js';
 import { Dict, Stream, Ref, Name, isName } from '../../metadata/pdf/syntax.js';
-import { DROP_KEYS, chainRemovable, openActionKept, removedAnnotation, cleanableJpeg, fieldType } from '../../metadata/pdf/rules.js';
+import { DROP_KEYS, REDACT_DROP, chainRemovable, openActionKept, removedAnnotation, cleanableJpeg, fieldType } from '../../metadata/pdf/rules.js';
 import { imageKey } from '../../metadata/pdf/inspect.js';
 import { writePdf } from '../pdf/writer.js';
 
@@ -62,9 +62,10 @@ export async function clean(u8, report, ctx) {
     if (objrDropped(d)) return undefined;
     const o = new Dict();
     const root = num === rootRef.num;
+    const redact = isName(d.get('Subtype'), 'Redact');
     const ft = options.clearForms && (d.has('V') || d.has('AS') || d.has('AP')) ? fieldType(doc, d) : null;
     for (const [k, v] of d) {
-      if (DROP_KEYS.has(k) || (stream && k === 'Length')) continue;
+      if (DROP_KEYS.has(k) || (stream && k === 'Length') || (redact && REDACT_DROP.has(k))) continue;
       if ((k === 'A' || k === 'Next') && chainRemovable(doc, v)) continue;
       if (root && ROOT_DROP.has(k) && !(k === 'OpenAction' && openActionKept(doc, v))) continue;
       if (root && options.removeSignatures && (k === 'Perms' || k === 'DSS')) continue;
@@ -116,8 +117,8 @@ export async function clean(u8, report, ctx) {
   if (doc.trailer.has('ID')) removed.push({ kind: 'Document ID', container: 'Replaced with a fresh random ID', bytes: 0 });
   const keptCounts = new Map();
   for (const b of report.blocks) if ((b.removable === false && b.kind !== 'Document ID') || allowed(b)) keptCounts.set(b.kind, (keptCounts.get(b.kind) ?? 0) + 1);
-  const why = { 'Form data': 'filled-in form fields, kept unless form clearing is chosen', Link: 'links, still clickable', 'Hidden layer': 'hidden layers', 'Redaction mark': 'unapplied redaction marks', 'XFA form': 'XFA form, needed to show the form', 'Image metadata': 'images whose metadata the image cleaner could not remove' };
-  const kept = [...keptCounts].map(([kind, n]) => `${n} ${why[kind] ?? kind}`);
+  const why = { 'Form data': ['filled-in form field', 'kept unless form clearing is chosen'], Link: ['link', 'still clickable'], 'Hidden layer': ['hidden layer', 'its content stays in the pages'], 'Redaction mark': ['unapplied redaction mark', 'apply redactions in a PDF editor'], 'XFA form': ['XFA form', 'needed to show the form'], 'Image metadata': ['image with metadata', 'the image cleaner could not rewrite it'] };
+  const kept = [...keptCounts].map(([kind, n]) => { const [noun, note] = why[kind] ?? [kind, '']; return `${n} ${noun}${n === 1 ? '' : 's'}${note ? `, ${note}` : ''}`; });
   return { data, removed, kept, allowed };
 }
 

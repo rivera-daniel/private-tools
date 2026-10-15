@@ -37,6 +37,8 @@ export function openActionKept(doc, v) {
 }
 
 export const removedAnnotation = (d) => d instanceof Dict && MARKUP.has(nameOf(d.get('Subtype')));
+// Authorship and comment text dropped from the redaction marks that stay.
+export const REDACT_DROP = new Set(['T', 'Contents', 'RC', 'M', 'CreationDate', 'Subj', 'NM', 'Popup', 'IRT']);
 
 // JPEG image streams the cleaner can rewrite: the JPEG is stored as is, with no other filter.
 export function cleanableJpeg(doc, s) {

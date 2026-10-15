@@ -93,7 +93,8 @@ function encryption(I) {
     if (denied.length) r.field(src, 'Not allowed', denied.join(', '));
   }
   if (e.get('EncryptMetadata') === false) r.field(src, 'Metadata', 'Left unencrypted');
-  r.block('Encryption', ...I.where(ref instanceof Ref ? ref.num : null), { removable: false, container: 'trailer /Encrypt', note: 'Encrypted PDFs are not cleaned' });
+  // Marked removable so that cleaning always reaches the cleaner, which refuses encrypted files with a reason.
+  r.block('Encryption', ...I.where(ref instanceof Ref ? ref.num : null), { container: 'trailer /Encrypt', note: 'Encrypted PDFs are not cleaned' });
   r.warn('This PDF is encrypted. Text values and streams cannot be read without the password, so some details are not shown.');
 }
 
@@ -306,7 +307,7 @@ function sizeLabel(box) {
 function pageDetails(I) {
   const { doc, r } = I;
   const pages = doc.pages();
-  r.field('Container', 'Pages', String(pages.length));
+  r.field('Container', 'Pages', !pages.length && I.enc ? 'Unknown (encrypted)' : String(pages.length));
   const sizes = new Map();
   pages.forEach((p) => { const s = sizeLabel(doc.resolve(p.inherited.MediaBox)); if (s) sizes.set(s, (sizes.get(s) ?? 0) + 1); });
   const sorted = [...sizes].sort((a, b) => b[1] - a[1]);
@@ -333,6 +334,7 @@ function pageDetails(I) {
       } else if (sub === 'Redact') {
         redacts++;
         r.field('PDF comments', `Page ${i + 1} redaction mark`, I.t(d.get('OverlayText')) || 'Not applied');
+        if (I.t(d.get('T'))) r.add('People', 'Redaction mark author', I.t(d.get('T')), { flag: 'privacy' });
         r.block('Redaction mark', ...I.where(num), { removable: false, container: `Redact annotation, page ${i + 1}`, note: 'Kept so the unapplied redaction stays visible' });
       } else if (sub === 'Link') {
         const act = doc.dict(d.get('A'));
@@ -564,7 +566,7 @@ async function history(I) {
     const now = new Set([...r.sources].filter(([k]) => k.startsWith('XMP ')).flatMap(([, fs]) => fs.map((f) => `${f.key}=${f.value}`)));
     for (const [, fields] of scratch.sources) for (const f of fields) if (f.key !== 'Packet size' && !now.has(`${f.key}=${f.value}`)) r.field(`Earlier version ${i + 1} XMP`, f.key, f.value, { flag: 'privacy' });
   }
-  orphans(I, infoNum);
+  if (!I.enc) orphans(I, infoNum);
   const last = revs.at(-1);
   if (!doc.recovered && last.end < u8.length) {
     let k = last.end; while (k < u8.length && WS[u8[k]]) k++;

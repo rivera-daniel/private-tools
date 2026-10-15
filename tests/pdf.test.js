@@ -148,21 +148,22 @@ test('annotations: comment authors found, comments removed, links and redaction 
     7: '<< /Type /Annot /Subtype /Text /Rect [10 10 30 30] /T (Bob Reviewer) /Contents (Please remove the salary table) /M (D:20240601100000Z) /Popup 8 0 R >>',
     8: '<< /Type /Annot /Subtype /Popup /Rect [30 30 90 90] /Parent 7 0 R >>',
     10: '<< /Type /Annot /Subtype /Highlight /Rect [0 0 50 10] /QuadPoints [0 10 50 10 0 0 50 0] /T (Carol) >>',
-    11: '<< /Type /Annot /Subtype /Redact /Rect [100 100 200 120] >>',
+    11: '<< /Type /Annot /Subtype /Redact /Rect [100 100 200 120] /T (Eve) >>',
   } });
   const u8 = pdf(objects, { trailer: '/Root 1 0 R' });
   const r = await inspectFile(u8);
   assert.match(src(r, 'PDF comments', 'Page 1 sticky note'), /^Bob Reviewer: Please remove the salary table \(2024-06-01 10:00:00 UTC\)$/);
   assert.equal(hl(r, 'People', 'Comment author'), 'Bob Reviewer');
+  assert.equal(hl(r, 'People', 'Redaction mark author'), 'Eve');
   assert.equal(src(r, 'PDF links', 'Page 1'), 'https://example.org/');
   assert.ok(titles(r).includes('Comments and markup'));
   assert.ok(titles(r).includes('Redaction marked but not applied'));
   assert.equal(r.blocks.filter((b) => b.kind === 'Comment').length, 2);
   const { res, after } = await cleaned(u8);
   assert.ok(!has(res.data, 'Bob Reviewer') && !has(res.data, 'Carol') && !has(res.data, '/Popup'));
-  assert.ok(has(res.data, 'https://example.org/') && has(res.data, '/Redact'));
+  assert.ok(has(res.data, 'https://example.org/') && has(res.data, '/Redact') && !has(res.data, 'Eve'));
   assert.equal(after.blocks.filter((b) => b.kind === 'Link').length, 1);
-  assert.ok(res.kept.some((k) => /links/.test(k)) && res.kept.some((k) => /redaction/.test(k)));
+  assert.ok(res.kept.includes('1 link, still clickable') && res.kept.some((k) => /redaction/.test(k)));
 });
 
 test('form fields: values reported and kept by default, cleared on request', async () => {
@@ -200,6 +201,28 @@ test('xref stream with predictor and object stream parse like the classic layout
   assert.ok(!has(res.data, 'Quarterly plan'));
 });
 
+test('hybrid file: objects the table lists as free are found through /XRefStm', async () => {
+  const u8 = pdf(basic({ extra: infoObj }), { trailer: `/Root 1 0 R ${info}`, hybrid: true, packed: [2, 3, 6] });
+  const r = await inspectFile(u8);
+  assert.deepEqual(r.warnings, []);
+  assert.equal(src(r, 'Container', 'Cross-reference'), 'Table with stream (hybrid)');
+  assert.equal(src(r, 'Container', 'Pages'), '1');
+  assert.equal(src(r, 'PDF Info', 'Title'), 'Quarterly plan');
+  await cleaned(u8);
+});
+
+test('encrypted PDF with object streams: reported from the trailer, never treated as damaged', async () => {
+  const enc = '<< /Filter /Standard /V 5 /R 6 /Length 256 /CF << /StdCF << /CFM /AESV3 >> >> /StmF /StdCF /StrF /StdCF /P -4 /O <00> /U <00> >>';
+  const u8 = pdf(basic({ extra: { 9: enc } }), { trailer: '/Root 1 0 R /Encrypt 9 0 R /ID [<0102> <0102>]', xrefStream: true, packed: [1, 2, 3, 5] });
+  const r = await inspectFile(u8);
+  assert.equal(src(r, 'PDF encryption', 'Method'), 'AES-256, password');
+  assert.equal(src(r, 'Container', 'Pages'), 'Unknown (encrypted)');
+  assert.ok(!r.warnings.some((w) => /damaged|scanning/.test(w)));
+  assert.ok(!kinds(r).includes('Unused objects'));
+  const res = await cleanFile(u8, 'x.pdf');
+  assert.equal(res.ok, false); assert.match(res.reason, /encrypted/);
+});
+
 test('encrypted PDF: method and permissions reported, cleaning refused', async () => {
   const objects = basic({ extra: { 6: '<< /Author <8f3a11c2> >>', 9: '<< /Filter /Standard /V 4 /R 4 /Length 128 /CF << /StdCF << /CFM /AESV2 /AuthEvent /DocOpen >> >> /StmF /StdCF /StrF /StdCF /P -3132 /O <00> /U <00> >>' } });
   const u8 = pdf(objects, { trailer: `/Root 1 0 R ${info} /Encrypt 9 0 R /ID [<0102> <0102>]` });
@@ -213,7 +236,7 @@ test('encrypted PDF: method and permissions reported, cleaning refused', async (
 });
 
 test('signature: signer and certificate subject read; refused unless signatures may go', async () => {
-  const der = signedData({ cn: 'Jane Signer', org: 'Example Corp', email: 'jane@example.com' });
+  const der = signedData({ cn: 'Jane Signer', org: 'Example Corp', email: 'jane.signer mailbox' });
   const contents = `<${der.toString('hex')}${'0'.repeat(64)}>`;
   const objects = basic({ catalog: '/AcroForm << /Fields [7 0 R] /SigFlags 3 >>', page: '/Annots [7 0 R]', extra: {
     7: '<< /FT /Sig /T (Signature1) /V 8 0 R /Type /Annot /Subtype /Widget /Rect [0 0 0 0] >>',
@@ -222,11 +245,11 @@ test('signature: signer and certificate subject read; refused unless signatures 
   const u8 = pdf(objects, { trailer: '/Root 1 0 R' });
   const r = await inspectFile(u8);
   assert.equal(src(r, 'PDF signatures', 'Signature1 signer name'), 'Jane Signer');
-  assert.equal(src(r, 'PDF signatures', 'Signature1 certificate'), 'CN=Jane Signer, O=Example Corp, Email=jane@example.com');
+  assert.equal(src(r, 'PDF signatures', 'Signature1 certificate'), 'CN=Jane Signer, O=Example Corp, Email=jane.signer mailbox');
   assert.equal(src(r, 'PDF signatures', 'Signature1 issued by'), 'CN=Example CA');
   assert.equal(src(r, 'PDF signatures', 'Signature1 signing time (signed attribute)'), '2026-10-01 09:30:00 UTC');
   assert.match(src(r, 'PDF signatures', 'Signature1 covers'), /Changes were added after this signature/);
-  assert.equal(hl(r, 'People', 'Signer email'), 'jane@example.com');
+  assert.equal(hl(r, 'People', 'Signer email'), 'jane.signer mailbox');
   assert.ok(titles(r).includes('Digitally signed'));
   truthful(r);
   const refused = await cleanFile(u8, 'x.pdf');

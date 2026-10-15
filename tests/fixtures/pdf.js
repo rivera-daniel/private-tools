@@ -14,8 +14,9 @@ function body(v) {
   return Buffer.concat([bin(`${dict}\nstream\n`), data, bin('\nendstream')]);
 }
 
-// objects: { num: source string or stream() }. trailer: extra trailer entries.
-export function pdf(objects, { trailer = '', version = '1.7', xrefStream = false, packed = [], prefix = '' } = {}) {
+// objects: { num: source string or stream() }. trailer: extra trailer entries. hybrid writes a classic table
+// that lists packed objects as free, with an /XRefStm stream that locates them.
+export function pdf(objects, { trailer = '', version = '1.7', xrefStream = false, hybrid = false, packed = [], prefix = '' } = {}) {
   const parts = [bin(`${prefix}%PDF-${version}\n%\xe2\xe3\xcf\xd3\n`)];
   let at = parts[0].length;
   const offsets = new Map(); const inStm = new Map();
@@ -33,8 +34,9 @@ export function pdf(objects, { trailer = '', version = '1.7', xrefStream = false
     offsets.set(stm, at);
     push(Buffer.concat([bin(`${stm} 0 obj\n`), body(stream(`<< /Type /ObjStm /N ${packed.length} /First ${head.length} >>`, head + data, { flate: true })), bin('\nendobj\n')]));
   }
-  if (xrefStream) {
-    const xref = size++; offsets.set(xref, at);
+  let xrefStm = null;
+  if (xrefStream || hybrid) {
+    const xref = size++; offsets.set(xref, at); xrefStm = at;
     const rows = [];
     for (let n = 0; n < size; n++) {
       const row = Buffer.alloc(7);
@@ -47,13 +49,12 @@ export function pdf(objects, { trailer = '', version = '1.7', xrefStream = false
     for (const row of rows) { const out = Buffer.alloc(8); out[0] = 2; for (let i = 0; i < 7; i++) out[i + 1] = (row[i] - prev[i]) & 0xff; predicted.push(out); prev = row; }
     const dict = `<< /Type /XRef /Size ${size} /W [1 4 2] /DecodeParms << /Predictor 12 /Columns 7 >> ${trailer} >>`;
     push(Buffer.concat([bin(`${xref} 0 obj\n`), body(stream(dict, Buffer.concat(predicted), { flate: true })), bin('\nendobj\n')]));
-    push(bin(`startxref\n${offsets.get(xref)}\n%%EOF\n`));
-    return Buffer.concat(parts);
+    if (!hybrid) { push(bin(`startxref\n${offsets.get(xref)}\n%%EOF\n`)); return Buffer.concat(parts); }
   }
   const xref = at;
   let table = `xref\n0 ${size}\n0000000000 65535 f \n`;
   for (let n = 1; n < size; n++) table += offsets.has(n) ? `${String(offsets.get(n)).padStart(10, '0')} 00000 n \n` : '0000000000 00000 f \n';
-  push(bin(`${table}trailer\n<< /Size ${size} ${trailer} >>\nstartxref\n${xref}\n%%EOF\n`));
+  push(bin(`${table}trailer\n<< /Size ${size} ${trailer}${xrefStm === null ? '' : ` /XRefStm ${xrefStm}`} >>\nstartxref\n${xref}\n%%EOF\n`));
   return Buffer.concat(parts);
 }
 

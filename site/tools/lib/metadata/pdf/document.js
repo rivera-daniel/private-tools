@@ -36,7 +36,8 @@ export class PdfDocument {
       } catch (error) { if (!(error instanceof PdfError) && !(error instanceof RangeError)) throw error; ok = false; }
     }
     this.encrypted = this.trailer.has('Encrypt');
-    if (ok) { await this.loadObjectStreams(); ok = this.catalog() instanceof Dict; }
+    // Encrypted object streams cannot be read, so an unreadable catalog is expected there.
+    if (ok) { await this.loadObjectStreams(); ok = this.encrypted || this.catalog() instanceof Dict; }
     if (!ok) await this.rebuild();
     this.encrypted = this.trailer.has('Encrypt');
   }
@@ -52,7 +53,8 @@ export class PdfDocument {
       const xs = section.trailer.get('XRefStm');
       if (isInt(xs) && !seen.has(xs)) {
         seen.add(xs);
-        try { const extra = await this.readSection(xs); for (const [n, e] of extra.entries) if (!section.entries.has(n)) section.entries.set(n, e); section.hybrid = true; }
+        // In a hybrid file the stream supplies objects the table lists as free.
+        try { const extra = await this.readSection(xs); for (const [n, e] of extra.entries) if (!section.entries.has(n) || section.entries.get(n).type === 0) section.entries.set(n, e); section.hybrid = true; }
         catch (error) { if (!(error instanceof PdfError)) throw error; }
       }
       off = section.trailer.get('Prev');

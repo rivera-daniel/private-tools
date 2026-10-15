@@ -180,7 +180,7 @@ test('a cleaner that trips over a malformed structure refuses instead of throwin
 // ---------- rulings on what is kept, replaced or refused ----------
 
 test('a ZIP with Office or OpenDocument metadata parts that is no longer such a file is refused', async () => {
-  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
+  const { cleanFile } = await import('../site/lib/clean/index.js');
   const { rawZip } = await import('./fixtures/documents.js');
   for (const name of ['docProps/core.xml', 'meta.xml']) {
     const zip = rawZip([{ name, data: Buffer.from('<x><creator>Jane Doe</creator></x>') }, { name: 'readme.txt', data: Buffer.from('hi') }]);
@@ -191,8 +191,8 @@ test('a ZIP with Office or OpenDocument metadata parts that is no longer such a 
 });
 
 test('EPUB: the package identifier, and toc.ncx with it, get a fresh urn:uuid on every clean', async () => {
-  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
-  const { readZip, readEntry } = await import('../site/tools/lib/zip/index.js');
+  const { cleanFile } = await import('../site/lib/clean/index.js');
+  const { readZip, readEntry } = await import('../site/lib/zip/index.js');
   const { epub } = await import('./fixtures/documents.js');
   const book = await epub();
   const ids = [];

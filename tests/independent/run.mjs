@@ -8,7 +8,7 @@
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cleanFile, cleanableFormats } from '../../site/tools/lib/clean/index.js';
+import { cleanFile, cleanableFormats } from '../../site/lib/clean/index.js';
 import { findTools, ExifTool } from './tools.mjs';
 import { makeCorpus } from './make-corpus.mjs';
 import { CHECKS } from './checks.mjs';

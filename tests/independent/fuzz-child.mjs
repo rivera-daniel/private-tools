@@ -2,8 +2,8 @@
 // its own peak memory for that case. Runs as a child process so a hang can be killed and memory measured
 // per process. Messages use advanced serialization, so bytes travel as Uint8Array.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { inspectFile } from '../../site/tools/lib/metadata/index.js';
-import { cleanFile } from '../../site/tools/lib/clean/index.js';
+import { inspectFile } from '../../site/lib/metadata/index.js';
+import { cleanFile } from '../../site/lib/clean/index.js';
 
 // Linux: writing 5 to clear_refs resets the peak resident size, so VmHWM measures this case alone.
 function resetPeak() { try { writeFileSync('/proc/self/clear_refs', '5'); return true; } catch { return false; } }

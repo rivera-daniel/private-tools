@@ -25,7 +25,7 @@ import { rawZip, docx } from '../fixtures/documents.js';
 import { pdf, basic } from '../fixtures/pdf.js';
 import { base, segment, jpegWith, exifSegment, tEXt, pngWith } from '../fixtures/build.js';
 import { box, ebmlUnknown, id3v2, id3Text, mp3Frames, u32 } from '../fixtures/media.js';
-import { readZip, readEntry, writeZip } from '../../site/tools/lib/zip/index.js';
+import { readZip, readEntry, writeZip } from '../../site/lib/zip/index.js';
 
 const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(`--${name}`); return i < 0 ? def : args[i + 1]; };

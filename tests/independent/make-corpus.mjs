@@ -18,7 +18,7 @@ import { base, sample, tiff, segment, jpegWith, exifSegment, xmpSegment, xmpPack
 import { pdf, update, basic, stream, xmp, utf16, signedData } from '../fixtures/pdf.js';
 import { docx, xlsx, pptx, odt, epub, rawZip, unixExtra, timeExtra, ntfsExtra, dos } from '../fixtures/documents.js';
 import { mp4, flac, wav, aiff, ogg, mkv, id3v2, id3Text, id3v1, apeTag, lyrics3, mp3Frames, adtsFrames, jpeg, u32, u16, cat, box } from '../fixtures/media.js';
-import { readZip, readEntry, writeZip } from '../../site/tools/lib/zip/index.js';
+import { readZip, readEntry, writeZip } from '../../site/lib/zip/index.js';
 import { run } from './tools.mjs';
 import { findSecrets } from './scan.mjs';
 

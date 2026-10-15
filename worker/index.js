@@ -11,6 +11,6 @@ export function redirectFor(url) {
 export default {
   async fetch(request, env) {
     const target = redirectFor(new URL(request.url));
-    return target ? Response.redirect(target, 302) : env.ASSETS.fetch(request);
+    return target ? Response.redirect(target, 301) : env.ASSETS.fetch(request);
   },
 };

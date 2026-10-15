@@ -18,6 +18,6 @@ test('tools origin is served from static assets', async () => {
   const served = await worker.fetch(new Request('https://tools.danielrivera.ai/archiver/'), env);
   assert.equal(await served.text(), 'asset /archiver/');
   const moved = await worker.fetch(new Request('https://danielrivera.ai/tools/archiver/'), env);
-  assert.equal(moved.status, 302);
+  assert.equal(moved.status, 301);
   assert.equal(moved.headers.get('location'), 'https://tools.danielrivera.ai/archiver/');
 });

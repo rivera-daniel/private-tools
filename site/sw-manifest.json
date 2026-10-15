@@ -1,5 +1,5 @@
 {
-  "version": "186b8ce771149b5a",
+  "version": "d1c20378bd183b7d",
   "shell": [
     "",
     "assets/app.js",
@@ -490,7 +490,7 @@
     "assets/fonts/InterVariable.woff2": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
     "assets/roadmap-illustrations.js": "7bbb96d8d06ea3a87f51fb7fd28b26ab0dd23c6c22c4b44104bc5320af5861c3",
     "assets/site.css": "77ee96f786cba97f09fe4a6d37335871ba690fc3aa0617e7fa40a334a6f81529",
-    "assets/theme.js": "72aafa6656fe817ef6618b59f2c7e287deaa88c385be74b4815faff3844f2294",
+    "assets/theme.js": "5ecb7df98d18d24eb4dbbafa1be42b78f0d49d559cc3c60bcb1c58121baa7963",
     "file-inspector/": "246614fa6bd51317fc4afeafa023c765023e64faf133460a2b78e05a9150f5fd",
     "file-inspector/files.css": "5d463132645c44bb9ffdcde8d606929266dd924c10d1786da46883ee4ffd8ac0",
     "file-inspector/ui.js": "84180d8560b8ecf7bddc4608b7f85f39ea594e00c1f16a26e4b294819a5a9af6",

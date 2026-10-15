@@ -147,12 +147,15 @@ try {
   // while this first page is still loading, so the switch can happen on this load or on the next.
   const updated = () => page.waitForFunction(() => [...document.styleSheets].some((s) => [...s.cssRules].some((r) => r.selectorText === '.sw-update-check')), null, { timeout: 6000 });
   // The browser can hold the hand-over until the next navigation (the new worker's skipWaiting() stays pending
-  // while the page is reloading), so a switch may take one more load. It always completes by then.
+  // while the page is reloading), so a switch may take one more load. A page that is still waiting must not be
+  // stuck: after a few seconds it carries on and reports "Available offline" with the version it has.
+  let extraLoads = 0;
   const untilSwitched = async (switched, reloadFirst = false) => {
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (reloadFirst || attempt > 0) await page.reload();
+      if (reloadFirst || attempt > 0) { await page.reload(); if (attempt > 0) extraLoads++; }
       reloadFirst = false;
       if (await switched().then(() => true, () => false)) return;
+      await page.waitForSelector('html[data-offline-ready]', { state: 'attached', timeout: 20000 });
     }
     await switched();
   };
@@ -201,7 +204,7 @@ try {
   const foreign = requests.filter((u) => !u.startsWith(base) && !/^(blob|data):/.test(u));
   assert.deepEqual(foreign, [], 'requests to other origins');
   assert.deepEqual(problems, [], `console problems: ${problems.join(' | ')}`);
-  console.log(`offline: ${PAGES.length} pages work offline, update ${v1} -> ${v2} applied on one reload, ${v3} held while two tabs were open`);
+  console.log(`offline: ${PAGES.length} pages work offline, update ${v1} -> ${v2} applied (extra loads while the browser held the hand-over: ${extraLoads}), ${v3} held while two tabs were open`);
 } finally {
   await browser.close();
   server.kill();

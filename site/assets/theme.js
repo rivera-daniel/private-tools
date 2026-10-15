@@ -77,6 +77,8 @@ function ask(worker, message) {
   return reply;
 }
 
+const HANDOVER_WAIT = 4000; // ms
+
 async function enableOffline() {
   const indicator = offlineIndicator();
   const reg = await navigator.serviceWorker.register(new URL('sw.js', APP), { scope: APP.pathname, updateViaCache: 'none' });
@@ -84,9 +86,14 @@ async function enableOffline() {
   // A new version finished installing earlier. If this is the only open tab, let it take over now and reload,
   // so the page and every file it loads later come from the same deploy. With other tabs open it waits.
   if (reg.waiting && controller && (await ask(controller, { type: 'tabs' })).count === 1) {
-    navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+    // The browser sometimes holds the hand-over until the next navigation. If it has not happened after a few
+    // seconds this page carries on with the version it has; the switch still reloads it whenever it comes.
+    const handedOver = new Promise((resolve) => {
+      navigator.serviceWorker.addEventListener('controllerchange', () => { location.reload(); resolve(true); }, { once: true });
+      setTimeout(() => resolve(false), HANDOVER_WAIT);
+    });
     reg.waiting.postMessage({ type: 'activate' });
-    return;
+    if (await handedOver) return;
   }
   const worker = controller ?? (await navigator.serviceWorker.ready).active;
   if (worker && (await ask(worker, { type: 'cache', url: location.href })).ok === true) {

@@ -64,6 +64,7 @@ export function parseMp4(b, r, ctx) {
   if (!top.length) r.warn('The file has no readable boxes.');
   if (!moov && !ctx.fragmented && top.length) r.warn('The file has no movie header (moov box). It may be truncated or still being recorded.');
   if (ctx.times.length) r.block('Dates', ctx.timeBox.offset, ctx.timeBox.size, { container: 'mvhd, tkhd, mdhd', note: 'Creation and modification times' });
+  if (moov && !ctx.fragmented) unreferenced(b, top, moov, r);
   r.category = ctx.video ? 'Video' : ctx.audio || r.format === 'M4A' ? 'Audio' : 'Video';
   if (tree.stop < b.length) {
     const rest = b.length - tree.stop;
@@ -85,6 +86,33 @@ export function find(u8, from, codes) {
   const firsts = new Set(codes.map((c) => c.charCodeAt(0)));
   for (let i = from; i + 4 <= u8.length; i++) if (firsts.has(u8[i]) && codes.some((c) => u8[i + 1] === c.charCodeAt(1) && u8[i + 2] === c.charCodeAt(2) && u8[i + 3] === c.charCodeAt(3))) return true;
   return false;
+}
+
+// Media data that no track's sample table points at is never played: leftovers, or the samples of a track
+// whose tables were damaged. Non-zero stretches are reported so the cleaner zeroes them. Skipped when a
+// track's samples cannot be located, since its data would look unused.
+function unreferenced(b, top, moov, r) {
+  const mdats = top.filter((x) => x.type === 'mdat');
+  if (!mdats.length) return;
+  const ranges = [];
+  for (const trak of kids(moov, 'trak')) {
+    const list = sampleRanges(b, trak);
+    const stsz = kid(kid(kid(kid(trak, 'mdia'), 'minf'), 'stbl'), 'stsz');
+    if (!list.length && (!stsz || !b.has(stsz.start, 12) || b.u32(stsz.start + 8) > 0)) return;
+    ranges.push(...list);
+  }
+  ranges.sort((a, c) => a[0] - c[0]);
+  let n = 0;
+  for (const m of mdats) {
+    let at = m.start; const gaps = [];
+    for (const [s, e] of ranges) { if (e <= m.start || s >= m.end) continue; if (s > at) gaps.push([at, s]); at = Math.max(at, e); }
+    if (at < m.end) gaps.push([at, m.end]);
+    for (const [s, e] of gaps) {
+      if (!b.u8.subarray(s, Math.min(e, b.length)).some((x) => x)) continue;
+      if (++n > 256) { r.warn('Too many unused stretches in the media data. Inspection stopped early.'); return; }
+      r.block('Unreferenced data', s, Math.min(e, b.length) - s, { container: 'mdat', decoded: false, note: 'Media data no track uses' });
+    }
+  }
 }
 
 function padding(b, box, r) {

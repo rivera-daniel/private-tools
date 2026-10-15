@@ -22,7 +22,9 @@ process.on('message', async ({ id, data, name, options }) => {
   const t1 = performance.now();
   try {
     const r = await cleanFile(u8, name, options);
-    out.clean = r.ok ? { ok: true, data: r.data } : { ok: false, reason: r.reason };
+    out.clean = r.ok ? { ok: true, data: r.data, kept: r.kept ?? [] } : { ok: false, reason: r.reason };
+    // What the inspector still reads in the output, for judging leftovers.
+    if (r.ok) { const after = await inspectFile(r.data, name); out.clean.seen = JSON.stringify([after.sources, after.highlights]); }
   } catch (error) { out.cleanError = `${error.name}: ${error.message}\n${(error.stack ?? '').split('\n').slice(1, 4).join('\n')}`; }
   out.ms = { inspect: t1 - t0, clean: performance.now() - t1 };
   out.peakMb = peakMb();

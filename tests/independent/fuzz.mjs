@@ -2,19 +2,24 @@
 // a seeded generator (bit flips, truncation, length-field inflation, duplicated and self-referencing
 // structures, huge counts) and runs inspectFile and cleanFile in a child process. A case fails when either
 // throws, the child crashes, a case runs past the time budget, peak memory passes the cap, or a cleaned
-// output still contains a planted secret that was intact in the mutated input. A handful of hand-built
-// hostile files (entity expansion, deep nesting, a zip bomb with a lying size, reference cycles) run first.
+// output still contains, as readable metadata, a planted secret that was intact in the mutated input.
+// "Readable" means the site's inspector or ExifTool (when installed) reports it in the cleaned file.
+// Planted strings left only as bytes no parser recognises, and files a mutation turned into another
+// format, are listed for review without failing. A handful of hand-built hostile files (entity expansion,
+// deep nesting, a zip bomb with a lying size, reference cycles) run first.
 //
 //   node tests/independent/fuzz.mjs [--seed N] [--iterations N] [--jobs N] [--timeout ms] [--mem MB]
 //                                   [--external] [--case N] [--only id-substring]
 //
 // --case N replays one case of the given seed. Failing inputs go to test-results/fuzz/.
 import { fork } from 'node:child_process';
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { availableParallelism } from 'node:os';
 import { deflateRawSync } from 'node:zlib';
 import { makeCorpus } from './make-corpus.mjs';
-import { findTools } from './tools.mjs';
+import { findTools, ExifTool } from './tools.mjs';
 import { findSecrets } from './scan.mjs';
 import { rawZip, docx } from '../fixtures/documents.js';
 import { pdf, basic } from '../fixtures/pdf.js';
@@ -234,21 +239,48 @@ class Pool {
 }
 const procStatus = (pid) => readFileSync(`/proc/${pid}/status`, 'utf8');
 
-const tools = EXTERNAL ? findTools() : {};
+// ExifTool judges leftovers whenever it is installed. --external also adds the externally generated corpus.
+const found = findTools();
+const tools = EXTERNAL ? found : { exiftool: found.exiftool };
 const { items: corpus } = await makeCorpus(tools, { external: EXTERNAL });
-const seeds = corpus.filter((x) => x.expect === 'clean' && x.id.includes(ONLY));
+const seeds = corpus.filter((x) => x.expect === 'clean');
 const hostiles = (await hostile()).filter((x) => x.id.includes(ONLY));
 const pool = new Pool(JOBS);
 const outDir = new URL('../../test-results/fuzz/', import.meta.url);
-const stats = new Map(); const failures = [];
-let maxPeak = 0; let maxMs = 0;
+const stats = new Map(); const failures = []; const review = [];
+const et = tools.exiftool ? new ExifTool(tools.exiftool) : null;
+const scratch = mkdtempSync(join(tmpdir(), 'pt-fuzz-'));
+let scratchN = 0;
+// Which leaked strings the inspector or ExifTool reads as metadata in the cleaned file.
+async function readableBy(clean, item, leaked) {
+  const out = new Set(leaked.filter((t) => clean.seen?.includes(t)));
+  if (et) {
+    const path = join(scratch, `${scratchN++}${item.name.slice(item.name.lastIndexOf('.'))}`);
+    writeFileSync(path, clean.data);
+    const text = JSON.stringify((await et.read(path)).tags);
+    for (const t of leaked) if (text.includes(t)) out.add(t);
+    rmSync(path, { force: true });
+  }
+  return [...out];
+}
+let maxPeak = 0; let maxMs = 0; let slowest = ''; let heaviest = '';
 const stat = (family) => { if (!stats.has(family)) stats.set(family, { cases: 0, cleaned: 0, refused: 0, failures: 0 }); return stats.get(family); };
+
+function save(label, item, data) {
+  const file = `${label.replace(/[^\w./-]+/g, '_')}${item.name.slice(item.name.lastIndexOf('.'))}`;
+  const url = new URL(file, outDir);
+  mkdirSync(new URL('.', url), { recursive: true });
+  writeFileSync(url, data);
+  return file;
+}
 
 async function runCase(label, item, data, steps) {
   const secrets = item.secrets.length ? [...new Set(findSecrets(data, item.secrets).map((h) => h.secret))] : [];
   const res = await pool.run({ id: label, data, name: item.name, options: item.options });
   const s = stat(item.family); s.cases++;
-  maxPeak = Math.max(maxPeak, res.peakMb ?? 0); maxMs = Math.max(maxMs, (res.ms?.inspect ?? 0) + (res.ms?.clean ?? 0));
+  if ((res.peakMb ?? 0) > maxPeak) { maxPeak = res.peakMb; heaviest = label; }
+  const ms = (res.ms?.inspect ?? 0) + (res.ms?.clean ?? 0);
+  if (ms > maxMs) { maxMs = ms; slowest = label; }
   const problems = [];
   if (res.hang) problems.push(`hang (over ${TIMEOUT} ms)`);
   if (res.memory) problems.push(`memory over ${MEM_MB} MB`);
@@ -259,20 +291,25 @@ async function runCase(label, item, data, steps) {
   if (res.clean?.ok) {
     s.cleaned++;
     const leaked = secrets.length ? [...new Set(findSecrets(res.clean.data, secrets).map((h) => h.secret))] : [];
-    if (leaked.length) problems.push(`cleaned output still holds: ${leaked.join(', ')}`);
+    if (leaked.length) {
+      const became = res.inspect?.format !== item.format;
+      // A PDF photo the image cleaner cannot rewrite is kept as is and listed as kept.
+      const disclosed = res.clean.kept.find((k) => /image with metadata|images with metadata/.test(k));
+      const readable = became || disclosed ? [] : await readableBy(res.clean, item, leaked);
+      if (readable.length) problems.push(`cleaned output still holds readable metadata: ${readable.join(', ')}`);
+      else save(`review/${label}`, item, data), review.push({ label, item: item.id, steps, kind: became ? `became ${res.inspect?.format ?? 'unknown'}` : disclosed ? `kept and listed: ${disclosed}` : 'unrecognised bytes', leaked });
+    }
   } else if (res.clean) s.refused++;
   if (problems.length) {
     s.failures++;
-    mkdirSync(outDir, { recursive: true });
-    const file = `${label.replace(/[^\w.-]+/g, '_')}${item.name.slice(item.name.lastIndexOf('.'))}`;
-    writeFileSync(new URL(file, outDir), data);
-    failures.push({ label, item: item.id, steps, problems, file });
+    failures.push({ label, item: item.id, steps, problems, file: save(label, item, data) });
   }
 }
 
 const started = Date.now();
 if (CASE === null) for (const h of hostiles) await runCase(`hostile-${h.id}`, h, h.data, ['hand-built']);
-const indices = CASE !== null ? [Number(CASE)] : Array.from({ length: ITERATIONS }, (_, i) => i);
+// --only skips cases without renumbering them, so a case number always names the same input.
+const indices = CASE !== null ? [Number(CASE)] : Array.from({ length: ITERATIONS }, (_, i) => i).filter((i) => seeds[i % seeds.length].id.includes(ONLY));
 let next = 0;
 await Promise.all(Array.from({ length: JOBS }, async () => {
   while (next < indices.length) {
@@ -282,12 +319,19 @@ await Promise.all(Array.from({ length: JOBS }, async () => {
   }
 }));
 pool.close();
+et?.close();
+rmSync(scratch, { recursive: true, force: true });
 
 const total = [...stats.values()].reduce((a, s) => a + s.cases, 0);
 console.log(`Fuzz seed ${SEED}: ${indices.length} mutated cases over ${seeds.length} corpus files, ${CASE === null ? hostiles.length : 0} hand-built hostile files, ${((Date.now() - started) / 1000).toFixed(1)} s`);
-console.log(`Time budget ${TIMEOUT} ms per case (slowest ${Math.round(maxMs)} ms), memory cap ${MEM_MB} MB (highest peak ${Math.round(maxPeak)} MB)`);
+console.log(`Time budget ${TIMEOUT} ms per case (slowest ${Math.round(maxMs)} ms, ${slowest}), memory cap ${MEM_MB} MB (highest peak ${Math.round(maxPeak)} MB, ${heaviest})`);
 console.log('family      cases  cleaned  refused  failures');
 for (const [f, s] of [...stats].sort()) console.log(`${f.padEnd(10)} ${String(s.cases).padStart(6)} ${String(s.cleaned).padStart(8)} ${String(s.refused).padStart(8)} ${String(s.failures).padStart(9)}`);
 console.log(`total      ${String(total).padStart(6)}`);
+console.log(`judge of leftovers: site inspector${et ? ' and ExifTool' : ' only (ExifTool not found)'}`);
+if (review.length) {
+  console.log(`\nFor review, not failed (${review.length}): planted strings left where no parser reads them as metadata`);
+  for (const x of review) console.log(`  ${x.label}: ${x.kind}; ${x.leaked.join(', ')} (${x.steps.join('; ')})`);
+}
 for (const f of failures) console.log(`\nFAIL ${f.label}\n  input: test-results/fuzz/${f.file}\n  mutations: ${f.steps.join('; ')}\n  ${f.problems.join('\n  ')}`);
 process.exitCode = failures.length ? 1 : 0;

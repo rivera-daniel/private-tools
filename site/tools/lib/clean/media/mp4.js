@@ -1,6 +1,6 @@
 // MP4, MOV, M4A and 3GP: drops metadata boxes and timed metadata tracks, zeroes header times and leftover
 // free-space bytes, then fixes every box size and chunk offset the removals moved. Samples are never touched,
-// except that the samples of a removed metadata track are overwritten with zeros.
+// except that the samples of a removed metadata track, and media data no track uses, are overwritten with zeros.
 import { Bytes, concat } from '../../metadata/bytes.js';
 import { buildTree, sampleRanges, timeFields } from '../../metadata/media/isom.js';
 import { Refusal } from '../index.js';
@@ -21,6 +21,10 @@ export function cleanMp4(u8, report, blocks) {
     if (blk.kind === 'Dates') dates = true;
     else if (blk.kind === 'Trailer') trailer = [blk.offset, u8.length];
     else if (blk.kind === 'Padding') { if (!box) throw locate(); zeros.push([box.start, box.end]); }
+    else if (blk.kind === 'Unreferenced data') {
+      if (!mdats.some((m) => blk.offset >= m.start && blk.offset + blk.length <= m.end)) throw locate();
+      zeros.push([blk.offset, blk.offset + blk.length]);
+    }
     else if (blk.kind === 'Data reference') removes.push([blk.offset, blk.offset + blk.length]);
     else if (blk.kind === 'Metadata track') {
       if (!box || box.type !== 'trak') throw locate();

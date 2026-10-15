@@ -26,8 +26,8 @@ const dataBox = (type, value) => full('data', 0, type, u32(0), value);
 // Apple mdta item lists name items by their 1-based index into the keys box.
 const keyed = (i, value) => { const d = dataBox(1, utf8(value)); return cat(u32(8 + d.length), u32(i), d); };
 
-// Options: moovFirst, times (seconds since 1970), metadataTrack, udta, mdta, ilst, xmpUuid, trailer, free.
-export function mp4({ moovFirst = false, times = 1714557600, metadataTrack = true, udta = true, mdta = true, ilst = false, xmpUuid = false, trailer = '', freeLeftover = '', brand = 'isom', co64 = false, videoRef = false, gopro = false, alias = false } = {}) {
+// Options: moovFirst, times (seconds since 1970), metadataTrack, strayMeta, udta, mdta, ilst, xmpUuid, trailer, free.
+export function mp4({ moovFirst = false, times = 1714557600, metadataTrack = true, strayMeta = false, udta = true, mdta = true, ilst = false, xmpUuid = false, trailer = '', freeLeftover = '', brand = 'isom', co64 = false, videoRef = false, gopro = false, alias = false } = {}) {
   const video = [cat(str('VIDEOSAMPLE-ONE-'), Buffer.alloc(40, 0x11)), cat(str('VIDEOSAMPLE-TWO-'), Buffer.alloc(24, 0x22))];
   const meta = [gopro ? gpmf() : cat(str('LOCATION-SAMPLE:+37.3317-122.0302/'))];
   const t = times ? times + MAC : 0;
@@ -57,7 +57,8 @@ export function mp4({ moovFirst = false, times = 1714557600, metadataTrack = tru
     return box('moov', ...parts.filter((p) => p.length));
   };
   const ftyp = box('ftyp', brand, u32(0), brand, 'mp41');
-  const mdatBody = cat(...video, ...meta);
+  // strayMeta leaves the metadata samples in the media data with no track pointing at them.
+  const mdatBody = cat(...video, ...(metadataTrack || strayMeta ? meta : []));
   const layout = (moovLen) => {
     const mdatStart = moovFirst ? ftyp.length + moovLen + 8 : ftyp.length + 8;
     return { video: mdatStart, meta: mdatStart + video[0].length + video[1].length };

@@ -149,3 +149,11 @@ test('a file the inspector could not fully read is refused rather than passed as
   assert.equal(r.ok, false);
   assert.match(r.reason, /could not be read/);
 });
+
+test('PNG: thousands of compressed text chunks stop at the decompression count and are refused', async () => {
+  const { zTXt } = await import('./fixtures/build.js');
+  const file = pngWith(...Array.from({ length: 1200 }, (_, i) => zTXt('Comment', `note ${i}`)));
+  const before = await inspectImage(file);
+  assert.ok(before.warnings.some((w) => /Too many compressed metadata blocks/.test(w)));
+  assert.equal((await cleanImage(file)).ok, false);
+});

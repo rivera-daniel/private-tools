@@ -98,7 +98,14 @@ export function parseMkv(b, r, ctx) {
         else if (el.id === ID.Attachments) r.within(r.block('Attachments', el.offset, el.end - el.offset, { container: 'Matroska Attachments' }), () => attachments(b, el, r, ctx, budget));
         else if (el.id === ID.Chapters) chapters(b, el, r, budget);
         else if (el.id === ID.Void && nonZero(b, el)) r.block('Padding', el.offset, el.end - el.offset, { container: 'Matroska Void', decoded: false, note: 'Void element holding leftover data' });
-        else if (!LEVEL1.has(el.id) && el.id !== ID.Void && el.id !== ID.CRC32) r.field('Container', `Element 0x${el.id.toString(16)}`, fmtBytes(el.end - el.start));
+        // Elements the format does not define at this level are never needed for playback, and what they
+        // hold cannot be checked, so they go like leftover Void data.
+        else if (!LEVEL1.has(el.id) && el.id !== ID.Void && el.id !== ID.CRC32) {
+          r.field('Container', `Element 0x${el.id.toString(16)}`, fmtBytes(el.end - el.start));
+          r.block('Unknown element', el.offset, el.end - el.offset, { container: `Matroska element 0x${el.id.toString(16)}`, decoded: false, note: 'Not defined by the Matroska format' });
+        }
+        // Info and Tracks hold titles and names next to what players need: a part that cannot be read could hide them.
+        if ((el.id === ID.Info || el.id === ID.Tracks) && children(b, el.start, el.end, { n: 0 }).stop !== el.end) r.warn(`Part of the Matroska ${el.id === ID.Info ? 'Info' : 'Tracks'} element could not be read. The file may be damaged.`);
       } catch { r.field('Container', `Element 0x${el.id.toString(16)}`, 'Could not be decoded'); }
     }
     if (clusters) r.struct('Clusters', top.find((x) => x.id === ID.Cluster).offset, clusterBytes, `${clusters} clusters`);
@@ -126,6 +133,10 @@ function hasCluster(u8, from) {
   return false;
 }
 
+// Every element the format defines inside Info: SegmentFamily and ChapterTranslate (with its children)
+// besides the ones read here.
+const INFO_KNOWN = new Set([ID.SegmentUID, ID.SegmentFilename, ID.PrevUID, ID.PrevFilename, ID.NextUID, ID.NextFilename, 0x4444, 0x6924, ID.TimestampScale, ID.Duration, ID.DateUTC, ID.Title, ID.MuxingApp, ID.WritingApp, ID.Void, ID.CRC32]);
+
 function info(b, el, r, budget) {
   const src = 'Matroska info'; let scale = 1000000; let dur = 0;
   for (const c of children(b, el.start, el.end, budget)) {
@@ -147,6 +158,7 @@ function info(b, el, r, budget) {
       // Both are mandatory, so cleaning empties them instead of removing them. Only a non-empty value is a block.
       if (v) { r.block('Software', ...at, { container: `Matroska Info ${c.id === ID.MuxingApp ? 'MuxingApp' : 'WritingApp'}` }); tag(r, src, c.id === ID.MuxingApp ? 'Muxing application' : 'Writing application', v, 'Software'); }
     } else if (c.id === ID.Void && nonZero(b, c)) r.block('Padding', ...at, { container: 'Matroska Void', decoded: false });
+    else if (!INFO_KNOWN.has(c.id)) r.block('Unknown element', ...at, { container: `Matroska Info element 0x${c.id.toString(16)}`, decoded: false, note: 'Not defined by the Matroska format' });
   }
   if (dur) r.field('Container', 'Duration', duration((dur * scale) / 1e9));
 }

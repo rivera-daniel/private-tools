@@ -59,9 +59,11 @@ if (!have7z || !haveXz) console.log(`skipping ${[!have7z && '7z', !haveXz && 'ta
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/usr/sbin/chromium' });
 for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mobile', { width: 390, height: 800 }]]) {
-  const page = await browser.newPage({ viewport, acceptDownloads: true });
+  // The handoff check below answers the File Inspector page with a stand-in route, which a service worker
+  // would bypass. Offline use is covered by browser-offline.mjs.
+  const page = await browser.newPage({ viewport, acceptDownloads: true, serviceWorkers: 'block' });
   const problems = [];
-  const expected = (t) => process.env.ALLOW_CF_JSD && /Executing inline script violates the following Content Security Policy|static\.cloudflareinsights\.com\/beacon/.test(t);
+  const expected = (t) => t === 'Service Worker registration blocked by Playwright' || process.env.ALLOW_CF_JSD && /Executing inline script violates the following Content Security Policy|static\.cloudflareinsights\.com\/beacon/.test(t);
   page.on('console', (m) => { if (['error', 'warning'].includes(m.type()) && !expected(m.text())) problems.push(m.text()); });
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   const loaded = []; page.on('request', (r) => loaded.push(r.url()));

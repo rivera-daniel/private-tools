@@ -1,1 +1,1 @@
-{"name": "private-tools", "version": "0.1.0", "private": true, "type": "module", "scripts": {"dev": "node server.js", "test": "node --test tests/", "test:browser": "node tests/browser.mjs", "deploy": "npx wrangler@4 deploy"}, "license": "AGPL-3.0-only"}
+{"name": "private-tools", "version": "0.1.0", "private": true, "type": "module", "scripts": {"dev": "node server.js", "test": "node --test tests/", "test:browser": "node tests/browser.mjs", "deploy": "node scripts/build-sw-manifest.mjs && npx wrangler@4 deploy"}, "license": "AGPL-3.0-only"}

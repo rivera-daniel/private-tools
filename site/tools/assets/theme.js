@@ -31,3 +31,70 @@ document.addEventListener('DOMContentLoaded', () => {
     render(button);
   });
 });
+
+// Offline use: a service worker stores this page's files after the first visit (see /tools/sw.js).
+// Registration waits for the page to load and does nothing where service workers are unavailable.
+const OFFLINE_ICONS = {
+  ready: '<path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.8 8.6 4.7 4.7 0 0 1 17.5 18z"/><path d="m9.5 13 2 2 3.5-3.5"/>',
+  offline: '<path d="M3 3l18 18M9.2 6.2A6 6 0 0 1 17.8 8.6a4.7 4.7 0 0 1 2.7 7.9M17 18H7a4.5 4.5 0 0 1-1.6-8.7"/>',
+};
+const OFFLINE_TEXT = { ready: 'Available offline', offline: 'Offline' };
+const OFFLINE_TITLE = {
+  ready: 'This page is saved in your browser and works without a network connection.',
+  offline: 'No network connection. Pages you have opened before still work.',
+};
+
+function offlineIndicator() {
+  const footer = document.querySelector('.footer-bottom');
+  if (!footer) return null;
+  const el = document.createElement('span');
+  el.className = 'offline-status';
+  el.setAttribute('role', 'status');
+  el.hidden = true;
+  footer.append(el);
+  let ready = false;
+  const render = () => {
+    const state = !navigator.onLine ? 'offline' : ready ? 'ready' : null;
+    el.hidden = !state;
+    if (!state || el.dataset.state === state) return;
+    el.dataset.state = state;
+    el.title = OFFLINE_TITLE[state];
+    el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${OFFLINE_ICONS[state]}</svg><span>${OFFLINE_TEXT[state]}</span>`;
+  };
+  addEventListener('online', render);
+  addEventListener('offline', render);
+  render();
+  return { setReady() { ready = true; render(); } };
+}
+
+// The app's base URL, from this script's own address (assets/theme.js), so the site works under any path.
+const APP = document.currentScript ? new URL('../', document.currentScript.src) : null;
+
+function ask(worker, message) {
+  const channel = new MessageChannel();
+  const reply = new Promise((resolve) => { channel.port1.onmessage = (e) => resolve(e.data ?? {}); });
+  worker.postMessage(message, [channel.port2]);
+  return reply;
+}
+
+async function enableOffline() {
+  const indicator = offlineIndicator();
+  const reg = await navigator.serviceWorker.register(new URL('sw.js', APP), { scope: APP.pathname, updateViaCache: 'none' });
+  const controller = navigator.serviceWorker.controller;
+  // A new version finished installing earlier. If this is the only open tab, let it take over now and reload,
+  // so the page and every file it loads later come from the same deploy. With other tabs open it waits.
+  if (reg.waiting && controller && (await ask(controller, { type: 'tabs' })).count === 1) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+    reg.waiting.postMessage({ type: 'activate' });
+    return;
+  }
+  const worker = controller ?? (await navigator.serviceWorker.ready).active;
+  if (worker && (await ask(worker, { type: 'cache', url: location.href })).ok === true) {
+    root.dataset.offlineReady = '';
+    indicator?.setReady();
+  }
+}
+
+if ('serviceWorker' in navigator && APP) {
+  addEventListener('load', () => { enableOffline().catch(() => {}); }, { once: true });
+}

@@ -1,5 +1,5 @@
 {
-  "version": "3e812b43d96fb3e9",
+  "version": "74dbb08042ff51e1",
   "shell": [
     "",
     "assets/app.js",
@@ -477,7 +477,7 @@
     ]
   },
   "files": {
-    "": "ce6fd2bf3dcc3b0ac52f4e69103acca63d59cbd76b0a65b8efc301845e08e537",
+    "": "92f07b45d6f2c7ba8abb2d62c6dc7c83dd5c63a8c7689c8a4ddceeac4087d7f3",
     "archiver/": "ea8d528bfe42edc0b651609507d21d58d8cedc488032977fdfb9d3f895aa06ac",
     "archiver/archiver.css": "f355d69165c8b89f42c5e6e55f6bd268094eff8d4df23960edf045ea9a0121a7",
     "archiver/ui.js": "e22fd5af9b67c63f8ba02f531616938e1129b28ea54f43d655ee7075e2c49dda",
@@ -485,7 +485,7 @@
     "assets/app.js": "33c5b7b11b72b377601ee4e7ad01de05fea4e02abf5fb8bca4908751a9731c84",
     "assets/catalog-data.js": "e33ad07c8f6038a41765481ac1a564a8fa480114761183b764dbd7f1ca725a91",
     "assets/catalog-illustrations.js": "221a56545095704f8be1b9a12db5888c2d1138aedbe81c3d8aed22a14ddec077",
-    "assets/catalog.css": "f0f3e539d8117871ed8b937ef040c4c155f74551e6674cea2838c8ff15054678",
+    "assets/catalog.css": "28cd0151d5bf13c0b74d586323d521f748b8217543dcc89288e41ad0715543c5",
     "assets/favicon.svg": "60ca824febf36e03daf52013277cdbf41452f7f0dbe2019f840dae2e07eeb433",
     "assets/fonts/InterVariable.woff2": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
     "assets/roadmap-illustrations.js": "7bbb96d8d06ea3a87f51fb7fd28b26ab0dd23c6c22c4b44104bc5320af5861c3",
@@ -614,7 +614,7 @@
     "pdf-editor/redact-worker.js": "79538e27ea3f0f47b149277faa7fd375de62f65d3ea0d168de307a9d0d04c685",
     "pdf-editor/ui.js": "52f08d699787442c4608f9fad1a6a688552f1de08ad50c7ba9fe694fdbe1ae68",
     "pdf-editor/worker.js": "1e03f2e80dcb717f9d154303dc55124d84c8e853bdefb4dfea8fe7b07ecebf98",
-    "roadmap/": "e79a8a1fd1beb00160f55c5a9cc57d2a1b44689b20eb37898d41791e3992bda9",
+    "roadmap/": "a6a0eee9de9ab0d1f607bd08894ad775e77f61a8e3916ec85518d7b39e4fcf4d",
     "vendor/libarchive/libarchive.js": "0534be5e9f1f050f5d88b2f2828d4839c138761030c2d6e251e2d6ab465824fd",
     "vendor/libarchive/libarchive.wasm": "d3b6aa6d502bd49a6052ef9a2e37c5bea45d6e11c7ac05914bf68d8dbce72c89",
     "vendor/mupdf/mupdf-wasm.js": "25382abbfbf5c52191e5ac59e1412a0da88647fecfab0c1d797bb5948443eea4",

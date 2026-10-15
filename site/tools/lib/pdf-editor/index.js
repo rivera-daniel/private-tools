@@ -144,6 +144,12 @@ export const buildBytes = (sources, plan, options = {}) => {
   try { return saveDocument(doc, options); } finally { doc.destroy(); }
 };
 
+// Saves bytes again through MuPDF, for example to compress a cleaned file.
+export function resave(bytes, options = {}) {
+  const doc = openRaw(bytes);
+  try { return saveDocument(doc, options); } finally { doc.destroy(); }
+}
+
 // Splits the plan into groups of plan indexes and builds one PDF per group.
 export function splitDocument(sources, plan, groups, options = {}) {
   return groups.map((group) => buildBytes(sources, group.map((i) => plan[i]), options));

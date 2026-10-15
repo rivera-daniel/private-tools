@@ -582,6 +582,7 @@ function orphans(I, infoNum) {
   const { doc, r } = I;
   const encrypt = doc.trailer.get('Encrypt');
   const labels = []; const spans = new Map(); let first = null;
+  const hint = doc.resolve(doc.linearized()?.get('H'))?.[0];
   for (const [num, e] of doc.entries) {
     if (e.type === 0 || I.reach.has(num) || (encrypt instanceof Ref && encrypt.num === num)) continue;
     if (labels.length >= 100000) break;
@@ -589,6 +590,9 @@ function orphans(I, infoNum) {
     if (v === null) continue;
     if (v instanceof Stream && (isName(v.dict.get('Type'), 'XRef') || isName(v.dict.get('Type'), 'ObjStm'))) continue;
     if (v instanceof Dict && v.has('Linearized')) continue;
+    // Bare numbers and empty containers carry nothing, and the linearization hint stream is structure.
+    if (!(v instanceof Stream) && !(v instanceof Str) && !(v?.size || v?.length)) continue;
+    if (v instanceof Stream && isInt(hint) && doc.span(num)?.[0] === hint) continue;
     labels.push(describe(v, infoNum, num));
     const span = doc.span(num);
     if (span) { spans.set(span[0], span[1]); if (first === null || span[0] < first) first = span[0]; }

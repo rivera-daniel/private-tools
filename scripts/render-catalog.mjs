@@ -3,12 +3,12 @@
 import { writeFile, mkdir, access } from 'node:fs/promises';
 import { illustration, ILLUSTRATION_KINDS } from '../site/tools/assets/catalog-illustrations.js';
 import { GROUPS, STAGES, TOOLS, DETAILS } from '../site/tools/assets/catalog-data.js';
-import { ART, ARROW } from '../site/tools/assets/catalog-icons.js';
+import { ARROW } from '../site/tools/assets/catalog-icons.js';
 const root = new URL('../site/tools/', import.meta.url);
 const escape = (v) => String(v).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const slug = (t) => t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '');
 const group = (t) => GROUPS.find((g) => g.id === t.group)?.name ?? t.group;
-const icon = (t, cls = '') => `<span class="app-icon ${cls} tone-${escape(t.art)}" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">${ART[t.art] ?? ART.files}</svg></span>`;
+const icon = (t) => illustration(t.art, `roadmap-${slug(t)}-`);
 const mark = '<svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>';
 const live = TOOLS.filter((t) => !t.stage);
 // Fail before writing either page if a released card is incomplete.
@@ -17,6 +17,7 @@ for (const t of TOOLS) {
  if (names.has(t.name) || slugs.has(slug(t))) throw new Error(`Duplicate tool name or slug: ${t.name}`);
  names.add(t.name); slugs.add(slug(t));
  if (!GROUPS.some(g => g.id === t.group) || !t.copy?.trim()) throw new Error(`Missing category or description: ${t.name}`);
+ if (!ILLUSTRATION_KINDS.includes(t.art)) throw new Error(`Missing illustration: ${t.name}`);
  if (t.stage && !(t.stage in STAGES)) throw new Error(`Unknown roadmap stage: ${t.name}`);
  if (!t.stage) {
   if (!DETAILS[t.name]?.trim() || !ILLUSTRATION_KINDS.includes(t.art)) throw new Error(`Released tool needs details and registered illustration: ${t.name}`);

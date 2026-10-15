@@ -1,6 +1,6 @@
 // Progressive enhancement of crawlable static tool pages. File processing lives in each tool.
 import { GROUPS, STAGES, TOOLS, DETAILS } from './catalog-data.js';
-import { ART } from './catalog-icons.js';
+import { illustration } from './catalog-illustrations.js';
 const $ = (id) => document.getElementById(id);
 const search = $('search'), dialog = $('tool-dialog'), select = $('group-select');
 const groupName = Object.fromEntries(GROUPS.map((g) => [g.id,g.name]));
@@ -20,8 +20,8 @@ for(const el of entries) if(!el.tool.href) el.addEventListener('click',()=>openD
 function result(tool){
  const el=node(tool.href?'a':'button','cat-row');el.tool=tool;
  if(tool.href)el.href=tool.href;else{el.type='button';el.setAttribute('aria-haspopup','dialog');el.addEventListener('click',()=>openDialog(tool));}
- const icon=node('span',`app-icon tone-${tool.art}`);icon.setAttribute('aria-hidden','true');
- icon.innerHTML=`<svg viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">${ART[tool.art]??ART.files}</svg>`;
+ const icon=node('span','result-icon');
+ icon.innerHTML=illustration(tool.art,`search-${TOOLS.indexOf(tool)}-`);
  const body=node('span','cat-row-body'),top=node('span','cat-row-top');
  top.append(node('span','cat-row-title',tool.name),node('span','cat-tag',status(tool)));
  body.append(top,node('span','cat-row-copy',tool.copy));el.append(icon,body);return el;

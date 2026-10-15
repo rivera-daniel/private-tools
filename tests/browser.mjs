@@ -90,6 +90,78 @@ async function run(viewport, label) {
   return { label, requestsDuringProcessing: requests.length, external: external.length, results };
 }
 
+// Catalog: available tools before planned ones, groups from data, search across everything, no overflow or layout shift.
+async function catalog(viewport, label) {
+  const page = await browser.newPage({ viewport });
+  const problems = [];
+  const requests = [];
+  page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) problems.push(m.text()); });
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  page.on('request', (r) => requests.push(r.url()));
+  await page.goto(`${base}/tools/`, { waitUntil: 'networkidle' });
+  await page.screenshot({ path: `${shots}/catalog-${label}.png`, fullPage: true });
+  const layout = await page.evaluate(() => new Promise((resolve) => {
+    let shift = 0;
+    new PerformanceObserver((list) => { for (const e of list.getEntries()) if (!e.hadRecentInput) shift += e.value; }).observe({ type: 'layout-shift', buffered: true });
+    setTimeout(() => {
+      const available = [...document.querySelectorAll('#cards [data-status=available]')];
+      const planned = [...document.querySelectorAll('#roadmap [data-status=planned]')];
+      resolve({
+        shift,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        groups: [...document.querySelectorAll('#roadmap-groups h3')].map((h) => h.firstChild.textContent),
+        available: available.length,
+        planned: planned.length,
+        order: Boolean(available.at(-1).compareDocumentPosition(planned[0]) & Node.DOCUMENT_POSITION_FOLLOWING),
+        firstCardTop: available[0].getBoundingClientRect().top,
+      });
+    }, 300);
+  }));
+  assert.ok(layout.shift < 0.01, `layout shift ${layout.shift}`);
+  assert.ok(layout.overflow <= 0, `horizontal overflow ${layout.overflow}px`);
+  assert.ok(layout.available >= 5 && layout.planned >= 20, 'tools missing');
+  assert.ok(layout.order, 'a planned tool comes before an available one');
+  for (const g of ['Documents and PDF', 'Images', 'Security', 'Forensics']) assert.ok(layout.groups.includes(g), `group ${g} missing`);
+  if (viewport.width > 650) assert.ok(layout.firstCardTop < viewport.height - 150, 'available tools below the fold');
+
+  // A group filter shows only that group. Security has no available tool, so only the roadmap remains.
+  await page.click('#groups [data-group=security]');
+  assert.equal(await page.isVisible('#available'), false, 'empty available section shown');
+  assert.deepEqual(await page.$$eval('#roadmap .cat-group:not([hidden]) h3', (hs) => hs.map((h) => h.firstChild.textContent)), ['Security']);
+  assert.match(await page.textContent('#search-status'), /^Security: 0 available, 7 planned$/);
+  await page.click('#groups [data-group=all]');
+
+  // '/' focuses search. Search covers planned tools and lists results flat with group and status.
+  await page.evaluate(() => document.body.focus());
+  await page.keyboard.press('/');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'search');
+  await page.keyboard.type('hex');
+  const hit = await page.$$eval('#result-rows .cat-row:not([hidden])', (rows) => rows.map((r) => r.textContent));
+  assert.equal(hit.length, 1);
+  assert.match(hit[0], /Forensics.*Hex Viewer.*Later/);
+  assert.equal(await page.isVisible('#available'), false);
+  assert.equal(await page.isVisible('#roadmap'), false);
+  assert.equal(await page.textContent('#search-status'), '1 tool found');
+  await page.screenshot({ path: `${shots}/catalog-${label}-search.png` });
+  await page.click('#result-rows .cat-row:not([hidden])');
+  assert.equal(await page.isVisible('#tool-dialog'), true, 'planned tool dialog did not open');
+  assert.equal(await page.textContent('#dialog-title'), 'Hex Viewer');
+  await page.keyboard.press('Escape');
+  await page.fill('#search', 'zzzz');
+  assert.equal(await page.textContent('#search-status'), 'No tools found');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.isVisible('#available'), true, 'Escape did not clear the search');
+
+  // An available card links to its tool.
+  await page.locator('#cards').getByRole('link', { name: /Image Inspector/ }).click();
+  await page.waitForURL(/\/tools\/image-inspector\/$/);
+  const external = requests.filter((u) => !u.startsWith(base));
+  assert.deepEqual(external, [], `cross-origin requests: ${external.join(', ')}`);
+  assert.deepEqual(problems, [], `console problems: ${problems.join(' | ')}`);
+  await page.close();
+  return { label, catalog: 'ok', ...layout };
+}
+
 async function reachByTab(page) {
   await page.evaluate(() => document.body.focus());
   for (let i = 0; i < 15; i++) { await page.keyboard.press('Tab'); if (await page.evaluate(() => document.activeElement?.id === 'file')) return true; }
@@ -101,12 +173,7 @@ mkdirSync(shots, { recursive: true });
 
 try {
   for (const [vp, label] of [[{ width: 1440, height: 1000 }, 'desktop'], [{ width: 390, height: 844 }, 'mobile']]) console.log(JSON.stringify(await run(vp, label)));
-  // Catalog card links to the tool.
-  const page = await browser.newPage();
-  await page.goto(`${base}/tools/`, { waitUntil: 'networkidle' });
-  await page.getByRole('link', { name: /Image Inspector/ }).first().click();
-  await page.waitForURL(/\/tools\/image-inspector\/$/);
-  console.log('catalog link ok');
+  for (const [vp, label] of [[{ width: 1280, height: 800 }, 'desktop'], [{ width: 390, height: 844 }, 'mobile']]) console.log(JSON.stringify(await catalog(vp, label)));
   console.log('browser checks passed');
 } finally {
   await browser.close();

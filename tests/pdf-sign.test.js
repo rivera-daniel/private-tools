@@ -212,3 +212,20 @@ test('opens .p12 files: AES with HMAC-SHA-256, PBMAC1 and legacy 3DES/RC2', { sk
   assert.ok(made >= 2);
   await assert.rejects(p12Signer(new Uint8Array([1, 2, 3]), ''), /not a .p12/);
 });
+
+test('signs files rebuilt by MuPDF (as the editor saves them) and hybrid cross-reference files', async () => {
+  const mupdf = await import('../site/tools/vendor/mupdf/mupdf.js');
+  const id = await identity('p256');
+  const inputs = [['hybrid', pdf(basic(), { trailer: '/Root 1 0 R', hybrid: true, packed: [3] })]];
+  for (const opts of ['', 'garbage,compress', 'garbage=deduplicate,compress,objstms']) {
+    const doc = mupdf.Document.openDocument(classicPdf(), 'application/pdf');
+    const buf = doc.saveToBuffer(opts);
+    inputs.push([`MuPDF ${opts || 'plain'}`, buf.asUint8Array().slice()]);
+    buf.destroy(); doc.destroy();
+  }
+  for (const [label, bytes] of inputs) {
+    const signed = await signPdf(bytes, keySigner(id), { rect: { x: 20, y: 20, width: 120, height: 40 }, appearance: { lines: ['Signed'] } });
+    assert.deepEqual((await verifyPdf(signed)).signatures.map((x) => x.status), ['valid'], label);
+    if (PDFSIG) assert.ok(pdfsig(signed)[0]?.valid, label);
+  }
+});

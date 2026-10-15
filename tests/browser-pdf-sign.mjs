@@ -176,6 +176,17 @@ try {
     await page.click('#edit');
     await page.waitForFunction(() => document.querySelector('.sg-sigs').textContent.includes('edited after opening'));
     assert.equal(await page.evaluate(() => window.__handle.signedBytes()), null);
+    // Signing the rebuilt copy works; the earlier signatures no longer match it.
+    await page.click('.sg-sign');
+    await page.click('button:has-text("Confirm signature")');
+    await page.waitForFunction(() => document.querySelectorAll('.sg-sig').length === 3);
+    const rebuilt = Buffer.from(await page.evaluate(() => window.__bytes()), 'base64');
+    writeFileSync(join(dir, `${label}-rebuilt.pdf`), rebuilt);
+    const v3 = await verifyPdf(rebuilt);
+    assert.equal(v3.signatures.at(-1).status, 'valid');
+    assert.ok(v3.signatures.slice(0, -1).every((s) => s.status === 'invalid'));
+    const sig3 = pdfsig(join(dir, `${label}-rebuilt.pdf`));
+    if (sig3 !== null) assert.ok((sig3.match(/Signature is Valid/g) ?? []).length >= 1, sig3);
 
     if (cardServed && pin) {
       await cardOption.waitFor({ state: 'visible' });

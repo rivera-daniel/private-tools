@@ -489,7 +489,7 @@ export function mountSign(container, ctx) {
 
   const STATUS = {
     valid: [ICONS.check, 'Valid', 'The document has not changed since it was signed.'],
-    'valid-later-signed': [ICONS.check, 'Valid', 'Valid for the revision it signed. Later revisions only add signatures or form data.'],
+    'valid-later-signed': [ICONS.check, 'Valid', 'Valid for the revision it signed. Later revisions only add signatures.'],
     'valid-later-changed': [ICONS.warn, 'Valid, then changed', 'The signature is intact, but the document was changed after signing.'],
     invalid: [ICONS.cross, 'Not valid', 'The signature does not match the document.'],
     unsupported: [ICONS.info, 'Not checked', 'This kind of signature is not checked here.'],

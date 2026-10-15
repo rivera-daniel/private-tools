@@ -421,6 +421,84 @@ test('hostile: crafted entry, item and relationship counts stay fast', async () 
   assert.ok(![...readZip(docxResult.data).entries].some((e) => /word\/x\d+\.xml/.test(e.name)), 'the whole chain goes with the comments');
 });
 
+// ---------- Incomplete analysis ----------
+
+// Whitespace before the root element keeps a part well-formed while pushing it past the read limits.
+const pad = (data, bytes) => enc.encode(dec.decode(data).replace(/<(?![?!])/, `${' '.repeat(bytes)}<`));
+const swapEntry = (u8, name, change) => rebuild(u8, (list) => list.map((e) => (e.name === name ? { ...e, data: change(e.data) } : e)));
+const MIB = 1024 * 1024;
+
+// The inspector says the analysis is incomplete and names the part; the summary does not call the file
+// clean; the cleaner refuses and produces nothing.
+async function assertIncomplete(u8, name, part, format) {
+  const r = await inspectFile(u8, name);
+  if (format) assert.equal(r.format, format);
+  assert.ok(r.incomplete.some((x) => x.part === part), `${part} is listed as incomplete`);
+  assert.ok(r.warnings.some((w) => w.startsWith('Analysis is incomplete') && w.includes(part)), 'warned');
+  assert.ok(r.summary.level === 'error' || (r.summary.level === 'exposed' && /could not be fully read/.test(r.summary.detail)), `summary ${r.summary.level}: ${r.summary.detail}`);
+  const c = await cleanFile(u8, name);
+  assert.equal(c.ok, false);
+  assert.equal(c.data, undefined);
+  assert.ok(c.reason.includes(part), c.reason);
+  return { r, c };
+}
+
+test('incomplete: oversized relationship parts in DOCX, XLSX and PPTX are refused, never cleaned from a partial graph', async () => {
+  for (const [make, name, part, format] of [[docx, 'a.docx', 'word/_rels/document.xml.rels', 'DOCX'], [xlsx, 'a.xlsx', 'xl/_rels/workbook.xml.rels', 'XLSX'], [pptx, 'a.pptx', 'ppt/_rels/presentation.xml.rels', 'PPTX'], [docx, 'b.docx', '_rels/.rels', 'DOCX']]) {
+    const u8 = await swapEntry(await make(), part, (d) => pad(d, 8 * MIB));
+    const { r } = await assertIncomplete(u8, name, part, format);
+    assert.ok(!r.blocks.some((b) => b.kind === 'Unused part'), 'nothing is called unused on a partial graph');
+  }
+});
+
+test('incomplete: an already clean document with an oversized relationship part is not passed as clean', async () => {
+  const cleaned = await cleanFile(await docx(), 'a.docx');
+  assert.ok(cleaned.ok, cleaned.reason);
+  const u8 = await swapEntry(cleaned.data, 'word/_rels/document.xml.rels', (d) => pad(d, 8 * MIB));
+  await assertIncomplete(u8, 'a.docx', 'word/_rels/document.xml.rels', 'DOCX');
+});
+
+test('incomplete: oversized or malformed content types and malformed relationships are refused', async () => {
+  await assertIncomplete(await swapEntry(await docx(), '[Content_Types].xml', (d) => pad(d, 4 * MIB)), 'a.docx', '[Content_Types].xml', 'DOCX');
+  await assertIncomplete(await swapEntry(await xlsx(), '[Content_Types].xml', (d) => enc.encode(dec.decode(d).replace('</Types>', ''))), 'a.xlsx', '[Content_Types].xml', 'XLSX');
+  const broken = await swapEntry(await docx(), 'word/_rels/document.xml.rels', (d) => enc.encode(dec.decode(d).replace('</Relationships>', '')));
+  const { r } = await assertIncomplete(broken, 'a.docx', 'word/_rels/document.xml.rels', 'DOCX');
+  assert.ok(r.warnings.some((w) => /malformed/.test(w)));
+});
+
+test('incomplete: an oversized or malformed ODF manifest is refused', async () => {
+  await assertIncomplete(await swapEntry(await odt(), 'META-INF/manifest.xml', (d) => pad(d, 8 * MIB)), 'a.odt', 'META-INF/manifest.xml', 'ODT');
+  await assertIncomplete(await swapEntry(await odt(), 'META-INF/manifest.xml', (d) => enc.encode(dec.decode(d).replace(/<\/manifest:manifest>\s*$/, ''))), 'a.odt', 'META-INF/manifest.xml', 'ODT');
+});
+
+test('incomplete: an unreadable EPUB package document or encryption list is refused', async () => {
+  await assertIncomplete(await swapEntry(await epub(), 'OEBPS/content.opf', (d) => enc.encode(dec.decode(d).replace('</package>', ''))), 'a.epub', 'OEBPS/content.opf', 'EPUB');
+  const encryption = enc.encode(`<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container">${' '.repeat(4 * MIB)}</encryption>`);
+  await assertIncomplete(await rebuild(await epub(), (list) => [...list, { name: 'META-INF/encryption.xml', data: encryption }]), 'a.epub', 'META-INF/encryption.xml', 'EPUB');
+});
+
+test('incomplete: a relationship to a missing part is refused after cleaning', async () => {
+  const u8 = await swapEntry(await docx(), 'word/_rels/document.xml.rels', (d) => enc.encode(dec.decode(d).replace('</Relationships>', '<Relationship Id="rIdX" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/missing.png"/></Relationships>')));
+  const c = await cleanFile(u8, 'a.docx');
+  assert.equal(c.ok, false);
+  assert.match(c.reason, /word\/_rels\/document\.xml\.rels points to a missing part/);
+});
+
+test('incomplete: a picture too large to inspect is refused; declared video is not read as a picture', async () => {
+  const withMedia = async (file, type) => rebuild(await pptx(), (list) => list.map((e) => {
+    if (e.name === '[Content_Types].xml') return { ...e, data: enc.encode(dec.decode(e.data).replace('<Default ', `<Default Extension="${file.split('.').pop()}" ContentType="${type}"/><Default `)) };
+    if (e.name === 'ppt/slides/_rels/slide1.xml.rels') return { ...e, data: enc.encode(dec.decode(e.data).replace('</Relationships>', `<Relationship Id="rIdM" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type.startsWith('video') ? 'video' : 'image'}" Target="../media/${file}"/></Relationships>`)) };
+    return e;
+  }).concat([{ name: `ppt/media/${file}`, raw: deflateRawSync(Buffer.alloc(16)), crc: 0, size: 200 * MIB, method: 8 }]));
+  await assertIncomplete(await withMedia('image9.png', 'image/png'), 'a.pptx', 'Embedded image ppt/media/image9.png', 'PPTX');
+  const video = await withMedia('media1.mp4', 'video/mp4');
+  const r = await inspectFile(video, 'a.pptx');
+  assert.deepEqual(r.incomplete, []);
+  const c = await cleanFile(video, 'a.pptx');
+  assert.ok(c.ok, c.reason);
+  assert.ok(readZip(c.data).entries.some((e) => e.name === 'ppt/media/media1.mp4'), 'the video is kept');
+});
+
 test('non-ZIP input and a ZIP name on plain data are not claimed', async () => {
   const r = await inspectFile(enc.encode('just some text that is not an archive'), 'fake.docx');
   assert.notEqual(r.format, 'DOCX');

@@ -2,7 +2,7 @@
 // rewrites the parts that stay, and checks every relationship still resolves.
 import { writeZip } from '../../zip/index.js';
 import { parseXml, rootOf, elements, get, remove, serialize } from '../../metadata/documents/xml.js';
-import { openPackage, planPackage, sanitizePart, partFamily, mayNeedRewrite, rewriteRels, relsPathFor } from '../../metadata/documents/opc.js';
+import { openPackage, planPackage, sanitizePart, partFamily, mayNeedRewrite, rewriteRels, relsPathFor, isPicturePart } from '../../metadata/documents/opc.js';
 import { DOC_LIMITS, budget, targetKind } from '../../metadata/documents/package.js';
 import { TRACKED, refuse, copyEntry, cleanPicture, reopen, archiveRemovals } from './common.js';
 
@@ -11,8 +11,9 @@ const enc = new TextEncoder();
 export async function cleanOoxml(zip, report, options) {
   if (report.blocks.some((b) => b.kind === 'Tracked changes') && !options.acceptChanges) refuse(TRACKED, 'acceptChanges');
   const pkg = await openPackage(zip, budget(DOC_LIMITS.maxReadBytes));
-  if (pkg.errors.length) refuse('Some relationship parts could not be read, so the document was left untouched.');
   const plan = await planPackage(pkg, options);
+  // Removing parts is only safe with the whole relationship graph in hand.
+  if (pkg.incomplete.length) { const { part, reason } = pkg.incomplete[0]; refuse(`${part} ${reason}, so the document could not be fully checked and was left untouched.`); }
   const out = new Map(); const removed = archiveRemovals(report);
   for (const [lower, kind] of plan.remove) {
     const e = pkg.entries.get(lower);
@@ -34,15 +35,14 @@ export async function cleanOoxml(zip, report, options) {
     if (changed) out.set('[content_types].xml', serialize(pkg.typesDoc));
   }
   const images = budget(DOC_LIMITS.maxImageBytes);
-  const relKind = new Map();
-  for (const list of pkg.rels.values()) for (const rel of list) if (rel.part && !relKind.has(rel.part)) relKind.set(rel.part, rel.kind);
   for (const [lower, e] of pkg.entries) {
     if (plan.remove.has(lower) || out.has(lower) || lower === '[content_types].xml' || /(^|\/)_rels\/[^/]*\.rels$/.test(lower)) continue;
-    if (/(^|\/)media\//.test(lower) || (relKind.get(lower) === 'image' && !/\.(xml|bin)$/.test(lower))) {
+    if (isPicturePart(pkg, lower)) {
       const picture = await cleanPicture(zip, e, images);
       if (picture) { out.set(lower, picture.data); removed.push(picture.removed); }
       continue;
     }
+    if (/(^|\/)media\//.test(lower)) continue;
     const fam = partFamily(pkg, lower, report.format);
     if (!fam) continue;
     const t = await pkg.read(lower);
@@ -66,7 +66,7 @@ export async function cleanOoxml(zip, report, options) {
     entries.push(data === undefined ? copyEntry(zip, e) : { name: e.name, data: typeof data === 'string' ? enc.encode(data) : data });
   }
   const result = await writeZip(entries);
-  await verify(result, pkg, plan, out);
+  await verify(result, out);
   const keepMacros = !options.removeMacros && plan.macros.size > 0;
   const kept = report.blocks.filter((b) => b.removable === false).map((b) => `${b.kind} (${b.container})${b.note ? `: ${b.note}` : ''}`);
   if (keepMacros) kept.push(...[...plan.macros].map((m) => `Macros (${pkg.entries.get(m)?.name}): kept because removing them changes what the document does`));
@@ -87,21 +87,24 @@ function rewrites(s, name) {
   return list;
 }
 
-// The cleaned package must read back, every rewritten part must be well-formed, and every relationship
-// that resolved before must still resolve.
-async function verify(u8, pkg, plan, out) {
+// The cleaned package must read back completely, every rewritten part must be well-formed, every internal
+// relationship must resolve, and no relationship may still load anything from outside the document.
+async function verify(u8, out) {
   const zip = reopen(u8);
   const after = await openPackage(zip, budget(DOC_LIMITS.maxReadBytes));
-  if (after.errors.length) refuse('The cleaned file has unreadable relationships, so it was not produced.');
+  if (after.incomplete.length) refuse(`The cleaned file could not be read back completely (${after.incomplete[0].part} ${after.incomplete[0].reason}), so it was not produced.`);
   for (const [lower, data] of out) {
     if (typeof data !== 'string') continue;
     try { parseXml(data); } catch { refuse(`The rewritten ${lower} is not well-formed, so the file was not produced.`); }
   }
   for (const [source, list] of after.rels) {
     for (const rel of list) {
-      if (rel.external || !rel.part) continue;
-      const existed = pkg.entries.has(rel.part);
-      if (existed && !after.entries.has(rel.part)) refuse(`A relationship in ${relsPathFor(source || '/')} points to a removed part, so the file was not produced.`);
+      if (rel.external) {
+        const where = targetKind(rel.target);
+        if (rel.kind !== 'hyperlink' && (where === 'remote' || where === 'path')) refuse(`A relationship in ${relsPathFor(source || '/')} still loads ${rel.target}, so the file was not produced.`);
+        continue;
+      }
+      if (rel.part && !after.entries.has(rel.part)) refuse(`A relationship in ${relsPathFor(source || '/')} points to a missing part, so the file was not produced.`);
     }
   }
 }

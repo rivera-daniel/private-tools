@@ -95,6 +95,8 @@ export async function cleanFile(input, name = '', options = {}) {
   const family = FAMILIES.find((f) => f.formats?.has(before.format));
   if (!family) return refuse(before.format ? `${before.format} files cannot be cleaned yet.` : 'This file type is not one the Metadata Cleaner can rewrite safely, so it was left untouched.');
   if (before.warnings.some((w) => /damaged|truncated|past the end|Too many/.test(w))) return refuse('The file is damaged or unusually structured, so it was left untouched.');
+  // Without a complete reading there is no telling what the file holds, so it is never called clean.
+  if (before.incomplete?.length) return refuse(`${before.incomplete[0].part} ${before.incomplete[0].reason}, so the file could not be fully checked and was left untouched.`);
   if (!before.cleanable.blocks) return { ok: true, data: u8, format: before.format, bytesBefore: u8.length, bytesAfter: u8.length, removed: [], exposures: [], kept: [] };
   let result;
   try { result = await family.clean(u8, before, { name, options }); }
@@ -104,7 +106,7 @@ export async function cleanFile(input, name = '', options = {}) {
   const leftovers = after.blocks.filter((b) => b.removable !== false && !hasRemovableAncestor(after.blocks, b) && !allowed(b));
   const newWarnings = after.warnings.filter((w) => !before.warnings.includes(w));
   const same = after.format === before.format && after.width === before.width && after.height === before.height;
-  if (leftovers.length || newWarnings.length || !same) return refuse('The cleaned file did not pass the check afterwards, so it was not produced.');
+  if (leftovers.length || newWarnings.length || after.incomplete?.length || !same) return refuse('The cleaned file did not pass the check afterwards, so it was not produced.');
   return {
     ok: true, data: result.data, format: before.format, width: before.width, height: before.height,
     bytesBefore: u8.length, bytesAfter: result.data.length, removed: result.removed, kept: result.kept,

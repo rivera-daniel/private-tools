@@ -21,7 +21,8 @@ export function unixMode(e) {
 // Embedded pictures are cleaned by the image cleaner when it supports the format.
 export async function cleanPicture(zip, e, b) {
   const data = await readPart(zip, e, b, b.left);
-  if (!data || !detect(data)) return null;
+  if (!data) refuse(`The embedded picture ${e.name} is too large to check, so the file was left untouched.`);
+  if (!detect(data)) return null;
   const head = await inspectImage(data);
   if (!IMAGE_CLEANABLE.has(head.format) || !head.cleanable.blocks) return null;
   const result = await cleanImage(data);

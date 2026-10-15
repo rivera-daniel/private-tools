@@ -110,13 +110,23 @@ Edits PDFs with [MuPDF](https://mupdf.com/) compiled to WebAssembly.
 
 Planned improvements:
 
-- [ ] Offline support across page reloads (service worker)
+- [x] Offline support across page reloads (service worker)
 - [x] PDF Editor: digital signatures with certificate files and signature verification
 - [x] Smart card and USB token signing through a local companion program that is not part of the hosted site
 - [ ] PDF Editor: annotations, form filling and OCR
 - [ ] PDF Editor: signature timestamps and offline revocation data
 - [ ] Content Credentials signature and trust-chain verification
 - [ ] Decoding of Brotli-compressed JPEG XL metadata boxes
+
+## Offline use
+
+After you open a page once, it keeps working without a network connection, across reloads and browser restarts.
+
+- **How:** a service worker (`site/tools/sw.js`) stores the site's own files in the browser's cache storage and serves them from there. The footer shows "Available offline" once the current page's files are stored, and "Offline" when the network is down. The service worker can fetch only from this site (`connect-src 'self'` in its own Content Security Policy), and it stores only the files listed in its manifest.
+- **What is stored:** the catalog, the shared stylesheet, scripts, font and icon when you first visit, and each tool's pages, scripts and WebAssembly engine when you first open that tool. The PDF Editor adds about 11 MB (MuPDF), the Archiver about 2 MB (libarchive) and each other tool under 1 MB. Engines are never downloaded for tools you have not opened.
+- **What is not stored:** your files. They are read from your disk by the page and never pass through the service worker or the cache.
+- **Updates:** every file is listed with its SHA-256 hash in `site/tools/sw-manifest.json`, and each deploy gets its own cache. A new version downloads in the background, reusing unchanged files, and takes over on your next visit when only one tab of the site is open. The page reloads once and the old cache is deleted. A page served from the cache loads every later file, workers and engines included, from the same deploy.
+- **Clearing it:** remove the site data for this site in your browser settings (in Chrome and Edge, Settings > Privacy > Site settings; in Firefox, Settings > Privacy & Security > Manage Data; in Safari, Settings > Privacy > Manage Website Data).
 
 ## Privacy model
 
@@ -133,6 +143,7 @@ Planned improvements:
 ```
 site/                    Deployable static site, served under /tools/
   _headers               Response headers, including the Content Security Policy
+  tools/sw.js            Service worker for offline use, with sw-manifest.json listing the files it stores
   tools/index.html       Tool catalog
   tools/assets/         Shared stylesheet, theme script, fonts and icons
   tools/image-inspector/ Image Inspector page, UI and worker
@@ -149,6 +160,7 @@ site/                    Deployable static site, served under /tools/
   tools/vendor/libarchive/ libarchive WebAssembly build, its build script and licenses
 local/signer/            Local smart card signer (Go, PKCS#11). Not deployed: run it yourself
 tests/                   Parser and browser tests, fixtures and reference data
+scripts/                 build-sw-manifest.mjs, run before each deploy
 server.js                Development server
 wrangler.jsonc           Cloudflare Worker configuration
 ```
@@ -179,7 +191,7 @@ BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium npm run test:browser
 BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium node tests/browser-cleaner.mjs
 ```
 
-`tests/browser-files.mjs` checks the File Inspector the same way, with generated documents, PDFs, audio, programs and text files. `tests/browser-archiver.mjs` creates, encrypts and extracts archives in the Archiver. `tests/browser-pdf-editor.mjs`, `tests/browser-pdf-view.mjs`, `tests/browser-pdf-redact.mjs` and `tests/browser-pdf-sign.mjs` cover the PDF Editor, its viewer, its redaction panel and its signing panel. `local/signer/e2e.sh` runs the signing test with a SoftHSM token through the local card signer.
+`tests/browser-files.mjs` checks the File Inspector the same way, with generated documents, PDFs, audio, programs and text files. `tests/browser-archiver.mjs` creates, encrypts and extracts archives in the Archiver. `tests/browser-pdf-editor.mjs`, `tests/browser-pdf-view.mjs`, `tests/browser-pdf-redact.mjs` and `tests/browser-pdf-sign.mjs` cover the PDF Editor, its viewer, its redaction panel and its signing panel. `local/signer/e2e.sh` runs the signing test with a SoftHSM token through the local card signer. `tests/browser-offline.mjs` opens every page, cuts the network and checks that each tool still works after a reload, then simulates a deploy and checks the update. It serves its own copy of `site/` and needs no `BASE`.
 
 ### Reference data
 
@@ -216,6 +228,8 @@ The site is deployed as a Cloudflare Worker with static assets:
 ```sh
 npm run deploy
 ```
+
+`npm run deploy` first runs `scripts/build-sw-manifest.mjs`, which lists the files each page loads with their hashes in `site/tools/sw-manifest.json` and stamps the resulting version into `site/tools/sw.js`. Run it by hand after changing files if you want to test offline use locally.
 
 ## Contributing
 

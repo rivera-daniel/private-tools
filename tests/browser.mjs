@@ -27,6 +27,8 @@ async function run(viewport, label) {
   const requests = [];
   const methods = [];
   page.on('request', (r) => { requests.push(r.url()); methods.push(r.method()); });
+  // Files the offline service worker answers from its cache never reach the network.
+  const fromCache = new Set(); page.on('requestfinished', async (r) => { if ((await r.response())?.fromServiceWorker()) fromCache.add(r.url()); });
   const results = {};
   for (const f of ['camera-gps.jpg', 'comfyui.png', 'content-credentials.jpg', 'clean.png', 'xss.png', 'notes.pdf', 'pii.heic', 'pii.tif', 'pii.svg', 'pii.jxl']) {
     await page.setInputFiles('#file', `${files}/${f}`);
@@ -82,8 +84,9 @@ async function run(viewport, label) {
   await page.setInputFiles('#file', `${files}/camera-gps.jpg`);
   await page.waitForSelector('#results:not([hidden])', { timeout: 5000 });
   assert.equal(await page.evaluate(() => document.getElementById('provenance').dataset.level), 'camera');
-  // Replacing the spare re-requests only the worker's own code. File data never leaves the page.
-  const afterCancel = requests.filter((u) => !u.startsWith('blob:') && u !== `${base}/tools/image-inspector/worker.js`);
+  // Replacing the spare re-requests only the worker's own code, from the offline cache once it is stored.
+  // File data never leaves the page.
+  const afterCancel = requests.filter((u) => !u.startsWith('blob:') && !fromCache.has(u) && u !== `${base}/tools/image-inspector/worker.js`);
   assert.deepEqual(afterCancel, [], `unexpected requests after cancel: ${afterCancel.join(', ')}`);
   assert.deepEqual(methods.filter((m) => m !== 'GET'), [], 'a non-GET request was sent');
   await page.close();

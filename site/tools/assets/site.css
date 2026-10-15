@@ -190,3 +190,8 @@ dialog .close{float:right;border:0;background:none;font-size:26px;line-height:1;
   .footer-bottom{flex-direction:column;gap:8px}
 }
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
+
+/* Offline status, added to the footer by theme.js. */
+.offline-status{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.offline-status svg{width:15px;height:15px;flex:none}
+.offline-status[data-state=offline]{color:var(--text-2)}

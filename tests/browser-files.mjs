@@ -45,6 +45,8 @@ try {
       await page.screenshot({ path: `${shots}/files-${label}-${scheme}-empty.png` });
       await page.context().setOffline(true);
       const requests = []; page.on('request', (r) => requests.push(r.url()));
+      // Files the offline service worker answers from its cache never reach the network.
+      const fromCache = new Set(); page.on('requestfinished', async (r) => { if ((await r.response())?.fromServiceWorker()) fromCache.add(r.url()); });
 
       const results = {};
       for (const f of ['hidden.txt', 'widget.exe', 'clean.png', 'photo.jpg', 'holiday.jpg', 'blob.bin', 'report.docx', 'paper.pdf', 'song.mp3']) {
@@ -101,7 +103,7 @@ try {
       await page.waitForSelector('#results:not([hidden])', { timeout: 15000 });
 
       // Replacing the spare re-requests only the worker's own code. File data never leaves the page.
-      assert.deepEqual(requests.filter((u) => !u.startsWith('blob:') && u !== `${base}/tools/file-inspector/worker.js`), [], 'unexpected requests after cancel');
+      assert.deepEqual(requests.filter((u) => !u.startsWith('blob:') && !fromCache.has(u) && u !== `${base}/tools/file-inspector/worker.js`), [], 'unexpected requests after cancel');
 
       // The cleaner card queues the inspected text file in Metadata Cleaner, then the stored copy is gone.
       if (scheme === 'light') {

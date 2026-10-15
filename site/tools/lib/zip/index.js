@@ -12,7 +12,7 @@ const CP437 = 'ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒ
 
 export const isZip = (u8) => u8.length >= 22 && u8[0] === 0x50 && u8[1] === 0x4b && (u8[2] === 3 || u8[2] === 5 || u8[2] === 7) && (u8[3] === 4 || u8[3] === 6 || u8[3] === 8);
 
-function decodeName(u8, utf8Flag) {
+export function decodeName(u8, utf8Flag) {
   if (utf8Flag || u8.every((b) => b < 0x80)) return utf8.decode(u8);
   const text = new TextDecoder('utf-8', { fatal: false }).decode(u8);
   if (!text.includes('�')) return text;

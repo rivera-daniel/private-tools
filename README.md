@@ -44,6 +44,17 @@ Removes the metadata the inspectors find and copies everything else as is. Pixel
 - **Check:** every output is inspected again. If removable metadata remains, the format or dimensions change or the parser warns, no file is produced.
 - **Limits:** invisible watermarks are not metadata and stay. Removing a phone photo's trailing gain map can flatten an HDR image. Cleaning a PDF removes fast web view.
 
+### Archiver
+
+Creates and opens archives in the browser.
+
+- **Create:** ZIP (Deflate or Store, ZIP64 for large archives), 7z (LZMA2, up to 1 GB of input), tar and tar.gz, and gzip. Files and whole folders can be added.
+- **Extract:** ZIP, 7z, RAR (versions 4 and 5), tar, gzip, xz, bzip2, zstd, lzma, lz4, ISO 9660, CAB, cpio and ar, through [libarchive](https://libarchive.org/) compiled to WebAssembly for the formats beyond ZIP, tar and gzip.
+- **Encryption:** ZIP archives can be created and opened with WinZip AES-256. 7z archives encrypted with AES-256 can be opened, including encrypted file names. Legacy ZipCrypto archives open with a warning that the encryption is weak. Encrypted RAR archives cannot be opened.
+- **Privacy:** "Remove hidden data" runs each file through Metadata Cleaner before it is added, and entries are written without timestamps, owner IDs, extra fields or comments unless you keep file dates. Any file in an opened archive can be inspected without extracting the rest.
+- **Safety:** paths that climb out of the extraction folder are blocked, links are never extracted, and archives whose contents expand far beyond their size are stopped.
+- **Limits:** Firefox and Safari keep the output in memory, which caps it at about 2 GB. Chromium writes straight to disk. RAR archives can be opened but not created.
+
 ## Roadmap
 
 | Tool | Status | Description |
@@ -51,6 +62,7 @@ Removes the metadata the inspectors find and copies everything else as is. Pixel
 | Image Inspector | Available | Lists image metadata and flags what it exposes. |
 | File Inspector | Available | Shows what any file reveals: its true type, hidden text, user names, build paths, signatures and metadata. |
 | Metadata Cleaner | Available | Removes metadata from photos, documents, PDFs, audio and video on your device and re-inspects the result. |
+| Archiver | Available | Creates and opens ZIP, 7z, tar and gzip archives and extracts RAR, xz, ISO and more, with AES-256 encryption. |
 | Private OCR | Planned | Extracts text from images and scanned documents on your device. |
 | Image Converter | Planned | Converts, resizes and compresses images without uploading them. |
 | Resume ATS Preview | Planned | Shows the text an applicant tracking system extracts from a resume and flags formatting it cannot read. |
@@ -76,6 +88,7 @@ Planned improvements:
 - All parsing and cleaning runs in a Web Worker in the browser. No file data leaves the device.
 - Pages are served with a Content Security Policy of `default-src 'self'` and `connect-src 'none'`, so the page cannot make network requests. The site itself loads no third-party scripts, fonts or analytics.
 - Opening an inspected file in Metadata Cleaner passes the file through the browser's own storage (IndexedDB). The cleaner deletes it as soon as it reads it, and any tool page deletes a leftover copy when it loads.
+- The Archiver page also allows `'wasm-unsafe-eval'` and `connect-src 'self'`, so its worker can load the libarchive WebAssembly module from the same site. It still cannot contact any other site.
 - Extracted values are rendered as text only and are never interpreted as HTML.
 - Parsers treat every input as hostile: reads are bounds-checked, directory loops are detected, and decompression, nesting depth and field counts are capped.
 
@@ -89,9 +102,12 @@ site/                    Deployable static site, served under /tools/
   tools/image-inspector/ Image Inspector page, UI and worker
   tools/file-inspector/  File Inspector page, UI and worker
   tools/metadata-cleaner/ Metadata Cleaner page, UI and worker
+  tools/archiver/        Archiver page, UI and workers
   tools/lib/metadata/    Parsers: images, families/ (documents, PDF, media, programs, general scan)
   tools/lib/clean/       Metadata removal for each format family
-  tools/lib/zip/         ZIP reader and writer
+  tools/lib/zip/         ZIP reader and writer, AES encryption
+  tools/lib/archive/     tar, gzip and archive handling for the Archiver
+  tools/vendor/libarchive/ libarchive WebAssembly build, its build script and licenses
 tests/                   Parser and browser tests, fixtures and reference data
 server.js                Development server
 wrangler.jsonc           Cloudflare Worker configuration
@@ -122,7 +138,7 @@ BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium npm run test:browser
 BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium node tests/browser-cleaner.mjs
 ```
 
-`tests/browser-files.mjs` checks the File Inspector the same way, with generated documents, PDFs, audio, programs and text files.
+`tests/browser-files.mjs` checks the File Inspector the same way, with generated documents, PDFs, audio, programs and text files. `tests/browser-archiver.mjs` creates, encrypts and extracts archives in the Archiver.
 
 ### Reference data
 
@@ -147,4 +163,5 @@ The code is licensed under the [GNU Affero General Public License v3.0](LICENSE)
 Third-party material:
 
 - Some test fixtures come from the [C2PA reference implementation](https://github.com/contentauth/c2pa-rs) under MIT or Apache-2.0. See `tests/fixtures/NOTICE.md`.
+- libarchive and the compression libraries in its WebAssembly build (zlib, liblzma, bzip2, zstd, lz4) are under permissive licenses. See `site/tools/vendor/libarchive/NOTICE`, which `site/tools/vendor/libarchive/build/build.sh` regenerates.
 - The Inter font is licensed under the SIL Open Font License. See `site/tools/assets/fonts/INTER-LICENSE.txt`.

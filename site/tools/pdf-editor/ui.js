@@ -17,6 +17,9 @@
 //                                         source with every page in order and unrotated (a file as opened, or
 //                                         the result of setBytes), otherwise null
 //
+// View mode imports /tools/lib/pdf-editor/view-ui.js and calls mountView(container, viewCtx) with
+// <section id="view-panel">; viewCtx is documented in that module. It opens first for every new document.
+//
 // Sign mode follows the same contract with /tools/lib/pdf-editor/sign-ui.js, mountSign and
 // <section id="sign-panel">. After signing it calls setBytes(signed, 'Signed') and the panel fires
 // 'pdf-signed' with { bytes }. While Undo stands on that step, Save downloads those bytes unchanged: no
@@ -193,7 +196,7 @@ function addSource(meta, label) {
   original = [...original, ...pages.map((e) => ({ ...e }))];
   const first = !plan.length;
   commit([...plan, ...pages], label);
-  if (first) { $('save-name').value = `${baseName()}-edited`; $('save-result').hidden = true; }
+  if (first) { $('save-name').value = `${baseName()}-edited`; $('save-result').hidden = true; selectMode($('tab-view')); }
 }
 
 // Resolves with the password typed, or null when the file is skipped.
@@ -219,7 +222,7 @@ for (const type of ['dragenter', 'dragover']) dropzone.addEventListener(type, (e
 for (const type of ['dragleave', 'drop']) dropzone.addEventListener(type, () => dropzone.classList.remove('over'));
 dropzone.addEventListener('drop', (e) => { e.preventDefault(); addFiles(e.dataTransfer.files); });
 window.addEventListener('dragover', (e) => e.preventDefault());
-window.addEventListener('drop', (e) => { e.preventDefault(); if (!$('editor').hidden && !dragKeys && e.dataTransfer.files.length && !e.target.closest('#redact-panel, #sign-panel')) addFiles(e.dataTransfer.files); });
+window.addEventListener('drop', (e) => { e.preventDefault(); if (!$('editor').hidden && !dragKeys && e.dataTransfer.files.length && !e.target.closest('#redact-panel, #sign-panel, #view-panel .vw-scroll')) addFiles(e.dataTransfer.files); });
 
 /* Thumbnails: rendered by the worker a few at a time, only for pages near the visible area. */
 const list = $('pages');
@@ -313,7 +316,7 @@ function render() {
   const same = ordered.length === list.children.length && ordered.every((li, i) => list.children[i] === li);
   if (!same) list.replaceChildren(...ordered);
   if (!plan.length) list.replaceChildren(el('li', 'empty-pages', 'No pages left. Undo, reset or add files.'));
-  renderDoc(); updateTools(); pumpThumbs();
+  renderDoc(); updateTools(); pumpThumbs(); syncView();
 }
 
 function renderDoc() {
@@ -450,7 +453,7 @@ function resetAll() {
   render();
 }
 document.addEventListener('keydown', (e) => {
-  if ($('editor').hidden || mode === 'redact' || mode === 'sign' || e.target.closest('input, textarea, select, [contenteditable]')) return;
+  if ($('editor').hidden || mode === 'redact' || mode === 'sign' || mode === 'view' || e.target.closest('input, textarea, select, [contenteditable]')) return;
   if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
   else if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
 });
@@ -491,13 +494,14 @@ const tabs = [...document.querySelectorAll('.modes [role=tab]')];
 function selectMode(tab) {
   mode = tab.id.replace('tab-', '');
   for (const t of tabs) { const on = t === tab; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; $(t.getAttribute('aria-controls')).hidden = !on; }
-  const panelMode = mode === 'redact' || mode === 'sign';
+  const panelMode = mode === 'redact' || mode === 'sign' || mode === 'view';
   $('layout').hidden = panelMode;
   $('page-tools').hidden = mode !== 'organize';
   // The layout holding the Save card is hidden while redacting or signing, so the card follows the panel.
   if (panelMode) $(`${mode}-panel`).after($('save-form')); else document.querySelector('.side').append($('save-form'));
   if (mode === 'redact') openRedact();
   if (mode === 'sign') openSign();
+  if (mode === 'view') openView();
 }
 for (const t of tabs) {
   t.addEventListener('click', () => selectMode(t));
@@ -556,6 +560,86 @@ function pristineSource() {
   const src = sources.get(first.src);
   if (!src || src.pageCount !== plan.length) return null;
   return plan.every((e, i) => !e.blank && e.src === first.src && e.page === i && !e.rotate) ? first.src : null;
+}
+
+/* View mode */
+let view = null;
+const thumbRequests = new Map();
+const viewCtx = {
+  pageCount: () => plan.length,
+  pageSize: (i) => { const [width, height] = displayed(plan[i]); return { width, height }; },
+  pageRotation: (i) => (plan[i]?.rotate ?? 0) % 360,
+  renderPage: async (i, scale, rotate = 0) => {
+    const e = plan[i];
+    if (!e) throw new Error(`There is no page ${i + 1}.`);
+    const turn = ((e.rotate ?? 0) + rotate) % 360;
+    if (e.blank) {
+      const [w, h] = e.blank; const [cw, ch] = turn % 180 ? [h, w] : [w, h];
+      const c = new OffscreenCanvas(Math.max(1, Math.round(cw * scale)), Math.max(1, Math.round(ch * scale)));
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+      return c.transferToImageBitmap();
+    }
+    return (await call({ type: 'render', src: e.src, page: e.page, scale, rotate: turn })).bitmap;
+  },
+  pageText: async (i) => {
+    const e = plan[i];
+    if (!e || e.blank) { const [w, h] = e?.blank ?? [612, 792]; return { width: w, height: h, lines: [], links: [] }; }
+    const r = await call({ type: 'pageText', src: e.src, page: e.page });
+    // Links to pages of the same file point to where those pages are in the working document.
+    const links = r.links.map((l) => (l.url ? l : { ...l, page: plan.findIndex((p) => !p.blank && p.src === e.src && p.page === l.target) })).filter((l) => l.url || l.page >= 0);
+    return { width: r.width, height: r.height, lines: r.lines, links };
+  },
+  search: async (needle) => {
+    const items = []; const index = [];
+    plan.forEach((e, i) => { if (!e.blank) { items.push({ src: e.src, page: e.page }); index.push(i); } });
+    const r = await call({ type: 'search', items, needle });
+    return { hits: r.hits.map((h) => ({ page: index[h.index], quads: h.quads })), capped: r.capped };
+  },
+  outline: async () => {
+    const out = [];
+    for (const s of usedSources()) {
+      const r = await call({ type: 'outline', src: s.id });
+      const map = (list) => list.map((o) => ({ title: o.title, page: o.page < 0 ? -1 : plan.findIndex((p) => !p.blank && p.src === s.id && p.page === o.page), kids: map(o.kids) }));
+      out.push(...map(r.items));
+    }
+    return out;
+  },
+  thumbnail: async (i) => {
+    const e = plan[i];
+    if (!e || e.blank) return null;
+    const bk = bitmapKey(e);
+    if (bitmaps.has(bk)) return bitmaps.get(bk);
+    if (!thumbRequests.has(bk)) {
+      const [w, h] = sources.get(e.src).sizes[e.page];
+      thumbRequests.set(bk, call({ type: 'render', src: e.src, page: e.page, scale: Math.min(2, THUMB / Math.max(w, h, 1)) }).then((r) => {
+        if (!bitmaps.has(bk)) bitmaps.set(bk, r.bitmap); else r.bitmap.close();
+        if (bitmaps.size > MAX_BITMAPS) { const [oldest, bmp] = bitmaps.entries().next().value; bitmaps.delete(oldest); bmp.close(); }
+        // The page grid shares the cache, so its thumbnails are drawn too.
+        for (const p of plan) if (!p.blank && bitmapKey(p) === bk && nodes.has(p.key)) draw(nodes.get(p.key), p);
+        return bitmaps.get(bk);
+      }).finally(() => thumbRequests.delete(bk)));
+    }
+    return thumbRequests.get(bk);
+  },
+};
+async function openView() {
+  if (view) { syncView(); return; }
+  view = { handle: null, plan };
+  const panel = $('view-panel');
+  try {
+    const mod = await import('/tools/lib/pdf-editor/view-ui.js');
+    if (typeof mod.mountView !== 'function') throw new Error('missing mountView');
+    view.handle = mod.mountView(panel, viewCtx);
+  } catch {
+    const note = el('div', 'unavailable'); note.append(el('strong', '', 'The viewer is not available in this build.'), el('p', '', 'The other modes work as usual.'));
+    panel.replaceChildren(note);
+  }
+}
+// The viewer reloads when the pages changed since it last showed them.
+function syncView() {
+  if (!view?.handle || mode !== 'view' || view.plan === plan) return;
+  view.plan = plan;
+  view.handle.refresh();
 }
 
 /* Sign mode (same contract as Redact) */

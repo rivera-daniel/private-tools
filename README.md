@@ -59,6 +59,7 @@ Creates and opens archives in the browser.
 
 Edits PDFs with [MuPDF](https://mupdf.com/) compiled to WebAssembly.
 
+- **View:** continuous pages rendered sharply and only near the screen, page jumps, zoom (fit width, fit page or a percentage), view-only rotation, full screen, find with highlighted matches, text selection and copy, thumbnails, bookmarks and links (links to other sites open only after you confirm). New documents open here.
 - **Organize:** merge files, reorder pages by drag or keyboard, rotate, duplicate, delete and insert blank pages, split by ranges, every N pages or one file per page, and extract pages. Undo, redo and reset.
 - **Convert:** images to PDF (JPEGs are embedded without recompression and without their metadata) and pages to PNG or JPEG.
 - **Protect:** AES-256 encryption with print, copy and edit permissions, and removal of a password you know.
@@ -79,7 +80,7 @@ Edits PDFs with [MuPDF](https://mupdf.com/) compiled to WebAssembly.
 | File Inspector | Available | Shows what any file reveals: its true type, hidden text, user names, build paths, signatures and metadata. |
 | Metadata Cleaner | Available | Removes metadata from photos, documents, PDFs, audio and video on your device and re-inspects the result. |
 | Archiver | Available | Creates and opens ZIP, 7z, tar and gzip archives and extracts RAR, xz, ISO and more, with AES-256 encryption. |
-| PDF Editor | Available | Merges, splits, reorders, rotates, protects, compresses, redacts and digitally signs PDFs and checks their signatures, using MuPDF in WebAssembly. Annotations and forms are next. |
+| PDF Editor | Available | Views, merges, splits, reorders, rotates, protects, compresses, redacts and digitally signs PDFs and checks their signatures, using MuPDF in WebAssembly. Annotations and forms are next. |
 | Photo Editor | Planned | A layered image editor with masks, adjustment layers, selections, filters and PSD support, based on the open-source PhotoCraft engine in WebAssembly. |
 | Audio Editor | Planned | Records, cuts, mixes and cleans up audio on the device, based on the open-source SoundCraft engine in WebAssembly. |
 | Office Viewer | Planned | Opens Word documents, spreadsheets and presentations without uploading them, based on the open-source WordCraft, GridCraft and DeckCraft engines. |
@@ -142,7 +143,7 @@ site/                    Deployable static site, served under /tools/
   tools/lib/clean/       Metadata removal for each format family
   tools/lib/zip/         ZIP reader and writer, AES encryption
   tools/lib/archive/     tar, gzip and archive handling for the Archiver
-  tools/lib/pdf-editor/  PDF editing operations, redaction, signing (sign.js, cms.js, pkcs12.js, asn1.js)
+  tools/lib/pdf-editor/  PDF editing operations, viewer, redaction, signing (sign.js, cms.js, pkcs12.js, asn1.js)
   tools/vendor/mupdf/    MuPDF.js WebAssembly build
   tools/vendor/libarchive/ libarchive WebAssembly build, its build script and licenses
 local/signer/            Local smart card signer (Go, PKCS#11). Not deployed: run it yourself
@@ -176,7 +177,7 @@ BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium npm run test:browser
 BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium node tests/browser-cleaner.mjs
 ```
 
-`tests/browser-files.mjs` checks the File Inspector the same way, with generated documents, PDFs, audio, programs and text files. `tests/browser-archiver.mjs` creates, encrypts and extracts archives in the Archiver. `tests/browser-pdf-editor.mjs`, `tests/browser-pdf-redact.mjs` and `tests/browser-pdf-sign.mjs` cover the PDF Editor, its redaction panel and its signing panel. `local/signer/e2e.sh` runs the signing test with a SoftHSM token through the local card signer.
+`tests/browser-files.mjs` checks the File Inspector the same way, with generated documents, PDFs, audio, programs and text files. `tests/browser-archiver.mjs` creates, encrypts and extracts archives in the Archiver. `tests/browser-pdf-editor.mjs`, `tests/browser-pdf-view.mjs`, `tests/browser-pdf-redact.mjs` and `tests/browser-pdf-sign.mjs` cover the PDF Editor, its viewer, its redaction panel and its signing panel. `local/signer/e2e.sh` runs the signing test with a SoftHSM token through the local card signer.
 
 ### Reference data
 

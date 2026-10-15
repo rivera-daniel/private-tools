@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="description" content="Merge, split, reorder, rotate, compress, watermark, password-protect, redact and digitally sign PDFs, and turn images into PDFs, in your browser. Nothing is uploaded."><meta name="color-scheme" content="light dark"><title>PDF Editor — Private Tools</title><link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/tools/assets/site.css"><link rel="stylesheet" href="/tools/image-inspector/inspector.css"><link rel="stylesheet" href="/tools/archiver/archiver.css"><link rel="stylesheet" href="/tools/pdf-editor/editor.css"><script src="/tools/assets/theme.js"></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="description" content="View, merge, split, reorder, rotate, compress, watermark, password-protect, redact and digitally sign PDFs, and turn images into PDFs, in your browser. Nothing is uploaded."><meta name="color-scheme" content="light dark"><title>PDF Editor — Private Tools</title><link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/tools/assets/site.css"><link rel="stylesheet" href="/tools/image-inspector/inspector.css"><link rel="stylesheet" href="/tools/archiver/archiver.css"><link rel="stylesheet" href="/tools/pdf-editor/editor.css"><script src="/tools/assets/theme.js"></script></head>
 <body>
 <header class="header wrap">
   <a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
@@ -13,7 +13,7 @@
 <section class="tool-hero wrap">
   <p class="crumbs"><a href="/tools/">All tools</a><span aria-hidden="true">/</span>PDF Editor</p>
   <h1 class="tool-title">PDF Editor</h1>
-  <p class="tool-intro">Merge, split, reorder, compress, watermark and password-protect PDFs, redact them for real, sign them digitally, and turn images into PDFs. Your files never leave this device.</p>
+  <p class="tool-intro">View, merge, split, reorder, compress, watermark and password-protect PDFs, redact them for real, sign them digitally, and turn images into PDFs. Your files never leave this device.</p>
 </section>
 
 <section class="wrap workbench editor">
@@ -53,6 +53,7 @@
     <div class="warnings" id="notes" hidden></div>
 
     <div class="segmented modes" role="tablist" aria-label="Mode">
+      <button type="button" role="tab" id="tab-view" aria-controls="view-panel" aria-selected="false" tabindex="-1">View</button>
       <button type="button" role="tab" id="tab-organize" aria-controls="panel-organize" aria-selected="true">Organize</button>
       <button type="button" role="tab" id="tab-convert" aria-controls="panel-convert" aria-selected="false" tabindex="-1">Convert</button>
       <button type="button" role="tab" id="tab-protect" aria-controls="panel-protect" aria-selected="false" tabindex="-1">Protect</button>
@@ -212,6 +213,7 @@
       </aside>
     </div>
 
+    <section id="view-panel" role="tabpanel" aria-labelledby="tab-view" hidden></section>
     <section id="redact-panel" role="tabpanel" aria-labelledby="tab-redact" hidden></section>
     <section id="sign-panel" role="tabpanel" aria-labelledby="tab-sign" hidden></section>
   </div>
@@ -223,7 +225,7 @@
     <p>PDF Editor organizes, converts, protects, compresses and stamps PDFs entirely in your browser. Files are read from your disk and saved back to it. Nothing is uploaded, and the page keeps working with your network turned off.</p>
   </div>
   <div class="about-grid">
-    <div><h3>What it does</h3><p>Merge several PDFs, reorder, rotate, duplicate and delete pages, insert blank pages, split by ranges or every few pages, and extract pages. Turn photos into a PDF and pages into PNG or JPEG images. Add AES-256 passwords or remove one you know, compress, and add watermarks, page numbers and header or footer text. Sign with a certificate file (.p12 or .pfx) and check the signatures already in a document.</p></div>
+    <div><h3>What it does</h3><p>Read PDFs page by page with zoom, find, text selection, thumbnails and bookmarks. Merge several PDFs, reorder, rotate, duplicate and delete pages, insert blank pages, split by ranges or every few pages, and extract pages. Turn photos into a PDF and pages into PNG or JPEG images. Add AES-256 passwords or remove one you know, compress, and add watermarks, page numbers and header or footer text. Sign with a certificate file (.p12 or .pfx) and check the signatures already in a document.</p></div>
     <div><h3>MuPDF in WebAssembly</h3><p>Every PDF operation runs in MuPDF, the open-source PDF engine, compiled to WebAssembly and loaded from this site into a background worker. Pages are rendered by the same engine, a few at a time as you scroll, so large documents stay responsive.</p></div>
     <div><h3>Privacy</h3><p>With Remove hidden data on, the saved PDF goes through the Metadata Cleaner before any password is added, so authors, software names, earlier versions and scripts are not carried along. Photos lose their location and camera details before they become pages. Signing keys are decrypted in this browser and cannot be read back out of it.</p></div>
   </div>

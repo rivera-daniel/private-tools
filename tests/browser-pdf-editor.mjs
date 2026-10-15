@@ -78,6 +78,10 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   // Open two PDFs: their pages are merged in one grid with a file badge each.
   await page.setInputFiles('#file', [`${dir}/alpha.pdf`, `${dir}/bravo.pdf`]);
   await page.waitForFunction(() => document.querySelectorAll('#pages li.page').length === 5);
+  // A new document opens in View; the page grid is one click away.
+  await page.waitForSelector('#view-panel .vw-page');
+  assert.equal(await page.getAttribute('#tab-view', 'aria-selected'), 'true');
+  await page.click('#tab-organize');
   await page.waitForFunction(() => [...document.querySelectorAll('#pages li.page')].every((li) => li.dataset.drawn?.startsWith('b')));
   assert.match(await page.textContent('#doc-facts'), /5 pages · 2 files/);
   assert.equal(await page.$eval('#pages li.page:nth-child(4) .badge', (b) => b.textContent), 'B');
@@ -186,7 +190,7 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
     // Compress: a lossless rewrite of a photo PDF, then lossy downsampling.
     await page.click('#close');
     await page.setInputFiles('#file', `${dir}/photos.pdf`);
-    await page.waitForSelector('#pages li.page');
+    await page.waitForSelector('#pages li.page', { state: 'attached' });
     await page.click('#tab-compress');
     await page.check('#lossy');
     await page.click('#compress-run');
@@ -214,6 +218,7 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   await page.setInputFiles('#file', `${dir}/big.pdf`);
   await page.waitForFunction(() => document.querySelectorAll('#pages li.page').length === 200);
   const opened = Date.now() - t0;
+  await page.click('#tab-organize');
   const early = await drawn();
   // The page's own thread stays free while thumbnails render: a click is handled within a frame or two.
   await page.waitForFunction(() => document.querySelector('#pages li.page').dataset.drawn?.startsWith('b'));
@@ -293,6 +298,8 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   assert.ok(overflow <= 0, `horizontal overflow ${overflow}px`);
   await page.click('#close');
   await page.setInputFiles('#file', [`${dir}/alpha.pdf`, `${dir}/bravo.pdf`]);
+  await page.waitForSelector('#view-panel .vw-page');
+  await page.click('#tab-organize');
   await page.waitForFunction(() => [...document.querySelectorAll('#pages li.page')].length === 5 && [...document.querySelectorAll('#pages li.page')].every((li) => li.dataset.drawn?.startsWith('b')));
   await page.click('#pages li.page:nth-child(2)');
   for (const scheme of ['light', 'dark']) {

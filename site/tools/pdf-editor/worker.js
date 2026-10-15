@@ -111,6 +111,69 @@ async function original({ id, src }) {
   reply({ type: 'original', id, data: bytes ? bytes.buffer : null }, bytes ? [bytes.buffer] : []);
 }
 
+// View mode: the text lines of a page (for selection and copy) and its links, in page space at 72 dpi with
+// the page's own rotation applied and the origin at the top left, before any rotation from the plan.
+async function pageText({ id, src, page }) {
+  const s = sources.get(src);
+  if (!s) throw new lib.PdfError('The file is no longer open.');
+  const p = s.doc.loadPage(page);
+  try {
+    const [x0, y0, x1, y1] = p.getBounds();
+    const lines = [];
+    const st = p.toStructuredText('preserve-whitespace');
+    try {
+      const json = JSON.parse(st.asJSON());
+      for (const block of json.blocks ?? []) for (const line of block.lines ?? []) {
+        if (!line.text?.trim() || lines.length >= 5000) continue;
+        const b = line.bbox;
+        lines.push({ x: b.x - x0, y: b.y - y0, w: b.w, h: b.h, text: line.text.slice(0, 2000), size: line.font?.size ?? b.h, wmode: line.wmode ?? 0 });
+      }
+    } finally { st.destroy(); }
+    const links = [];
+    for (const link of p.getLinks().slice(0, 500)) {
+      const [lx0, ly0, lx1, ly1] = link.getBounds();
+      const box = { x: lx0 - x0, y: ly0 - y0, w: lx1 - lx0, h: ly1 - ly0 };
+      if (link.isExternal()) {
+        const url = link.getURI();
+        if (/^(https?|mailto):/i.test(url)) links.push({ ...box, url });
+      } else {
+        let target = -1;
+        try { target = s.doc.resolveLink(link); } catch { /* broken destination */ }
+        if (target >= 0) links.push({ ...box, target });
+      }
+    }
+    reply({ type: 'text', id, width: x1 - x0, height: y1 - y0, lines, links });
+  } finally { p.destroy(); }
+}
+
+// Finds text on the pages listed (items: [{ src, page }] in plan order). Quads are in page space as above.
+async function search({ id, items, needle }) {
+  const hits = []; let total = 0;
+  for (let i = 0; i < items.length && total < 2000; i++) {
+    const s = sources.get(items[i].src);
+    if (!s) continue;
+    const p = s.doc.loadPage(items[i].page);
+    try {
+      const [x0, y0] = p.getBounds();
+      for (const hit of p.search(needle, 'ignore-case')) {
+        hits.push({ index: i, quads: hit.map((q) => q.map((v, k) => v - (k % 2 ? y0 : x0))) });
+        if (++total >= 2000) break;
+      }
+    } finally { p.destroy(); }
+  }
+  reply({ type: 'found', id, hits, capped: total >= 2000 });
+}
+
+// The bookmarks of a file: [{ title, page, kids }], page being the file's page index or -1.
+async function outline({ id, src }) {
+  const s = sources.get(src);
+  let items = null;
+  try { items = s?.doc.loadOutline() ?? null; } catch { items = null; }
+  let count = 0;
+  const walk = (list, depth) => (list ?? []).filter(() => count++ < 2000 && depth < 16).map((o) => ({ title: String(o.title ?? '').slice(0, 300), page: Number.isInteger(o.page) ? o.page : -1, kids: walk(o.down, depth + 1) }));
+  reply({ type: 'outline', id, items: walk(items, 0) });
+}
+
 async function adopt({ id, name, data }) {
   const opened = lib.openPdf(new Uint8Array(data));
   if (opened.needsPassword) throw new lib.PdfError('The new document is password protected and cannot be used here.');
@@ -193,4 +256,4 @@ async function drop({ ids }) {
   for (const id of ids) { const s = sources.get(id); if (s) { s.doc.destroy(); sources.delete(id); } }
 }
 
-const JOBS = { open, images, render, build, original, adopt, save, split, toImages, compress, stamp, drop };
+const JOBS = { open, images, render, build, original, pageText, search, outline, adopt, save, split, toImages, compress, stamp, drop };

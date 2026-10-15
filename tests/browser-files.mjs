@@ -127,7 +127,7 @@ try {
   // Catalog card links to the tool.
   const page = await browser.newPage();
   await page.goto(`${base}/`, { waitUntil: 'networkidle' });
-  await page.getByRole('link', { name: /File Inspector/ }).first().click();
+  await page.locator('a[href="/file-inspector/"]').first().click();
   await page.waitForURL(/\/file-inspector\/$/);
   console.log('catalog link ok');
 } finally {

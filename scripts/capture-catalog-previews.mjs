@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resolve, dirname, join } from 'node:path';
+import { resolve, dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -39,14 +39,14 @@ const browser=await chromium.launch({executablePath:process.env.CHROMIUM??'/usr/
 const evidence=[];
 try{
 for(const tool of ['image-inspector','file-inspector','metadata-cleaner','archiver','pdf-editor']){
- const page=await browser.newPage({viewport:{width:1100,height:900},colorScheme:'dark',deviceScaleFactor:1});
+ const page=await browser.newPage({viewport:{width:760,height:900},colorScheme:'dark',deviceScaleFactor:2});
  await page.addInitScript(()=>localStorage.setItem('theme','dark'));
  await page.goto(`${base}/tools/${tool}/`,{waitUntil:'networkidle'});
  let selector;
  if(tool==='image-inspector'||tool==='file-inspector'){
-  await page.setInputFiles('#file',`${raw}/${tool==='image-inspector'?'sample-landscape.jpg':'project-brief.docx'}`);
+  await page.setInputFiles('#file',(tool==='image-inspector'&&process.env.IMAGE_INSPECTOR_SAMPLE)?{name:process.env.IMAGE_INSPECTOR_SAMPLE_NAME??basename(process.env.IMAGE_INSPECTOR_SAMPLE),mimeType:'image/'+(process.env.IMAGE_INSPECTOR_SAMPLE.toLowerCase().endsWith('.png')?'png':'jpeg'),buffer:readFileSync(process.env.IMAGE_INSPECTOR_SAMPLE)}:`${raw}/${tool==='image-inspector'?'sample-landscape.jpg':'project-brief.docx'}`);
   await page.waitForSelector('#results:not([hidden])');await page.waitForFunction(()=>document.getElementById('busy').hidden);
-  assert.equal(await page.getAttribute('#summary','data-level'),'exposed');selector='#results';
+  if(tool!=='image-inspector'||!process.env.IMAGE_INSPECTOR_SAMPLE)assert.equal(await page.getAttribute('#summary','data-level'),'exposed');selector='#results';
  }else if(tool==='metadata-cleaner'){
   await page.setInputFiles('#file',['sample-landscape.jpg','project-brief.docx','release-notes.txt'].map(n=>`${raw}/${n}`));
   await page.waitForFunction(()=>document.querySelectorAll('.job').length===3&&[...document.querySelectorAll('.job')].every(j=>j.dataset.state==='done'),null,{timeout:30000});selector='#queue';
@@ -61,9 +61,9 @@ for(const tool of ['image-inspector','file-inspector','metadata-cleaner','archiv
  await page.evaluate(()=>window.scrollTo(0,0));
  const candidate=page.locator(selector);let box=await candidate.count()?await candidate.boundingBox():null;
  if(!box)box=await page.locator('main').boundingBox();
- const clip={x:Math.max(0,box.x),y:Math.max(0,box.y),width:Math.min(box.width,1100-box.x),height:Math.min(box.height,740)};
- const path=`${raw}/${tool}.png`;await page.screenshot({path,clip});
- execFileSync(process.env.CONVERT??'convert',[path,'-quality','88',`${out}/${tool}.webp`]);
+ const clip={x:Math.max(0,box.x),y:Math.max(0,box.y),width:Math.min(box.width,760-box.x),height:Math.min(box.height,box.width*7/11)};
+ const path=`${raw}/${tool}.png`;await page.screenshot({path,clip,fullPage:true});
+ execFileSync(process.env.CONVERT??'convert',[path,'-define','webp:lossless=true',`${out}/${tool}.webp`]);
  const text=(await page.locator('main').innerText()).slice(0,3000);
  evidence.push({tool,clip,sha256:createHash('sha256').update(readFileSync(path)).digest('hex'),bytes:readFileSync(`${out}/${tool}.webp`).length,text});
  await page.close();
@@ -71,5 +71,5 @@ for(const tool of ['image-inspector','file-inspector','metadata-cleaner','archiv
 }finally{await browser.close();}
 const revision=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
 writeFileSync(`${raw}/evidence.json`,JSON.stringify({revision,base,evidence},null,2));
-writeFileSync(`${out}/README.md`,`# Catalog screenshots\n\nReal Chromium screenshots of shipped tools, captured at source revision ${revision}. No UI text, results, or controls were reconstructed or replaced. PNG originals and machine-readable evidence are saved in CAPTURE_DIR (default: a fresh private-tools-previews- directory under the OS temporary directory). WebP conversion changes encoding only.\n\nRefresh with a static server for this checkout:\n\n\`BASE=http://127.0.0.1:4198 PLAYWRIGHT_CORE=/path/to/playwright-core/index.mjs node scripts/capture-catalog-previews.mjs\`\n\nOptional: CHROMIUM, CONVERT, CAPTURE_DIR. Requires Node, Chromium, ImageMagick and Playwright Core.\n\nSamples are code-generated, public-safe fictional fixtures: abstract landscape JPEG with Canon/GPS tags pointing to central Austin (not a private residence), synthetic DOCX from existing test fixtures, fictional project PDF generated with MuPDF, plain release notes and a ZIP of those files. Device metadata is synthetic. Screens show actual inspection, completed cleaning, loaded archive listing, and rendered PDF state. These are demonstrations, not security certifications.\n\n1100 x 900 browser, dark system/saved theme. Main populated output is cropped to at most 740px high.\n\n| Asset | Raw PNG SHA-256 | WebP bytes |\n|---|---|---|\n${evidence.map(e=>`| ${e.tool}.webp | ${e.sha256} | ${e.bytes} |`).join('\n')}\n`);
+writeFileSync(`${out}/README.md`,`# Catalog screenshots\n\nReal Chromium screenshots of shipped tools, captured at source revision ${revision}. No UI text, results, or controls were reconstructed or replaced. PNG originals and machine-readable evidence are saved in CAPTURE_DIR (default: a fresh private-tools-previews- directory under the OS temporary directory). WebP conversion changes encoding only.\n\nRefresh with a static server for this checkout:\n\n\`BASE=http://127.0.0.1:4198 PLAYWRIGHT_CORE=/path/to/playwright-core/index.mjs node scripts/capture-catalog-previews.mjs\`\n\nOptional: CHROMIUM, CONVERT, CAPTURE_DIR, IMAGE_INSPECTOR_SAMPLE (path to an operator-approved sample image), IMAGE_INSPECTOR_SAMPLE_NAME (display filename). Requires Node, Chromium, ImageMagick and Playwright Core.\n\nImage Inspector sample: ${process.env.IMAGE_INSPECTOR_SAMPLE?'operator-supplied image, original not committed; SHA-256 '+createHash('sha256').update(readFileSync(process.env.IMAGE_INSPECTOR_SAMPLE)).digest('hex'):'generated landscape'}. Other samples are code-generated, public-safe fictional fixtures: abstract landscape JPEG with Canon/GPS tags pointing to central Austin (not a private residence), synthetic DOCX from existing test fixtures, fictional project PDF generated with MuPDF, plain release notes and a ZIP of those files. Device metadata is synthetic. Screens show actual inspection, completed cleaning, loaded archive listing, and rendered PDF state. These are demonstrations, not security certifications.\n\n760 x 900 browser at 2x pixel density, dark system/saved theme. The top of populated output is cropped to the card’s 11:7 ratio and encoded as lossless WebP.\n\n| Asset | Raw PNG SHA-256 | WebP bytes |\n|---|---|---|\n${evidence.map(e=>`| ${e.tool}.webp | ${e.sha256} | ${e.bytes} |`).join('\n')}\n`);
 console.log(JSON.stringify({revision,evidence},null,2));

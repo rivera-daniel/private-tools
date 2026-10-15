@@ -51,11 +51,12 @@ export async function decode(raw, dict, { resolve = (v) => v, budget }) {
     if (limit <= 0) throw new RangeError('the decompression allowance for this file is used up');
     if (name === 'FlateDecode') data = unpredict(await inflate(data, limit), parms, resolve);
     else if (name === 'LZWDecode') data = unpredict(lzw(data, limit, num(resolve(parms?.get('EarlyChange')), 1)), parms, resolve);
-    else if (name === 'ASCIIHexDecode') data = asciiHex(data);
-    else if (name === 'ASCII85Decode') data = ascii85(data);
+    else if (name === 'ASCIIHexDecode') data = asciiHex(data, limit);
+    else if (name === 'ASCII85Decode') data = ascii85(data, limit);
     else if (name === 'RunLengthDecode') data = runLength(data, limit);
     else if (name === 'Crypt') { if (nameOf(resolve(parms?.get('Name'))) && nameOf(resolve(parms.get('Name'))) !== 'Identity') throw new Error('encrypted stream'); }
     else throw new Error(`unsupported filter ${name || '(unnamed)'}`);
+    if (data.length > limit) throw new RangeError('decompressed data exceeds the limit');
     budget.take(data.length);
   }
   return { data, codec: null };
@@ -95,8 +96,23 @@ function unpredict(data, parms, resolve) {
   return out;
 }
 
-function asciiHex(data) {
-  const out = []; let hi = -1;
+// A growing byte buffer that refuses to pass its limit, checked before every append.
+class Output {
+  constructor(limit) { this.limit = limit; this.buf = new Uint8Array(Math.max(16, Math.min(limit, 4096))); this.n = 0; }
+  room(k) {
+    if (this.n + k > this.limit) throw new RangeError('decompressed data exceeds the limit');
+    if (this.n + k <= this.buf.length) return;
+    let size = this.buf.length * 2; while (size < this.n + k) size *= 2;
+    const b = new Uint8Array(Math.min(size, this.limit)); b.set(this.buf.subarray(0, this.n)); this.buf = b;
+  }
+  push(x) { this.room(1); this.buf[this.n++] = x; }
+  append(bytes) { this.room(bytes.length); this.buf.set(bytes, this.n); this.n += bytes.length; }
+  fill(x, k) { this.room(k); this.buf.fill(x, this.n, this.n + k); this.n += k; }
+  bytes() { return this.buf.slice(0, this.n); }
+}
+
+function asciiHex(data, limit) {
+  const out = new Output(limit); let hi = -1;
   for (const c of data) {
     if (c === 0x3e) break;
     const v = c >= 0x30 && c <= 0x39 ? c - 0x30 : c >= 0x41 && c <= 0x46 ? c - 55 : c >= 0x61 && c <= 0x66 ? c - 87 : -1;
@@ -104,61 +120,59 @@ function asciiHex(data) {
     if (hi < 0) hi = v; else { out.push(hi * 16 + v); hi = -1; }
   }
   if (hi >= 0) out.push(hi * 16);
-  return Uint8Array.from(out);
+  return out.bytes();
 }
 
-function ascii85(data) {
-  const out = []; const group = [];
+function ascii85(data, limit) {
+  const out = new Output(limit); const group = [];
   let i = data[0] === 0x3c && data[1] === 0x7e ? 2 : 0;
   for (; i < data.length; i++) {
     const c = data[i];
     if (c === 0x7e) break;
-    if (c === 0x7a && !group.length) { out.push(0, 0, 0, 0); continue; }
+    if (c === 0x7a && !group.length) { out.fill(0, 4); continue; }
     if (c < 0x21 || c > 0x75) continue;
     group.push(c - 33);
     if (group.length === 5) { push85(group, 4, out); group.length = 0; }
   }
   if (group.length > 1) { const n = group.length - 1; while (group.length < 5) group.push(84); push85(group, n, out); }
-  return Uint8Array.from(out);
+  return out.bytes();
 }
 
 function push85(g, n, out) {
   const v = (((g[0] * 85 + g[1]) * 85 + g[2]) * 85 + g[3]) * 85 + g[4];
   const bytes = [(v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff];
-  out.push(...bytes.slice(0, n));
+  for (let k = 0; k < n; k++) out.push(bytes[k]);
 }
 
 function runLength(data, limit) {
-  const out = []; let i = 0;
+  const out = new Output(limit); let i = 0;
   while (i < data.length) {
     const n = data[i++];
     if (n === 128) break;
-    if (n < 128) { for (let k = 0; k <= n && i < data.length; k++) out.push(data[i++]); }
-    else { const b = data[i++]; for (let k = 0; k < 257 - n; k++) out.push(b); }
-    if (out.length > limit) throw new RangeError('decompressed data exceeds the limit');
+    if (n < 128) { const end = Math.min(data.length, i + n + 1); out.append(data.subarray(i, end)); i = end; }
+    else { const b = data[i++]; out.fill(b, 257 - n); }
   }
-  return Uint8Array.from(out);
+  return out.bytes();
 }
 
 function lzw(data, limit, early) {
-  const out = []; let dict = []; let width = 9; let prev = null; let bits = 0; let acc = 0;
-  const reset = () => { dict = Array.from({ length: 258 }, (_, i) => (i < 256 ? [i] : null)); width = 9; prev = null; };
+  const out = new Output(limit); let dict = []; let width = 9; let prev = null; let bits = 0; let acc = 0;
+  const reset = () => { dict = Array.from({ length: 258 }, (_, i) => (i < 256 ? Uint8Array.of(i) : null)); width = 9; prev = null; };
+  const extend = (a, x) => { const e = new Uint8Array(a.length + 1); e.set(a); e[a.length] = x; return e; };
   reset();
   for (const byte of data) {
     acc = (acc << 8) | byte; bits += 8;
     while (bits >= width) {
       const code = (acc >>> (bits - width)) & ((1 << width) - 1); bits -= width; acc &= (1 << bits) - 1;
       if (code === 256) { reset(); continue; }
-      if (code === 257) return Uint8Array.from(out);
+      if (code === 257) return out.bytes();
       let entry = dict[code];
-      if (!entry) { if (!prev || code !== dict.length) return Uint8Array.from(out); entry = [...prev, prev[0]]; }
-      for (const b of entry) out.push(b);
-      if (out.length > limit) throw new RangeError('decompressed data exceeds the limit');
-      if (prev && dict.length < 4096) dict.push([...prev, entry[0]]);
+      if (!entry) { if (!prev || code !== dict.length) return out.bytes(); entry = extend(prev, prev[0]); }
+      out.append(entry);
+      if (prev && dict.length < 4096) dict.push(extend(prev, entry[0]));
       prev = entry;
       if (dict.length + early >= 1 << width && width < 12) width++;
     }
   }
-  return Uint8Array.from(out);
+  return out.bytes();
 }
-

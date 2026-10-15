@@ -118,3 +118,61 @@ test('PNG: unknown critical chunks are kept, unknown ancillary chunks removed', 
   assert.ok(types.includes('CRit'), 'critical chunk kept');
   assert.ok(!types.includes('prVt'), 'ancillary chunk removed');
 });
+
+test('JPEG: a JFIF thumbnail is reported and removed, the JFIF header stays', async () => {
+  const thumb = Buffer.alloc(48, 0x40); Buffer.from('preview pixels').copy(thumb, 3);
+  const app0 = Buffer.concat([Buffer.from([0xff, 0xe0, 0, 16 + 48]), Buffer.from('JFIF\0', 'latin1'), Buffer.from([1, 2, 1, 0, 72, 0, 72, 4, 4]), thumb]);
+  const original = Buffer.concat([base.jpeg.subarray(0, 2), app0, base.jpeg.subarray(4 + base.jpeg.readUInt16BE(4))]);
+  const before = await inspectImage(original);
+  assert.ok(before.signals.some((s) => s.title === 'Embedded thumbnail preview'));
+  assert.deepEqual(before.blocks.map((b) => b.kind), ['Thumbnail']);
+  const r = await cleanImage(original);
+  assert.ok(r.ok, r.reason);
+  assert.ok(!Buffer.from(r.data).includes(Buffer.from('preview pixels')));
+  assert.deepEqual([...r.data.subarray(0, 20)], [0xff, 0xd8, 0xff, 0xe0, 0, 16, ...Buffer.from('JFIF\0'), 1, 2, 1, 0, 72, 0, 72, 0, 0]);
+  const after = await inspectImage(r.data);
+  assert.equal(after.cleanable.blocks, 0);
+  assert.equal(after.width, 16);
+});
+
+test('a file the inspector could not fully read is refused rather than passed as clean', async () => {
+  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
+  const { readZip, readEntry, writeZip } = await import('../site/tools/lib/zip/index.js');
+  const { epub } = await import('./fixtures/documents.js');
+  const zip = readZip(await epub()); const entries = [];
+  for (const e of zip.entries) {
+    const data = await readEntry(zip, e);
+    // Break the package document: the inspector can no longer see its creator and identifiers.
+    entries.push({ name: e.name, data: e.name.endsWith('content.opf') ? Buffer.from(Buffer.from(data).toString('utf8').replace('<metadata', '<metadata <')) : data, method: e.name === 'mimetype' ? 0 : 8 });
+  }
+  const r = await cleanFile(await writeZip(entries), 'book.epub');
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /could not be read/);
+});
+
+test('PNG: thousands of compressed text chunks stop at the decompression count and are refused', async () => {
+  const { zTXt } = await import('./fixtures/build.js');
+  const file = pngWith(...Array.from({ length: 1200 }, (_, i) => zTXt('Comment', `note ${i}`)));
+  const before = await inspectImage(file);
+  assert.ok(before.warnings.some((w) => /Too many compressed metadata blocks/.test(w)));
+  assert.equal((await cleanImage(file)).ok, false);
+});
+
+test('HEIC: a file cut off inside a box is refused, not passed through with its metadata', async () => {
+  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
+  const { inspectFile } = await import('../site/tools/lib/metadata/index.js');
+  const heic = readFileSync(new URL('./fixtures/formats/pii.heic', import.meta.url));
+  const cut = heic.subarray(0, 734);
+  assert.ok((await inspectFile(cut, 'a.heic')).warnings.some((w) => /truncated/.test(w)));
+  const r = await cleanFile(cut, 'a.heic');
+  assert.equal(r.ok, false);
+});
+
+test('a cleaner that trips over a malformed structure refuses instead of throwing', async () => {
+  const { cleanFile } = await import('../site/tools/lib/clean/index.js');
+  const avif = Buffer.from(readFileSync(new URL('./fixtures/formats/pii.avif', import.meta.url)));
+  avif[276] = 16; // an item reference box that claims more entries than it holds
+  const r = await cleanFile(avif, 'a.avif');
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /could not be rewritten safely/);
+});

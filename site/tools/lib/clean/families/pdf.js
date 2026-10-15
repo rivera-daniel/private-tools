@@ -130,6 +130,11 @@ export async function clean(u8, report, ctx) {
   const describe = ([kind, n]) => { const [noun, note] = why[kind] ?? [kind, '']; return `${n} ${noun}${n === 1 ? '' : 's'}${note ? `, ${note}` : ''}`; };
   const kept = [...keptCounts].map(describe);
   const keptHidden = [...keptCounts].filter(([kind]) => !VISIBLE.has(kind)).map(describe);
+  // JPEG streams the image cleaner could not read are kept as they are; say so even when the inspector
+  // did not recognise them as photos.
+  const reported = new Set(report.blocks.filter((b) => b.kind === 'Image metadata').map((b) => b.key));
+  const unread = [...keptImages].filter((k) => !reported.has(k)).length;
+  if (unread) { const note = `${unread} JPEG image${unread === 1 ? '' : 's'} the image cleaner could not read, kept as ${unread === 1 ? 'it is' : 'they are'}`; kept.push(note); keptHidden.push(note); }
   return { data, removed, kept, keptHidden, allowed, offer: !options.clearForms && keptCounts.has('Form data') ? ['clearForms'] : [] };
 }
 
@@ -141,7 +146,10 @@ function planDrops(doc, options) {
     for (const a of annots) {
       if (!(a instanceof Ref)) continue;
       const d = doc.resolve(a);
-      if (removedAnnotation(d) || (options.removeSignatures && d instanceof Dict && fieldType(doc, d) === 'Sig')) drop.add(a.num);
+      // A signed widget counts even when the form's field list does not reach it.
+      const sig = d instanceof Dict && fieldType(doc, d) === 'Sig';
+      if (sig && doc.dict(d.get('V'))) signed = true;
+      if (removedAnnotation(d) || (options.removeSignatures && sig)) drop.add(a.num);
     }
   }
   const form = doc.dict(doc.catalog().get('AcroForm'));

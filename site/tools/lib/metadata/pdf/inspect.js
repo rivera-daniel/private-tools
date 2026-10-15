@@ -360,8 +360,7 @@ function fieldValue(I, v) {
 function forms(I) {
   const { doc, r } = I;
   const form = doc.dict(I.cat?.get('AcroForm'));
-  if (!form) return;
-  const fields = doc.resolve(form.get('Fields'));
+  const fields = form ? doc.resolve(form.get('Fields')) : null;
   const seen = new Set(); const sigs = []; const filled = []; let count = 0;
   const visit = (ref, parent, depth) => {
     if (depth > 32 || count > 20000) return;
@@ -382,7 +381,19 @@ function forms(I) {
     r.block('Form data', ...I.where(num), { container: `Field ${full || '(unnamed)'}`, note: 'Kept unless form clearing is chosen' });
   };
   if (Array.isArray(fields)) for (const f of fields) visit(f, '', 0);
-  r.field('PDF form', 'Fields', String(count));
+  // Signature widgets on pages that the form's field list does not reach, or in a file with no form.
+  for (const p of doc.pages()) {
+    const annots = doc.resolve(p.dict.get('Annots'));
+    if (!Array.isArray(annots)) continue;
+    for (const a of annots) {
+      if (a instanceof Ref && seen.has(a.num)) continue;
+      const d = doc.resolve(a);
+      if (!(d instanceof Dict) || fieldType(doc, d) !== 'Sig') continue;
+      if (a instanceof Ref) seen.add(a.num);
+      sigs.push({ d, num: a instanceof Ref ? a.num : null, name: I.t(d.get('T')) ?? '' });
+    }
+  }
+  if (form) r.field('PDF form', 'Fields', String(count));
   if (filled.length) r.signal('privacy', 'Filled-in form data', `${filled.length} form field${filled.length === 1 ? ' holds a value' : 's hold values'} (${filled.slice(0, 4).join(', ')}).`, 'PDF form', 'filled-in form data');
   signatures(I, sigs);
   const perms = doc.dict(I.cat?.get('Perms'));

@@ -160,6 +160,7 @@ Requires Node.js 22 or later. The site has no runtime dependencies and no build 
 ```sh
 npm run dev       # serve site/ at http://127.0.0.1:4176/tools/ with the production headers
 npm test          # parser and cleaner tests
+npm run test:independent   # cleaned files checked with external tools (see below)
 ```
 
 `HOST` and `PORT` change the development server's address.
@@ -187,6 +188,26 @@ Parser output is compared with [ExifTool](https://exiftool.org/). `tests/fixture
 ```sh
 EXIFTOOL_DIR=/path/to/Image-ExifTool node tests/vendor-check.mjs
 ```
+
+### Independent verification
+
+The cleaner re-inspects its own output with the same parser that found the metadata, so a parser blind spot could hide from both. `npm run test:independent` checks cleaned files with tools that share no code with this site. It builds a corpus with known secrets planted in every cleanable format (`tests/independent/make-corpus.mjs`), cleans each file, then runs:
+
+- ExifTool on every output, failing on any tag outside a per-format list of structural tags (`tests/independent/allow.mjs`)
+- ffprobe and ffmpeg on audio and video: no leftover tags, attachments or cover art, a clean decode, and identical packet hashes before and after (nothing re-encoded)
+- qpdf `--check`, pdfinfo, pdfsig and pdfdetach on PDFs
+- Python `zipfile` and an XML parser on Office, OpenDocument, EPUB and ZIP files, plus a byte-level check of local headers, times, extra fields and comments
+- a byte scan for every planted secret in UTF-8, UTF-16 and hex, inside zlib streams, ZIP entries and base64 runs
+
+Each check must also find the secrets in the input, so a check that sees nothing cannot pass. The report is printed and written to `test-results/independent-report.md`. Missing tools turn their checks into skips. Items made with ExifTool, ffmpeg and Python Office libraries are added when those are installed.
+
+```sh
+EXIFTOOL_DIR=/path/to/Image-ExifTool PERL5LIB=/path/to/Archive-Zip/lib PYTHON=/path/to/venv/bin/python npm run test:independent
+```
+
+`PYTHON` needs `python-docx`, `openpyxl`, `python-pptx` and `odfpy`. `QPDF`, `FFMPEG`, `FFPROBE`, `PDFINFO`, `PDFSIG` and `PDFDETACH` override tool paths.
+
+`npm run test:fuzz` mutates the corpus with a seeded generator (bit flips, truncation, inflated length fields, duplicated and self-referencing structures) and runs every case in a child process with a time budget and a memory cap. It fails when the inspector or cleaner throws, hangs or passes the cap, or when a cleaned file still holds a planted secret that ExifTool or the inspector reads as metadata. Options: `--seed`, `--iterations` (default 200), `--external`, `--case N` to replay one case.
 
 ## Deployment
 

@@ -83,7 +83,15 @@ export function parseMp3(b, r, ctx) {
   if (b.has(first + 36, 18) && b.ascii(first + 36, 4) === 'VBRI') { frames = b.u32(first + 50); vbr = true; r.field('Container', 'VBR header', `VBRI version ${b.u16(first + 40)}`); }
   r.field('Container', 'Bitrate', vbr ? 'Variable' : `${h.bitrate / 1000} kbps`);
   r.field('Container', 'Duration', duration(frames ? (frames * h.samples) / h.rate : ((end - first) * 8) / h.bitrate));
-  if (first > start) r.field('Container', 'Bytes before the first frame', fmtBytes(first - start));
+  leftoverBefore(r, start, first);
+}
+
+// Bytes between the leading tags and the first frame are no part of the audio: often tag padding, sometimes
+// the rest of a damaged tag. Decoders skip them, so the cleaner can cut them.
+function leftoverBefore(r, start, first) {
+  if (first <= start) return;
+  r.field('Container', 'Bytes before the first frame', fmtBytes(first - start));
+  r.block('Leftover data', start, first - start, { container: 'Before the first audio frame', decoded: false });
 }
 
 export function parseAdts(b, r, ctx) {
@@ -100,4 +108,5 @@ export function parseAdts(b, r, ctx) {
   r.field('Container', 'Sample rate', `${h.rate} Hz`);
   r.field('Container', 'Channels', String(h.channels));
   r.field('Container', 'Duration', duration((frames * 1024) / h.rate));
+  leftoverBefore(r, start, first);
 }

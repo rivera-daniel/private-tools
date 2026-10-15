@@ -18,7 +18,7 @@ export class Report {
     // category: Image, Document, Audio, Video, Archive, Program or Other.
     this.format = null; this.category = null; this.width = null; this.height = null; this.size = size;
     this.sources = new Map(); this.highlights = new Map(); this.blocks = []; this.structure = [];
-    this.signals = []; this.warnings = []; this.c2pa = []; this.inflated = 0;
+    this.signals = []; this.warnings = []; this.c2pa = []; this.inflated = 0; this.inflations = 0;
     // Parts that could not be fully read: [{ part, reason }]. A report with any is not a complete picture
     // of the file, and the cleaner refuses it.
     this.incomplete = [];
@@ -84,6 +84,7 @@ export class Report {
   async inflate(data, label) {
     const budget = LIMITS.maxInflateBytesPerFile - this.inflated;
     if (budget <= 0) { this.warn('The file holds more compressed metadata than the 32 MB limit. The rest was skipped.'); return new Uint8Array(); }
+    if (++this.inflations > LIMITS.maxInflatesPerFile) { if (this.inflations === LIMITS.maxInflatesPerFile + 1) this.warn('Too many compressed metadata blocks. The rest were skipped.'); return new Uint8Array(); }
     try { const out = await inflate(data, Math.min(LIMITS.maxInflateBytes, budget)); this.inflated += out.length; return out; }
     catch (error) { this.warn(`Could not decompress ${label}: ${error.message}.`); return new Uint8Array(); }
   }

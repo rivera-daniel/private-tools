@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { inspectFile } from '../site/tools/lib/metadata/index.js';
 import { cleanFile } from '../site/tools/lib/clean/index.js';
-import { mp4, chunkOffsets, box, id3v2, id3Text, id3Frames, id3v1, apeTag, lyrics3, mp3Frames, adtsFrames, flac, wav, aiff, ogg, readOgg, mkv, crc32, jpeg, cat, u32 } from './fixtures/media.js';
+import { mp4, chunkOffsets, box, id3v2, id3Text, id3Frames, id3v1, apeTag, lyrics3, mp3Frames, adtsFrames, flac, wav, aiff, ogg, readOgg, oggCrc, mkv, crc32, jpeg, cat, u32 } from './fixtures/media.js';
 
 const hl = (r, group, key) => r.highlights.find((g) => g.name === group)?.fields.find((f) => f.key === key)?.value;
 const src = (r, source, key) => r.sources.find((g) => g.name === source)?.fields.find((f) => f.key === key)?.value;
@@ -363,4 +363,63 @@ test('Media data misread as a trailer is never cut', async () => {
   const r = await inspectFile(m, 'x.mkv');
   assert.ok(r.warnings.some((w) => /damaged|truncated/.test(w)), r.warnings.join());
   assert.equal((await cleanFile(m, 'x.mkv')).ok, false);
+});
+
+test('MP4: media data no track points at is reported and zeroed, samples stay', async () => {
+  const { file, video } = mp4({ metadataTrack: false, strayMeta: true, udta: false, mdta: false, times: 0 });
+  const r = await inspectFile(file, 'clip.mp4');
+  assert.deepEqual(r.blocks.map((b) => b.kind), ['Unreferenced data']);
+  const res = await cleanFile(file, 'clip.mp4');
+  assert.ok(res.ok, res.reason);
+  assert.equal(res.bytesAfter, res.bytesBefore);
+  assert.ok(!has(res.data, 'LOCATION-SAMPLE'));
+  const [offset] = chunkOffsets(res.data);
+  assert.deepEqual(Buffer.from(res.data).subarray(offset, offset + video[0].length), video[0]);
+  await assertClean(res.data, 'clip.mp4');
+});
+
+test('AAC and MP3: bytes between the tags and the first frame are cut, frames stay', async () => {
+  for (const [name, frames] of [['a.aac', adtsFrames()], ['a.mp3', mp3Frames()]]) {
+    const file = cat(id3v2([id3Text('TIT2', 'Title')]), 'front\0rest of a damaged tag: PRIVATE-NOTE', frames);
+    const r = await inspectFile(file, name);
+    assert.ok(r.blocks.some((b) => b.kind === 'Leftover data'), name);
+    const res = await cleanFile(file, name);
+    assert.ok(res.ok, res.reason);
+    assert.ok(!has(res.data, 'PRIVATE-NOTE'));
+    assert.deepEqual(Buffer.from(res.data), Buffer.from(frames));
+    await assertClean(res.data, name);
+  }
+});
+
+test('MKV: elements the format does not define are voided; an unreadable Info part is refused', async () => {
+  const { file } = mkv();
+  const b = Buffer.from(file);
+  // Turn the Title element (0x7BA9) into an undefined Info child.
+  const title = b.indexOf(Buffer.from([0x7b, 0xa9]));
+  const unknown = Buffer.from(b); unknown[title] = 0x5b;
+  const r = await inspectFile(unknown, 'v.mkv');
+  assert.ok(r.blocks.some((x) => x.kind === 'Unknown element'));
+  const res = await cleanFile(unknown, 'v.mkv');
+  assert.ok(res.ok, res.reason);
+  assert.ok(!has(res.data, 'Family dinner'));
+  // A byte that is no element ID at all, before the Title.
+  const broken = Buffer.from(b); broken[b.indexOf(Buffer.from([0x2a, 0xd7, 0xb1]))] = 0x01;
+  const r2 = await inspectFile(broken, 'v.mkv');
+  assert.ok(r2.warnings.some((w) => /Info element could not be read/.test(w)));
+  assert.equal((await cleanFile(broken, 'v.mkv')).ok, false);
+});
+
+test('Ogg: a header page that fails its checksum, or a comment header moved to another stream, is refused', async () => {
+  const { file } = ogg({ codec: 'Opus' });
+  const page = Buffer.from(file).lastIndexOf('OggS', Buffer.from(file).indexOf('OpusTags'));
+  // A different serial number on the comment page: this parser would no longer see the tags, others would.
+  const moved = Buffer.from(file); moved[page + 14] ^= 1;
+  // The same with the checksum fixed: the Opus stream never gets its second header.
+  const fixed = Buffer.from(moved); const end = page + 27 + fixed[page + 26] + [...fixed.subarray(page + 27, page + 27 + fixed[page + 26])].reduce((a, x) => a + x, 0);
+  fixed.writeUInt32LE(0, page + 22); fixed.writeUInt32LE(oggCrc(fixed.subarray(page, end)), page + 22);
+  for (const bad of [moved, fixed]) {
+    const r = await inspectFile(bad, 'a.opus');
+    assert.ok(r.warnings.some((w) => /damaged/.test(w)), JSON.stringify(r.warnings));
+    assert.equal((await cleanFile(bad, 'a.opus')).ok, false);
+  }
 });

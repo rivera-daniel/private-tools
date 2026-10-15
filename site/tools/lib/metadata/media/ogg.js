@@ -30,11 +30,18 @@ export function codecOf(p) {
 }
 
 // Reassembles the header packets of every logical stream. Stops once every stream has its headers.
+// Header pages must pass their checksum, since a damaged one can hide a comment header from this parser
+// while other readers still find it.
 export function oggHeaders(b) {
-  const streams = new Map(); let o = 0; let pages = 0;
+  const streams = new Map(); let o = 0; let pages = 0; let badCrc = false; let orphan = false;
   for (let p; pages < 100000 && (p = oggPage(b, o)); pages++) {
     if (p.flags & 2 && !streams.has(p.serial)) streams.set(p.serial, { serial: p.serial, first: p.offset, packets: [], parts: [], size: 0, start: null, done: false });
     const s = streams.get(p.serial);
+    if (!s) orphan = true;
+    if (!s || !s.done) {
+      const page = new Uint8Array(b.slice(p.offset, p.end - p.offset)); page.fill(0, 22, 26);
+      if (oggCrc(page) !== b.u32(p.offset + 22, true)) badCrc = true;
+    }
     if (s && !s.done) {
       let at = p.offset + p.header;
       for (const lace of p.laces) {
@@ -52,13 +59,20 @@ export function oggHeaders(b) {
     o = p.end;
     if (streams.size && [...streams.values()].every((x) => x.done) && !(p.flags & 2)) break;
   }
-  return { streams: [...streams.values()], stop: o };
+  return { streams: [...streams.values()], stop: o, badCrc, orphan };
 }
 
 export function parseOgg(b, r, ctx) {
   r.category = 'Audio'; r.format = 'Ogg';
-  const { streams } = oggHeaders(b);
+  const { streams, badCrc, orphan } = oggHeaders(b);
   if (!streams.length) { r.warn('No Ogg pages were found. The file is damaged.'); return; }
+  if (badCrc) r.warn('An Ogg header page fails its checksum. The file is damaged.');
+  if (streams.some((s) => !s.done)) r.warn('The Ogg stream headers are incomplete. The file is damaged.');
+  // Pages of a stream that never began, and a second header that is not the comment header, mean the
+  // comments may sit where this parser does not look.
+  if (orphan) r.warn('Ogg pages belong to a stream that never began. The file is damaged.');
+  const MAGIC = { Vorbis: '\x03vorbis', Opus: 'OpusTags', Theora: '\x81theora' };
+  if (streams.some((s) => MAGIC[s.codec] && s.packets[1] && latin1(s.packets[1].data.subarray(0, MAGIC[s.codec].length)) !== MAGIC[s.codec])) r.warn('An Ogg stream lacks its comment header. The file is damaged.');
   if (streams.length === 1 && streams[0].codec === 'Opus') r.format = 'Opus';
   r.field('Container', 'Streams', streams.map((s) => s.codec).join(', '));
   for (const s of streams) {

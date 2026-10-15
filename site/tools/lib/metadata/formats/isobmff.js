@@ -48,6 +48,8 @@ export async function parseIsobmff(b, r) {
     else if (!['ftyp', 'mdat', 'free', 'skip', 'meta', 'moov', 'uuid'].includes(box.type)) r.field('Other boxes', box.type, `${fmtBytes(box.size)}, not decoded`);
   }
   if (!top.length) r.warn('The file has no readable boxes.');
+  // A box cut off by the end of the file hides what it holds from this parser.
+  else if (top.at(-1).end < b.length) r.warn('A box runs past the end of the file or the data after the last box cannot be read. The file may be truncated or damaged.');
 }
 
 function parseMeta(b, meta, r) {

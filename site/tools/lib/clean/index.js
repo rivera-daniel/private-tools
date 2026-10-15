@@ -39,6 +39,10 @@ export async function cleanImage(input) {
   parts.push(u8.subarray(at));
   let out = concat(parts);
 
+  // A JFIF header that carried a thumbnail goes back in front without it.
+  const jfif = blocks.find((b) => b.kind === 'Thumbnail' && b.container === 'APP0 JFIF');
+  if (jfif) out = concat([out.subarray(0, 2), bareJfif(u8.subarray(jfif.offset, jfif.offset + 18)), out.subarray(2)]);
+
   // Display rotation lives in EXIF. Dropping it would turn a portrait photo sideways, so it alone is kept.
   const orientation = ORIENTED.has(before.format) ? readOrientation(before) : 1;
   if (orientation > 1) out = withOrientation(out, before.format, orientation);
@@ -98,11 +102,14 @@ export async function cleanFile(input, name = '', options = {}) {
   if (before.warnings.some((w) => /damaged|truncated|past the end|Too many/.test(w))) return refuse('The file is damaged or unusually structured, so it was left untouched.');
   // Without a complete reading there is no telling what the file holds, so it is never called clean.
   if (before.incomplete?.length) return refuse(`${before.incomplete[0].part} ${before.incomplete[0].reason}, so the file could not be fully checked and was left untouched.`);
+  // Finding nothing only proves the file is clean when the inspector could read all of it.
+  if (!before.cleanable.blocks && before.warnings.length) return refuse('Parts of the file could not be read, so it could not be checked for metadata and was left untouched.');
   // A family can need a rewrite with nothing to remove (a PDF's stable document ID is replaced).
   if (!before.cleanable.blocks && !family.mustRewrite?.(before)) return { ok: true, data: u8, format: before.format, bytesBefore: u8.length, bytesAfter: u8.length, removed: [], exposures: [], kept: [] };
   let result;
+  // A structure the cleaner trips over is refused like any other it cannot rewrite safely.
   try { result = await family.clean(u8, before, { name, options }); }
-  catch (error) { if (error instanceof Refusal) return refuse(error.message, error.option); throw error; }
+  catch (error) { if (error instanceof Refusal) return refuse(error.message, error.option); return refuse(`The file could not be rewritten safely (${error.message}), so it was left untouched.`); }
   const after = await inspectFile(result.data, name);
   const allowed = result.allowed ?? (() => false);
   const leftovers = after.blocks.filter((b) => b.removable !== false && !hasRemovableAncestor(after.blocks, b) && !allowed(b));
@@ -132,6 +139,12 @@ function readOrientation(report) {
   if (!field) return 1;
   for (let n = 1; n <= 8; n++) if (enumValue('Orientation', n) === field.value || field.value === String(n)) return n;
   return 1;
+}
+
+// APP0 JFIF with the original version, density unit and density, and no thumbnail.
+function bareJfif(head) {
+  const seg = Uint8Array.from(head); seg[2] = 0; seg[3] = 16; seg[16] = 0; seg[17] = 0;
+  return seg;
 }
 
 // Smallest valid EXIF payload: a big-endian TIFF header and one IFD holding Orientation.

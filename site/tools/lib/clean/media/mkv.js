@@ -4,7 +4,7 @@ import { Bytes, crc32 } from '../../metadata/bytes.js';
 import { element, children, ID } from '../../metadata/media/mkv.js';
 import { Refusal } from '../index.js';
 
-const VOIDED = new Set(['Tags', 'Attachments', 'Title', 'Date', 'File name', 'Track name']);
+const VOIDED = new Set(['Tags', 'Attachments', 'Title', 'Date', 'File name', 'Track name', 'Unknown element']);
 
 // A Void element filling [o, o + total).
 function voidAt(out, o, total) {

@@ -4,6 +4,9 @@ export const LIMITS = {
   maxFileBytes: 200 * 1024 * 1024,
   maxInflateBytes: 8 * 1024 * 1024,
   maxInflateBytesPerFile: 32 * 1024 * 1024,
+  // Each decompression costs a round trip through the browser's stream machinery, so thousands of tiny
+  // compressed chunks take seconds even when the bytes are few.
+  maxInflatesPerFile: 1000,
   maxIfdEntries: 1000,
   maxIfds: 64,
   maxTextChars: 200000,

@@ -1,0 +1,60 @@
+/* Catalog-only layout. Shared tokens and tool pages stay in site.css. */
+.catalog .wrap{max-width:1080px}
+.catalog .header{height:80px}
+.catalog .brand{font-size:18px;letter-spacing:-.6px;gap:11px}
+.catalog .brand svg{width:30px;height:22px}
+.catalog main{flex:1}
+.cat-intro{padding:62px 0 36px}
+.cat-intro h1{max-width:850px;margin:0;font-size:clamp(34px,4.2vw,52px);font-weight:650;line-height:1.1;letter-spacing:-.045em}
+.cat-intro h1 span{color:var(--red-text)}
+.cat-intro p{font-size:17px;line-height:1.6;color:var(--muted);margin:18px 0 0}
+html:has(.catalog){scroll-padding-top:100px}
+.cat-sentinel{height:0}
+.cat-bar{position:sticky;top:0;z-index:5;background:var(--bg)}
+.cat-bar.stuck{box-shadow:0 1px var(--line-soft)}
+.cat-bar-inner{display:flex;align-items:center;gap:20px;padding:16px 0}
+.cat-search{display:flex;align-items:center;gap:12px;flex:1;height:48px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:0 14px}
+.cat-search:focus-within{border-color:var(--line-strong)}
+.cat-search>svg{width:19px;height:19px;flex:none;color:var(--muted)}
+.cat-search input{width:0;flex:1;border:0;outline:0;background:none;font-size:15px}
+.cat-search input::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
+.cat-search input::placeholder{color:var(--muted)}
+.cat-search kbd{font:12px Inter,sans-serif;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:2px 6px}
+.cat-clear{display:grid;place-items:center;width:24px;height:24px;border:0;border-radius:6px;background:var(--surface-2)}
+.cat-clear svg{width:14px;height:14px}
+.cat-clear:not([hidden])+kbd{display:none}
+.cat-group-select{width:180px;height:44px;flex:none;border:0;background:var(--bg);color:var(--text-2);font:inherit;font-size:14px;padding:0 8px;cursor:pointer}
+.cat-section{padding:28px 0 0}
+.cat-head{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+.cat-head h2{font-size:13px;font-weight:550;color:var(--text-2);margin:0}
+.cat-head p{font-size:12px;color:var(--muted);margin:0}
+.cat-grid,.cat-rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:48px}
+.cat-card,.cat-row{display:grid;grid-template-columns:32px minmax(0,1fr) 18px;align-items:center;gap:16px;width:100%;padding:24px 0;border:0;border-bottom:1px solid var(--line);background:none;text-align:left;color:var(--text);transition:color .15s}
+.cat-card:hover h3,.cat-row:hover .cat-row-title{color:var(--red-text)}
+.cat-icon,.cat-row-icon{display:grid;place-items:center;width:32px;height:38px}
+.cat-icon svg,.cat-row-icon svg{width:32px;height:32px}
+.cat-card h3,.cat-row-title{font-size:16px;line-height:1.4;font-weight:550;letter-spacing:-.3px;margin:0 0 6px;transition:color .15s}
+.cat-card-copy,.cat-row-copy{display:block;font-size:14px;line-height:1.55;color:var(--muted)}
+.cat-arrow{color:var(--muted)}
+.cat-arrow svg{width:17px;height:17px}
+.cat-row{grid-template-columns:32px minmax(0,1fr)}
+.cat-row-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.cat-row-title{margin:0 0 6px}
+.cat-tag{font-size:11px;color:var(--muted);white-space:nowrap}
+.cat-tag.live{color:var(--red-text)}
+.catalog-next{font-size:14px;color:var(--muted);padding:34px 0 64px;margin-top:0;margin-bottom:0}
+.catalog-next a{color:var(--text-2);margin-left:5px}
+.catalog-next a:hover,.catalog-footer a:hover{color:var(--red-text)}
+.catalog-empty{font-size:14px;line-height:1.6;color:var(--muted);padding:28px 0}
+.catalog-footer{display:flex;align-items:center;justify-content:space-between;gap:24px;border-top:1px solid var(--line);padding:24px 0 30px;font-size:12px;color:var(--muted)}
+.catalog-footer nav{display:flex;gap:24px}
+@media(max-width:700px){
+ .catalog .header{height:68px}.catalog .header nav{gap:14px}
+ .cat-intro{padding:38px 0 24px}.cat-intro h1{font-size:36px;max-width:520px}.cat-intro p{font-size:15px;margin-top:14px}
+ .cat-bar-inner{gap:8px}.cat-search{height:44px;padding:0 10px;gap:8px}.cat-search input{font-size:16px}.cat-search kbd{display:none}
+ .cat-group-select{width:132px;font-size:13px;padding:0 4px}
+ .cat-grid,.cat-rows{grid-template-columns:1fr}.cat-card,.cat-row{padding:21px 0;gap:14px}
+ .cat-section{padding-top:20px}.catalog-next{padding:28px 0 46px}
+ .catalog-footer{align-items:flex-start;flex-direction:column;gap:16px}.catalog-footer nav{gap:24px}
+}
+@media(prefers-reduced-motion:reduce){.cat-card,.cat-row,.cat-card h3,.cat-row-title{transition:none}}

@@ -10,13 +10,14 @@
 <link rel="icon" href="/tools/assets/favicon.svg" type="image/svg+xml">
 <link rel="preload" href="/tools/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/tools/assets/site.css">
+<link rel="stylesheet" href="/tools/assets/catalog.css">
 <script src="/tools/assets/theme.js"></script>
 </head>
-<body>
+<body class="catalog" data-page="catalog">
 <header class="header wrap">
   <a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
   <nav aria-label="Primary">
-    <a class="nav-text" href="#roadmap">Roadmap</a>
+    <a class="nav-text" href="/tools/roadmap/">Roadmap</a>
     <a class="nav-text" href="https://github.com/rivera-daniel/private-tools">GitHub</a>
     <button type="button" class="icon-button" id="theme-toggle" aria-label="Change theme"></button>
   </nav>
@@ -32,37 +33,25 @@
     <div class="cat-sentinel" id="bar-sentinel"></div>
     <div class="cat-bar" id="bar">
       <div class="cat-bar-inner wrap">
-        <div class="cat-groups" id="groups" role="group" aria-label="Show tools by job"></div>
-        <select class="cat-group-select" id="group-select" aria-label="Show tools by job"></select>
         <label class="cat-search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
           <span class="visually-hidden">Search all tools, including planned ones</span>
-          <input type="search" id="search" placeholder="Search tools" autocomplete="off" aria-controls="available roadmap results">
+          <input type="search" id="search" placeholder="Search tools" autocomplete="off" aria-controls="available results">
           <button type="button" class="cat-clear" id="clear" aria-label="Clear search" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
           <kbd>/</kbd>
         </label>
+        <select class="cat-group-select" id="group-select" aria-label="Filter tools by category"></select>
       </div>
       <p class="visually-hidden" id="search-status" role="status" aria-live="polite"></p>
     </div>
 
     <section class="cat-section wrap" id="available" aria-labelledby="available-title" hidden>
       <div class="cat-head">
-        <h2 id="available-title">Available now</h2>
+        <h2 id="available-title">Tools</h2>
         <p id="available-note"></p>
       </div>
       <div class="cat-grid" id="cards"></div>
     </section>
-
-    <details class="cat-roadmap" id="roadmap" hidden>
-      <summary class="cat-roadmap-toggle wrap">
-        <span class="cat-roadmap-heading">
-          <span class="cat-roadmap-title" id="roadmap-title" role="heading" aria-level="2">On the roadmap</span>
-          <span id="roadmap-note"></span>
-        </span>
-        <svg class="cat-roadmap-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
-      </summary>
-      <div class="wrap" id="roadmap-groups"></div>
-    </details>
 
     <section class="cat-section wrap" id="results" aria-labelledby="results-title" hidden>
       <div class="cat-head">
@@ -72,48 +61,16 @@
       <div class="cat-rows" id="result-rows"></div>
     </section>
   </div>
+  <p class="catalog-next wrap">More on the way. <a href="/tools/roadmap/">See what’s coming <span aria-hidden="true">↗</span></a></p>
 </main>
 
-<footer class="footer">
-  <div class="wrap">
-    <div class="footer-grid">
-      <div class="footer-about">
-        <a class="brand" href="/tools/"><svg viewBox="0 0 44 30" aria-hidden="true"><path d="M14 4h10L10 25H0zM30 0h12L26 27H14z" fill="currentColor"/></svg>Private Tools</a>
-        <p>File tools that run in your browser. Your files are processed on your device and never uploaded. No account required.</p>
-      </div>
-      <div>
-        <h2>Tools</h2>
-        <ul>
-          <li><a href="/tools/image-inspector/">Image Inspector</a></li>
-          <li><a href="/tools/file-inspector/">File Inspector</a></li>
-          <li><a href="/tools/metadata-cleaner/">Metadata Cleaner</a></li>
-          <li><a href="/tools/archiver/">Archiver</a></li>
-          <li><a href="/tools/pdf-editor/">PDF Editor</a></li>
-          <li><a href="/tools/">All tools</a></li>
-        </ul>
-      </div>
-      <div>
-        <h2>Project</h2>
-        <ul>
-          <li><a href="https://github.com/rivera-daniel/private-tools#roadmap">Roadmap</a></li>
-          <li><a href="https://github.com/rivera-daniel/private-tools">Source code</a></li>
-          <li><a href="https://github.com/rivera-daniel/private-tools/issues">Report an issue</a></li>
-        </ul>
-      </div>
-      <div>
-        <h2>Trust</h2>
-        <ul>
-          <li><a href="https://github.com/rivera-daniel/private-tools#privacy-model">How your data is handled</a></li>
-          <li><a href="https://github.com/rivera-daniel/private-tools/blob/main/LICENSE">License (AGPL-3.0)</a></li>
-          <li><a href="https://danielrivera.ai/">danielrivera.ai</a></li>
-        </ul>
-      </div>
-    </div>
-    <div class="footer-bottom">
-      <span>© 2026 Daniel Rivera</span>
-      <span>Processed on your device. Nothing is uploaded.</span>
-    </div>
-  </div>
+<footer class="catalog-footer wrap">
+  <span>© 2026 Daniel Rivera</span>
+  <nav aria-label="Footer">
+    <a href="/tools/roadmap/">Roadmap</a>
+    <a href="https://github.com/rivera-daniel/private-tools">Source</a>
+    <a href="https://github.com/rivera-daniel/private-tools#privacy-model">Privacy</a>
+  </nav>
 </footer>
 
 <dialog id="tool-dialog" aria-labelledby="dialog-title">
@@ -121,7 +78,7 @@
   <p class="eyebrow" id="dialog-status"></p>
   <h2 id="dialog-title"></h2>
   <p id="dialog-copy"></p>
-  <p>Not available yet. Follow its progress on the <a href="https://github.com/rivera-daniel/private-tools#roadmap"><u>roadmap</u></a>.</p>
+  <p>Not available yet. Follow its progress on the <a href="/tools/roadmap/"><u>roadmap</u></a>.</p>
   <form method="dialog"><button class="button">Back to tools</button></form>
 </dialog>
 

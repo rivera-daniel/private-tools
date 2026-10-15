@@ -38,7 +38,9 @@ export function findSync(b, from, end, read, frames = 3, window = 65536) {
       const h = read(b, at);
       if (!h || (n && (h.rate !== first.rate || h.layer !== first.layer))) break;
       n++; at += h.length;
-      if (at >= end) { n = frames; break; }
+      // A frame cut off by the end of the file counts only after a whole one, so two sync bytes alone
+      // (a UTF-16 byte order mark, for example) are not audio.
+      if (at >= end) { if (n >= 2 || at === end) n = frames; break; }
     }
     if (n >= frames) return o;
   }

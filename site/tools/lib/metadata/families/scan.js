@@ -102,7 +102,8 @@ function sqlite(r, b) {
 
 // Appended data the format's own parser did not report, plus what any trailer turns out to be.
 function appended(r, u8, type) {
-  const existing = r.blocks.filter((x) => x.kind === 'Trailer').map((x) => ({ offset: x.offset, length: x.length }));
+  // Format parsers name their trailers 'Trailer' (images, PDF, media) or 'Trailing data' (ZIP documents).
+  const existing = r.blocks.filter((x) => x.kind === 'Trailer' || x.kind === 'Trailing data').map((x) => ({ offset: x.offset, length: x.length }));
   const reported = existing.length || r.signals.some((s) => /^Hidden data after/.test(s.title));
   const end = reported ? null : logicalEnd(u8, type);
   if (end !== null && end > 0 && end < u8.length) {

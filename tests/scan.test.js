@@ -4,6 +4,9 @@ import { inspectFile, inspectImage } from '../site/tools/lib/metadata/index.js';
 import { cleanFile, cleanableFormats } from '../site/tools/lib/clean/index.js';
 import { cleanText, hiddenRuns } from '../site/tools/lib/metadata/scan/text.js';
 import { writeZip } from '../site/tools/lib/zip/index.js';
+import { Report } from '../site/tools/lib/metadata/report.js';
+import { Bytes } from '../site/tools/lib/metadata/bytes.js';
+import { scanFile } from '../site/tools/lib/metadata/families/scan.js';
 import { base, pngWith, tEXt } from './fixtures/build.js';
 
 const enc = (s) => new TextEncoder().encode(s);
@@ -28,10 +31,15 @@ test('true type from content: formats no other family claims are named, others o
   const rs = await inspectFile(sqlite, 'history.db');
   assert.equal(rs.format, 'SQLite'); assert.equal(src(rs, 'SQLite', 'Free pages'), '2');
   assert.ok(titles(rs).includes('Deleted data may remain'));
-  // A PDF the PDF family declined stays unnamed, so it is never routed to that family's cleaner.
-  const pdf = await inspectFile(enc('%PDF-1.7 not really'), 'notes.pdf');
-  assert.equal(pdf.format, null); assert.equal(pdf.category, 'Document');
-  assert.equal(src(pdf, 'File type', 'Detected type'), 'PDF document');
+  // The scan never names a format another family owns, so a file that family declined is never routed
+  // to its cleaner. Run the scan alone, as it runs after a declining parser.
+  for (const [bytes, detected, category] of [[enc('%PDF-1.7 not really'), 'PDF document', 'Document'], [await writeZip([{ name: 'a', data: enc('x') }]), 'ZIP archive', 'Archive'], [enc('OggS\0\x02'), 'Ogg media', 'Audio']]) {
+    const report = new Report(bytes.length);
+    await scanFile(new Bytes(bytes), report, { name: 'x' });
+    const json = report.toJSON();
+    assert.equal(json.format, null, detected); assert.equal(json.category, category);
+    assert.equal(src(json, 'File type', 'Detected type'), detected);
+  }
   const unknown = await inspectFile(Uint8Array.from({ length: 300 }, (_, i) => (i * 7919) % 251 || 1).map((x, i) => (i % 3 ? x : 0)), 'blob');
   assert.equal(unknown.format, null); assert.equal(unknown.category, 'Other');
   assert.equal(src(await inspectFile(new Uint8Array()), 'File type', 'Detected type'), 'Empty file');
@@ -74,16 +82,28 @@ test('keys and certificates: private keys are a privacy finding', async () => {
 
 // ---------- Appended and embedded data ----------
 
-test('appended data after a ZIP is found, typed and never offered for removal', async () => {
-  const zip = await writeZip([{ name: 'a.txt', data: enc('hello') }]);
+test('appended data the scan finds itself is typed and never offered for removal', async () => {
+  // 7z ends where its start header says the next header ends: here, right after the 32-byte header.
+  const seven = Uint8Array.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0, 4, ...new Array(24).fill(0)]);
   const pdf = enc('%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF\n');
-  const r = await inspectFile(new Uint8Array([...zip, ...pdf]), 'bundle.zip');
+  const r = await inspectFile(new Uint8Array([...seven, ...pdf]), 'backup.7z');
   const trailer = r.blocks.find((b) => b.kind === 'Trailer');
-  assert.ok(trailer); assert.equal(trailer.offset, zip.length); assert.equal(trailer.removable, false);
+  assert.ok(trailer); assert.equal(trailer.offset, 32); assert.equal(trailer.removable, false);
   assert.equal(r.cleanable.blocks, 0);
   assert.equal(src(r, 'Appended data', 'Content'), 'A PDF document');
   assert.ok(titles(r).includes('Hidden data after the end of the file'));
   assert.ok(titles(r).includes('A file is hidden inside'));
+});
+
+test('data after a ZIP is reported once, by the documents family, and typed by the scan', async () => {
+  const zip = await writeZip([{ name: 'a.txt', data: enc('hello') }]);
+  const pdf = enc('%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF\n');
+  const r = await inspectFile(new Uint8Array([...zip, ...pdf]), 'bundle.zip');
+  const trailers = r.blocks.filter((b) => /^(Trailer|Trailing data)$/.test(b.kind));
+  assert.equal(trailers.length, 1); assert.equal(trailers[0].offset, zip.length);
+  assert.equal(src(r, 'Appended data', 'Content'), 'A PDF document');
+  assert.ok(titles(r).includes('A file is hidden inside'));
+  assert.ok(!titles(r).includes('Hidden data after the end of the file'));
 });
 
 test('a trailer the image parser already reported is not reported twice, but its content is typed', async () => {

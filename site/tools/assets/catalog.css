@@ -113,3 +113,6 @@ html:has(.catalog){scroll-padding-top:110px}
 @media(prefers-reduced-motion:reduce){.cat-card,.hero-primary,.app-shelf .tool-illustration{transition:none}.app-shelf>a:hover .tool-illustration{transform:none}}
 
 .app-shelf .tool-illustration{margin:0;flex:none}
+
+.cat-row .tool-illustration{width:42px;height:42px;margin:0;flex:none}
+.result-icon{display:block;width:42px;height:42px}

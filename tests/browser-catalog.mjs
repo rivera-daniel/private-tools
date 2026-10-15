@@ -41,6 +41,10 @@ try {
   await page.locator('#search').press('Escape');await page.locator('#group-select').selectOption('forensics');assert.ok(await page.locator('#catalog-empty').isVisible());assert.equal(await page.locator('.cat-card:visible').count(),0);
   await page.locator('.app-shelf a').first().click();assert.ok(await page.locator('#image-inspector').isVisible());assert.equal(await page.locator('#group-select').inputValue(),'all');await page.locator('body').click({position:{x:3,y:3}});await page.keyboard.press('/');assert.ok(await page.locator('#search').evaluate(e=>e===document.activeElement));
   await page.locator('.cat-teaser').click();await page.waitForURL(`${base}/tools/roadmap/`);assert.equal(await page.locator('#cards .cat-row').count(),planned.length);
+  assert.equal(await page.locator('#cards .cat-row .tool-illustration').count(),planned.length);
+  assert.equal(await page.locator('#result-rows .tool-illustration').count(),TOOLS.length);
+  assert.ok(await page.evaluate(()=>{const ids=[...document.querySelectorAll('[id]')].map(e=>e.id);return new Set(ids).size===ids.length;}),'unique SVG and page IDs');
+  await page.screenshot({path:`${shots}/${width}-roadmap.jpg`,type:'jpeg',quality:80,fullPage:true});
   await page.locator('#group-select').selectOption('forensics');assert.equal(await page.locator('#cards .cat-row:visible').count(),planned.filter(t=>t.group==='forensics').length);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();console.log(`${width}px: light/dark, illustrated icons, search, filters, dialog, keyboard and roadmap passed`);
  }

@@ -9,6 +9,8 @@ import { ZipStreamWriter, openZipBlob, zipEntryChunks, mayNeedZip64, NeedsPasswo
 import { Aes, WinZipCtr, Sha1, HmacSha1, deriveKeys, WrongPassword } from '../site/tools/lib/zip/aes.js';
 import { tarStream, readTar } from '../site/tools/lib/archive/tar.js';
 import { safePath, uniquePath } from '../site/tools/lib/archive/paths.js';
+import { planExtraction, portableName, freshFolderName, keepBothName, nameKey, foldersToScan, archiveBase } from '../site/tools/lib/archive/destination.js';
+import { writeEntry, freshFolder, createNew, removeCreated, scan } from '../site/tools/lib/archive/folder.js';
 import { MemorySink, BlobReader, collect, bytesChunks } from '../site/tools/lib/archive/streams.js';
 import { createArchive, listArchive, extractEntries, detectFormat, alreadyCompressed, LIMITS } from '../site/tools/lib/archive/index.js';
 import { zipCryptoZip, overlappingZip, understatedZip } from './fixtures/archive.js';
@@ -244,6 +246,241 @@ test('streams: BlobReader and tar reader skip data without reading it', async ()
   assert.deepEqual(seen, ['a', 'b']);
 });
 
+// Hand-built tar headers, for PAX and GNU records the writer never produces.
+function rawHeader(name, size, type) {
+  const h = new Uint8Array(512); const put = (at, text) => h.set(enc.encode(text), at);
+  put(0, name); put(100, '0000644\0'); put(108, '0000000\0'); put(116, '0000000\0');
+  put(124, `${size.toString(8).padStart(11, '0')}\0`); put(136, '00000000000\0'); h[156] = type.charCodeAt(0);
+  put(257, 'ustar\0'); put(263, '00');
+  let sum = 0; for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 32 : h[i];
+  put(148, `${sum.toString(8).padStart(6, '0')}\0 `);
+  return h;
+}
+const block = (bytes) => { const out = new Uint8Array(Math.ceil(bytes.length / 512) * 512); out.set(bytes); return out; };
+// records: [[type, body bytes]] placed before one file entry called name holding data.
+function rawTar(records, name = 'header-name.txt', data = 'x') {
+  const parts = [];
+  for (const [type, body] of records) parts.push(rawHeader(type === 'x' ? 'PaxHeader' : '././@LongLink', body.length, type), block(body));
+  parts.push(rawHeader(name, enc.encode(data).length, '0'), block(enc.encode(data)), new Uint8Array(1024));
+  return new Blob(parts);
+}
+// A correct PAX record: the length counts bytes, its own digits included.
+function paxRec(key, value) {
+  const body = enc.encode(` ${key}=${value}\n`).length;
+  let length = body + 1; while (String(length).length + body !== length) length = String(length).length + body;
+  return `${length} ${key}=${value}\n`;
+}
+async function tarNames(blob) { const names = []; for await (const e of readTar(new BlobReader(blob))) names.push(e.name); return names; }
+
+test('tar PAX: records are cut by their byte length, so names keep newlines and cannot inject attributes', async () => {
+  const tricky = 'harmless\n20 path=report.txt\n尾.txt';
+  const names = [tricky, 'line\nbreak.txt', '日本語/ファイル名 ü é.txt', 'emoji 🙂\n.txt', `${'長'.repeat(120)}.txt`];
+  const bytes = await collect(tarStream(names.map((name) => ({ name, size: 1, source: [enc.encode('x')], mtime: 0 }))));
+  assert.deepEqual(await tarNames(new Blob([bytes])), names, 'raw names are read exactly');
+  const listing = await listArchive(new Blob([bytes]), 'tar');
+  assert.deepEqual(listing.entries.map((e) => e.name), names);
+  assert.equal(listing.entries[0].path, 'harmless_20 path=report.txt_尾.txt', 'control characters are replaced only in the path used on disk');
+  assert.ok(!listing.entries.some((e) => e.path === 'report.txt'));
+  if (has('python3')) {
+    const dir = tmp(); writeFileSync(join(dir, 'n.tar'), bytes);
+    const out = JSON.parse(execFileSync('python3', ['-c', 'import tarfile,sys,json;print(json.dumps([m.name for m in tarfile.open(sys.argv[1])]))', join(dir, 'n.tar')]).toString());
+    assert.deepEqual(out, names, 'Python reads the same names');
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('tar PAX: duplicate keys keep the last value, empty values remove the attribute, NUL padding is allowed', async () => {
+  assert.deepEqual(await tarNames(rawTar([['x', enc.encode(paxRec('path', 'first.txt') + paxRec('path', 'second.txt'))]])), ['second.txt']);
+  assert.deepEqual(await tarNames(rawTar([['x', enc.encode(paxRec('path', 'a.txt'))], ['x', enc.encode(paxRec('path', 'b.txt'))]])), ['b.txt']);
+  assert.deepEqual(await tarNames(rawTar([['x', enc.encode(paxRec('path', ''))]])), ['header-name.txt']);
+  const padded = new Uint8Array(enc.encode(paxRec('path', 'padded.txt')).length + 7); padded.set(enc.encode(paxRec('path', 'padded.txt')));
+  assert.deepEqual(await tarNames(rawTar([['x', padded]])), ['padded.txt']);
+  assert.equal(paxRec('path', 'ü'), '11 path=ü\n', 'lengths count UTF-8 bytes');
+  assert.deepEqual(await tarNames(rawTar([['x', enc.encode(paxRec('path', 'naïve ü.txt'))]])), ['naïve ü.txt']);
+});
+
+test('tar PAX and GNU: malformed records refuse the archive', async () => {
+  const good = paxRec('path', 'report.txt');
+  const bad = {
+    'length too long': good.replace(/^\d+/, (n) => String(Number(n) + 1)),
+    'length too short': good.replace(/^\d+/, (n) => String(Number(n) - 1)),
+    'length past the end': `99 path=report.txt\n`,
+    'zero length': `0 path=x\n`,
+    'not a number': `ab path=report.txt\n`,
+    'no space': `${good.length}path=report.txt\n`.replace(/^\d+/, (n) => String(Number(n) - 1)),
+    'no equals sign': paxRec('pathreport.txt', '').replace('=', ' '),
+    'empty key': paxRec('', 'report.txt'),
+    'counted in characters, not bytes': `16 path=ü.txt\n`.replace('16', String(' path=ü.txt\n'.length + 2)),
+    'length lands inside the next record': `${good.length + 5}${good.slice(String(good.length).length)}${paxRec('mtime', '1')}`,
+  };
+  for (const [label, body] of Object.entries(bad)) await assert.rejects(tarNames(rawTar([['x', enc.encode(body)]])), /extended header is damaged/, label);
+  await assert.rejects(tarNames(rawTar([['x', enc.encode(paxRec('size', '12abc'))]])), /invalid size/);
+  await assert.rejects(tarNames(rawTar([['L', enc.encode('real.txt\0hidden.txt\0')]])), /long name record is damaged/);
+  await assert.rejects(tarNames(rawTar([['L', enc.encode('\0')]])), /long name record is damaged/);
+  assert.deepEqual(await tarNames(rawTar([['L', enc.encode('gnu/long name.txt\0\0\0')]])), ['gnu/long name.txt']);
+  assert.deepEqual(await tarNames(rawTar([['L', enc.encode('no-terminator.txt')]])), ['no-terminator.txt']);
+});
+
+test('destination: names are made portable and compared by case and Unicode normalization', () => {
+  assert.equal(portableName('CON'), '_CON'); assert.equal(portableName('nul.txt'), '_nul.txt'); assert.equal(portableName('com1.tar.gz'), '_com1.tar.gz');
+  assert.equal(portableName('CON .txt'), '_CON .txt'); assert.equal(portableName('nul.'), '_nul');
+  assert.equal(portableName('report. . '), 'report'); assert.equal(portableName('...'), '_'); assert.equal(portableName(' '), '_');
+  assert.equal(portableName('a:b?c*.txt'), 'a_b_c_.txt'); assert.equal(portableName('console.txt'), 'console.txt');
+  assert.equal(portableName('é.txt'), 'é.txt');
+  assert.equal(nameKey('RéPORT.TXT'), nameKey('réport.txt'));
+  assert.equal(archiveBase('report.tar.gz'), 'report'); assert.equal(archiveBase('.zip'), 'archive');
+  assert.equal(freshFolderName('report.zip', new Set()), 'report (extracted)');
+  assert.equal(freshFolderName('report.zip', new Set(['report (extracted)', 'report (extracted) 2'])), 'report (extracted) 3');
+  assert.equal(freshFolderName('CON.zip', new Set()), '_CON (extracted)');
+  assert.equal(keepBothName('report.txt', new Set(['report.txt'])), 'report (1).txt');
+  assert.equal(keepBothName('report.txt', new Set(['report.txt', 'report (1).txt'])), 'report (2).txt');
+  assert.equal(keepBothName('.env', new Set()), '.env (1)'); assert.equal(keepBothName('README', new Set()), 'README (1)');
+});
+
+const existingOf = (tree) => new Map(Object.entries(tree).map(([dir, names]) => [dir, new Map(Object.entries(names).map(([name, kind]) => [nameKey(name), { name, kind }]))]));
+
+test('destination: entries that clash inside the archive get unique names, folders keep theirs', () => {
+  const plan = planExtraction([
+    { id: 1, path: 'Report.txt', kind: 'file' },
+    { id: 2, path: 'report.txt', kind: 'file' },
+    { id: 3, path: 'résumé.txt', kind: 'file' },
+    { id: 4, path: 'résumé.txt', kind: 'file' },
+    { id: 5, path: 'a', kind: 'file' },
+    { id: 6, path: 'a/b.txt', kind: 'file' },
+    { id: 7, path: 'Docs/one.txt', kind: 'file' },
+    { id: 8, path: 'docs/two.txt', kind: 'file' },
+    { id: 9, path: 'CON', kind: 'file' },
+    { id: 10, path: 'notes.', kind: 'file' },
+    { id: 11, path: 'notes', kind: 'file' },
+  ]);
+  assert.deepEqual(plan.files.map((f) => [f.id, f.path]), [[1, 'Report.txt'], [2, 'report (1).txt'], [3, 'résumé.txt'], [4, 'résumé (1).txt'], [5, 'a (1)'], [6, 'a/b.txt'], [7, 'Docs/one.txt'], [8, 'Docs/two.txt'], [9, '_CON'], [10, 'notes'], [11, 'notes (1)']]);
+  assert.deepEqual(plan.directories, ['a', 'Docs']);
+  assert.ok(plan.files.every((f) => !f.replace)); assert.deepEqual(plan.collisions, []);
+  assert.deepEqual(plan.renamed.map((r) => [r.id, r.reason]), [[2, 'duplicate'], [4, 'duplicate'], [5, 'duplicate'], [9, 'portable'], [10, 'portable'], [11, 'duplicate']]);
+  const keys = plan.files.map((f) => nameKey(f.path));
+  assert.equal(new Set(keys).size, keys.length, 'no two files share a name on any disk');
+});
+
+test('destination: existing names are kept unless Replace is chosen, and folders are never replaced', () => {
+  const entries = [
+    { id: 1, path: 'report.txt', kind: 'file' }, { id: 2, path: 'new.txt', kind: 'file' }, { id: 3, path: 'Photos/a.jpg', kind: 'file' },
+    { id: 4, path: 'Photos/b.jpg', kind: 'file' }, { id: 5, path: 'data/x.csv', kind: 'file' }, { id: 6, path: 'music', kind: 'file' },
+  ];
+  const existing = existingOf({ '': { 'Report.TXT': 'file', 'report (1).txt': 'file', photos: 'directory', data: 'file', Music: 'directory' }, photos: { 'A.JPG': 'file' } });
+  const plain = planExtraction(entries, { existing });
+  assert.deepEqual(plain.files.map((f) => [f.id, f.path, f.replace]), [[1, 'report (2).txt', false], [2, 'new.txt', false], [3, 'photos/a (1).jpg', false], [4, 'photos/b.jpg', false], [5, 'data (1)/x.csv', false], [6, 'music (1)', false]]);
+  assert.deepEqual(plain.collisions.map((c) => [c.path, c.existing, c.wanted, c.replaceable, c.choice]), [['data', 'file', 'directory', false, 'keep'], ['Report.TXT', 'file', 'file', true, 'keep'], ['photos/A.JPG', 'file', 'file', true, 'keep'], ['Music', 'directory', 'file', false, 'keep']]);
+  assert.deepEqual(plain.directories, ['photos', 'data (1)'], 'the existing folder is reused under its own spelling');
+
+  const replace = planExtraction(entries, { existing, choices: { 'Report.TXT': 'replace', 'photos/A.JPG': 'skip', data: 'replace', Music: 'replace' } });
+  assert.deepEqual(replace.files.map((f) => [f.id, f.path, f.replace]), [[1, 'Report.TXT', true], [2, 'new.txt', false], [4, 'photos/b.jpg', false], [5, 'data (1)/x.csv', false], [6, 'music (1)', false]]);
+  assert.deepEqual(replace.skipped.map((s) => s.id), [3]);
+  const skipFolder = planExtraction(entries, { existing, choices: { data: 'skip' } });
+  assert.deepEqual(skipFolder.skipped.map((s) => s.id), [5], 'skipping a folder skips everything in it');
+  assert.equal(skipFolder.files.filter((f) => f.replace).length, 0, 'nothing is replaced without a choice');
+});
+
+test('destination: a folder renamed to keep both never merges with another folder of the archive', () => {
+  const plan = planExtraction([{ id: 1, path: 'a/x.txt', kind: 'file' }, { id: 2, path: 'a (1)/x.txt', kind: 'file' }], { existing: existingOf({ '': { a: 'file' } }) });
+  assert.deepEqual(plan.files.map((f) => f.path), ['a (1)/x.txt', 'a (1) (1)/x.txt']);
+});
+
+test('destination: only folders that will be written into are scanned', () => {
+  const tree = foldersToScan([{ id: 1, path: 'A/b/c.txt', kind: 'file' }, { id: 2, path: 'top.txt', kind: 'file' }, { id: 3, path: 'empty', kind: 'directory' }]);
+  assert.deepEqual([...tree.keys()], ['a', 'empty']); assert.deepEqual([...tree.get('a').keys()], ['b']); assert.equal(tree.get('a').get('b').size, 0);
+});
+
+// An in-memory folder with the File System Access behaviours extraction relies on: NotFoundError and
+// TypeMismatchError, writers that change the file only on close, non-recursive removeEntry, and move().
+// move: 'overwrite' or 'reject'. failClose: names whose writer fails on close.
+const fsError = (name) => Object.assign(new Error(name), { name });
+class MemFile {
+  constructor(dir, name) { this.dir = dir; this.name = name; this.kind = 'file'; }
+  async createWritable() {
+    const parts = []; const { dir, name } = this;
+    return {
+      async write(b) { parts.push(new Uint8Array(b instanceof Blob ? await b.arrayBuffer() : b)); },
+      async close() { if (dir.failClose.has(name)) throw fsError('QuotaExceededError'); dir.files.set(name, dec.decode(await new Blob(parts).arrayBuffer())); },
+      async abort() {},
+    };
+  }
+  async getFile() { return new Blob([this.dir.files.get(this.name)]); }
+  async move(name) {
+    if (this.dir.moveMode === 'reject') throw fsError('InvalidModificationError');
+    const data = this.dir.files.get(this.name); this.dir.files.delete(this.name); this.dir.files.set(name, data); this.name = name;
+  }
+}
+class MemDir {
+  constructor(options = {}) { this.files = new Map(); this.dirs = new Map(); this.kind = 'directory'; this.moveMode = options.move ?? 'overwrite'; this.failClose = new Set(options.failClose ?? []); }
+  async getFileHandle(n, o = {}) { if (this.dirs.has(n)) throw fsError('TypeMismatchError'); if (!this.files.has(n)) { if (!o.create) throw fsError('NotFoundError'); this.files.set(n, ''); } return new MemFile(this, n); }
+  async getDirectoryHandle(n, o = {}) { if (this.files.has(n)) throw fsError('TypeMismatchError'); if (!this.dirs.has(n)) { if (!o.create) throw fsError('NotFoundError'); this.dirs.set(n, new MemDir()); } return this.dirs.get(n); }
+  async removeEntry(n) { if (this.files.delete(n)) return; const d = this.dirs.get(n); if (!d) throw fsError('NotFoundError'); if (d.files.size || d.dirs.size) throw fsError('InvalidModificationError'); this.dirs.delete(n); }
+  async *keys() { yield* [...this.files.keys(), ...this.dirs.keys()]; }
+  async *entries() { for (const n of this.files.keys()) yield [n, new MemFile(this, n)]; yield* this.dirs; }
+}
+const memWith = (files, options) => { const d = new MemDir(options); for (const [n, v] of Object.entries(files)) d.files.set(n, v); return d; };
+const contents = (d) => Object.fromEntries(d.files);
+// Entry data that is cut off by a failed check after the bytes arrive, as a ZIP CRC mismatch is.
+async function* entryData(text, fail = false) { yield enc.encode(text); if (fail) throw new Error('checksum mismatch'); }
+
+test('folder: new files appear only when complete, and a failed one leaves nothing behind', async () => {
+  for (const canMove of [true, false]) {
+    const dir = memWith({ 'mine.txt': 'MINE' }); const created = [];
+    assert.equal(await writeEntry(dir, 'report.txt', false, entryData('NEW'), created, undefined, canMove), 'report.txt');
+    await assert.rejects(writeEntry(dir, 'bad.txt', false, entryData('HALF', true), created, undefined, canMove), /checksum/);
+    assert.deepEqual(contents(dir), { 'mine.txt': 'MINE', 'report.txt': 'NEW' }, `canMove ${canMove}`);
+    assert.deepEqual(created.map((c) => c.name), ['report.txt']);
+  }
+});
+
+test('folder: a failed replace keeps the original, a successful one swaps it, with or without move()', async () => {
+  for (const [canMove, move] of [[true, 'overwrite'], [true, 'reject'], [false, 'overwrite']]) {
+    const dir = memWith({ 'Report.TXT': 'VALUABLE ORIGINAL' }, { move }); const created = [];
+    await assert.rejects(writeEntry(dir, 'Report.TXT', true, entryData('ATTACKER', true), created, undefined, canMove), /checksum/);
+    assert.deepEqual(contents(dir), { 'Report.TXT': 'VALUABLE ORIGINAL' }, `failed replace, canMove ${canMove}, move ${move}`);
+    assert.equal(await writeEntry(dir, 'Report.TXT', true, entryData('REPLACED'), created, undefined, canMove), 'Report.TXT');
+    assert.deepEqual(contents(dir), { 'Report.TXT': 'REPLACED' }, `replace, canMove ${canMove}, move ${move}`);
+    assert.deepEqual(created, [], 'a replaced file is not this run\'s to remove');
+  }
+});
+
+test('folder: when move() is refused the finished file is copied, and a failed copy cleans up only its own files', async () => {
+  const dir = memWith({}, { move: 'reject' }); const created = [];
+  assert.equal(await writeEntry(dir, 'new.txt', false, entryData('COPIED'), created), 'new.txt');
+  assert.deepEqual(contents(dir), { 'new.txt': 'COPIED' });
+  const failing = memWith({ 'keep.txt': 'ORIGINAL' }, { move: 'reject', failClose: ['new.txt', 'keep.txt'] });
+  await assert.rejects(writeEntry(failing, 'new.txt', false, entryData('X'), []), /QuotaExceeded/);
+  await assert.rejects(writeEntry(failing, 'keep.txt', true, entryData('X'), []), /QuotaExceeded/);
+  assert.deepEqual(contents(failing), { 'keep.txt': 'ORIGINAL' });
+});
+
+test('folder: a file already at the temporary name, or at the target after planning, is left alone', async () => {
+  const dir = memWith({ '.report.txt.partial': 'USER FILE', 'late.txt': 'APPEARED' }); const created = [];
+  assert.equal(await writeEntry(dir, 'report.txt', false, entryData('NEW'), created), 'report.txt');
+  await assert.rejects(writeEntry(dir, 'other.txt', false, entryData('X', true), created), /checksum/);
+  assert.equal(await writeEntry(dir, 'late.txt', false, entryData('FROM ARCHIVE'), created), 'late (1).txt');
+  assert.deepEqual(contents(dir), { '.report.txt.partial': 'USER FILE', 'late.txt': 'APPEARED', 'report.txt': 'NEW', 'late (1).txt': 'FROM ARCHIVE' });
+  // A file where a folder is needed, or a folder where a file is needed, is never opened or replaced.
+  dir.dirs.set('sub', new MemDir());
+  assert.equal(await createNew(dir, 'late.txt', 'directory', created), null);
+  assert.equal(await writeEntry(dir, 'sub', true, entryData('X'), created), 'sub (1)');
+  assert.ok(dir.dirs.has('sub'));
+});
+
+test('folder: the new folder takes a free name, and cleanup removes only empty folders this run made', async () => {
+  const dir = memWith({ 'report (extracted)': 'A FILE' }); dir.dirs.set('report (extracted) 2', new MemDir());
+  const created = [];
+  const { name, handle } = await freshFolder(dir, 'report.zip', created);
+  assert.equal(name, 'report (extracted) 3');
+  await writeEntry(handle, 'a.txt', false, entryData('a'), created);
+  for (const item of [...created].reverse()) if (item.kind === 'directory') await removeCreated(created, item);
+  assert.ok(dir.dirs.has('report (extracted) 3'), 'a folder with files in it stays');
+  const empty = []; await freshFolder(dir, 'report.zip', empty);
+  await removeCreated(empty, empty[0]);
+  assert.equal(dir.dirs.has('report (extracted) 4'), false);
+  assert.deepEqual([...(await scan(dir, new Map())).get('').keys()].sort(), ['report (extracted)', 'report (extracted) 2', 'report (extracted) 3']);
+});
+
 // Cross-checks with other implementations, when they are installed.
 test('cross-check: other tools read our archives and we read theirs', { skip: !has('bsdtar') && !has('python3') }, async () => {
   const dir = tmp();
@@ -273,6 +510,22 @@ test('cross-check: other tools read our archives and we read theirs', { skip: !h
       const tgz = new Blob([readFileSync(join(dir, 'theirs.tgz'))]);
       assert.equal(await detectFormat(tgz), 'tar.gz');
       assert.equal(dec.decode((await extractAll(tgz, 'tar.gz')).files['in.txt']), 'made by bsdtar '.repeat(50));
+    }
+    // PAX and GNU tar archives with long, Unicode and newline names, written by other tools, read the same.
+    const odd = ['line\nbreak.txt', `${'ü'.repeat(70)}/${'名'.repeat(60)}.txt`, `${'long/'.repeat(40)}end.txt`];
+    if (has('python3')) {
+      for (const format of ['PAX_FORMAT', 'GNU_FORMAT']) {
+        const out = join(dir, `py-${format}.tar`);
+        execFileSync('python3', ['-c', `import tarfile,sys,io,json\nwith tarfile.open(sys.argv[1],'w',format=tarfile.${format}) as t:\n  for n in json.loads(sys.argv[2]):\n    i=tarfile.TarInfo(n);i.size=1;i.mtime=1700000000;t.addfile(i,io.BytesIO(b'x'))`, out, JSON.stringify(odd)]);
+        assert.deepEqual(await tarNames(new Blob([readFileSync(out)])), odd, format);
+      }
+    }
+    for (const [tool, args] of [['bsdtar', ['--format', 'pax']], ['tar', ['--format=pax']], ['tar', ['--format=gnu']]].filter(([t]) => has(t))) {
+      const src = join(dir, `src-${args.join('')}`); const name = `${'ü'.repeat(70)}/${'名'.repeat(60)}.txt`;
+      mkdirSync(join(src, 'ü'.repeat(70)), { recursive: true }); writeFileSync(join(src, name), 'x');
+      execFileSync(tool, [...args, '-cf', join(src, '..', `${tool}${args.join('')}.tar`), '-C', src, name]);
+      const names = await tarNames(new Blob([readFileSync(join(src, '..', `${tool}${args.join('')}.tar`))]));
+      assert.ok(names.includes(name), `${tool} ${args.join(' ')}: ${JSON.stringify(names)}`);
     }
     const sevenZip = ['7zz', '7z'].find(has);
     if (sevenZip) {

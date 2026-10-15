@@ -116,7 +116,22 @@ input[type=checkbox],input[type=radio]{accent-color:var(--red)}
 .check-all{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-2);cursor:pointer}
 .check-all input{width:16px;height:16px;margin:0}
 .list-head .filter input{width:220px}
-.extract-run{justify-content:flex-end}
+.extract-run{justify-content:flex-end;align-items:center}
+.check-inline{display:flex;align-items:center;gap:9px;margin-right:auto;font-size:13.5px;color:var(--text-2);cursor:pointer}
+.check-inline input{width:16px;height:16px;margin:0;flex:none}
+
+#collide-dialog{max-width:600px}
+#collide-dialog h2{font-size:22px}
+.collide-all{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.collide-all .row-button+.row-button{margin-left:0}
+.collide-list{list-style:none;margin:14px 0 0;padding:0;max-height:300px;overflow:auto;border:1px solid var(--line-soft);border-radius:12px}
+.collide-list li{display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line-soft)}
+.collide-list li:first-child{border-top:0}
+.collide-list .collide-name{flex:1;min-width:0;font-size:13.5px;overflow-wrap:anywhere}
+.collide-list small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.collide-list select{flex:none;font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)}
+.collide-more{font-size:13px;color:var(--muted);margin:10px 0 0}
+#collide-dialog .dialog-actions{gap:10px}
 
 #inspect-dialog{max-width:560px}
 #inspect-dialog h2{overflow-wrap:anywhere;font-size:22px}
@@ -149,4 +164,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--red)}
   .report>li{padding:12px 18px}
   .unlock{padding:16px}
   .run .primary,.run .ghost{flex:1}
+  .check-inline{flex-basis:100%}
+  .collide-list li{flex-wrap:wrap}
+  .collide-list select{width:100%}
 }

@@ -54,7 +54,7 @@ Creates and opens archives in the browser.
 - **Extract:** ZIP, 7z, RAR (versions 4 and 5), tar, gzip, xz, bzip2, zstd, lzma, lz4, ISO 9660, CAB, cpio and ar, through [libarchive](https://libarchive.org/) compiled to WebAssembly for the formats beyond ZIP, tar and gzip.
 - **Encryption:** ZIP archives can be created and opened with WinZip AES-256. 7z archives encrypted with AES-256 can be opened, including encrypted file names. Legacy ZipCrypto archives open with a warning that the encryption is weak. Encrypted RAR archives cannot be opened.
 - **Privacy:** "Remove hidden data" runs each file through Metadata Cleaner before it is added, and entries are written without timestamps, owner IDs, extra fields or comments unless you keep file dates. Any file in an opened archive can be inspected without extracting the rest.
-- **Safety:** paths that climb out of the extraction folder are blocked, links are never extracted, and archives whose contents expand far beyond their size are stopped.
+- **Safety:** files are extracted into a new folder named after the archive, or directly into the chosen folder only after every existing name is shown with Skip, Keep both or Replace. Paths that climb out of the extraction folder are blocked, links are never extracted, and archives whose contents expand far beyond their size are stopped.
 - **Limits:** Firefox and Safari keep the output in memory, which caps it at about 2 GB. Chromium writes straight to disk. RAR archives can be opened but not created.
 
 ### PDF Editor

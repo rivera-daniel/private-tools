@@ -99,19 +99,32 @@ export function looksLikeTar(block) {
   return stored === sum || stored === signed;
 }
 
+// PAX records are "<length> <key>=<value>\n" where length counts the bytes of the whole record, its own digits
+// included. Values may contain newlines, so records are cut by their length, never by searching for one.
+// A malformed record refuses the archive. A key given twice keeps its last value, as POSIX specifies.
 function parsePax(bytes) {
-  const out = {}; const text = decoder.decode(bytes); let at = 0;
-  while (at < text.length) {
-    const space = text.indexOf(' ', at); if (space < 0) break;
-    const length = Number(text.slice(at, space));
-    if (!Number.isInteger(length) || length <= 0) break;
-    // Lengths count bytes, the decoded text counts characters: find the record end by its newline instead.
-    const nl = text.indexOf('\n', space); if (nl < 0) break;
-    const record = text.slice(space + 1, nl); const eq = record.indexOf('=');
-    if (eq > 0) out[record.slice(0, eq)] = record.slice(eq + 1);
-    at = nl + 1;
+  const out = Object.create(null); let at = 0;
+  const damaged = () => new Error('A tar extended header is damaged.');
+  while (at < bytes.length) {
+    if (bytes.subarray(at).every((b) => b === 0)) break; // padding some writers leave after the last record
+    let i = at; let length = 0;
+    while (i < bytes.length && bytes[i] >= 0x30 && bytes[i] <= 0x39 && i - at < 8) length = length * 10 + bytes[i++] - 0x30;
+    if (i === at || bytes[i] !== 0x20) throw damaged();
+    const end = at + length;
+    if (end < i + 4 || end > bytes.length || bytes[end - 1] !== 0x0a) throw damaged();
+    const record = bytes.subarray(i + 1, end - 1); const eq = record.indexOf(0x3d);
+    if (eq <= 0) throw damaged();
+    out[decoder.decode(record.subarray(0, eq))] = decoder.decode(record.subarray(eq + 1));
+    at = end;
   }
   return out;
+}
+
+// GNU long name and long link records: the name, then NUL padding and nothing else.
+function readLong(body) {
+  const nul = body.indexOf(0); const end = nul < 0 ? body.length : nul;
+  if (end === 0 || body.subarray(end).some((b) => b !== 0)) throw new Error('A tar long name record is damaged.');
+  return decoder.decode(body.subarray(0, end));
 }
 
 const TYPES = { '0': 'file', '\0': 'file', '7': 'file', '5': 'directory', D: 'directory', '1': 'hardlink', '2': 'symlink', '3': 'device', '4': 'device', '6': 'fifo', S: 'sparse', V: 'label', M: 'multivolume' };
@@ -136,12 +149,13 @@ export async function* readTar(reader) {
       if (body.length < size) throw new Error('The tar archive is cut off.');
       if (flag === 'x') pax = { ...pax, ...parsePax(body) };
       else if (flag === 'g') global = { ...global, ...parsePax(body) };
-      else if (flag === 'L') longName = readString(body, 0, body.length);
-      else longLink = readString(body, 0, body.length);
+      else if (flag === 'L') longName = readLong(body);
+      else longLink = readLong(body);
       continue;
     }
-    const meta = { ...global, ...pax };
-    if (meta.size !== undefined && /^\d+$/.test(meta.size)) size = Number(meta.size);
+    // An empty value removes the attribute: the header's own field applies again.
+    const meta = Object.fromEntries(Object.entries({ ...global, ...pax }).filter(([, v]) => v !== ''));
+    if (meta.size !== undefined) { if (!/^\d+$/.test(meta.size)) throw new Error('A tar header has an invalid size.'); size = Number(meta.size); }
     if (size > Number.MAX_SAFE_INTEGER) throw new Error('A tar header has an invalid size.');
     const ustar = String.fromCharCode(...block.subarray(257, 262)) === 'ustar';
     let name = readString(block, 0, 100);

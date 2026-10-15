@@ -5,6 +5,8 @@ import { MemorySink, WritableSink, collect, Cancelled } from '/tools/lib/archive
 import { ZipStreamWriter, NeedsPassword } from '/tools/lib/zip/stream.js';
 import { WrongPassword } from '/tools/lib/zip/aes.js';
 import { inspectFile } from '/tools/lib/metadata/index.js';
+import { planExtraction, foldersToScan } from '/tools/lib/archive/destination.js';
+import { lookup, createNew, removeCreated, scan, freshFolder, writeEntry } from '/tools/lib/archive/folder.js';
 
 let current = null;
 let libarchive = null;
@@ -74,40 +76,61 @@ function totalOf(ids) {
   return current.listing.entries.reduce((n, e) => n + (set.has(e.id) && e.kind === 'file' ? e.size ?? 0 : 0), 0);
 }
 
-// Writes the chosen entries into a folder the page picked. Each file is written to a temporary file by the
-// browser and only appears once it is complete and verified; a failed file is removed.
-async function toFolder({ id, ids, password, dir }) {
+function selection(ids) {
+  const set = new Set(ids);
+  return current.listing.entries.filter((e) => set.has(e.id) && e.path && (e.kind === 'file' || e.kind === 'directory')).map((e) => ({ id: e.id, path: e.path, kind: e.kind }));
+}
+
+// Preflight for mode 'here': what already exists where the chosen entries would go.
+async function plan({ id, ids, dir }) {
+  const entries = selection(ids);
+  const result = planExtraction(entries, { existing: await scan(dir, foldersToScan(entries)) });
+  self.postMessage({ type: 'planned', id, collisions: result.collisions, files: result.files.length });
+}
+
+// mode: 'new' (the default) extracts into a new folder named after the archive. 'here' extracts into dir
+// itself, resolving names that already exist with choices from the preflight.
+async function toFolder({ id, ids, password, dir, mode = 'new', choices = {} }) {
+  const entries = selection(ids);
   const total = totalOf(ids); let done = 0; let written = 0; const failed = [];
-  const dirs = new Map([['', dir]]);
-  async function folder(path) {
-    if (dirs.has(path)) return dirs.get(path);
-    const slash = path.lastIndexOf('/');
-    const parent = await folder(slash < 0 ? '' : path.slice(0, slash));
-    const handle = await parent.getDirectoryHandle(path.slice(slash + 1), { create: true });
-    dirs.set(path, handle); return handle;
-  }
-  for (const e of current.listing.entries) if (ids.includes(e.id) && e.kind === 'directory' && e.path) await folder(e.path).catch(() => {});
-  for await (const { entry, chunks } of chunksOf(ids, password, LIMITS.diskTotal)) {
-    if (cancel) throw new Cancelled();
-    const slash = entry.path.lastIndexOf('/');
-    let parent; let handle; let sink = null;
-    try {
-      parent = await folder(slash < 0 ? '' : entry.path.slice(0, slash));
-      handle = await parent.getFileHandle(entry.path.slice(slash + 1), { create: true });
-      sink = new WritableSink(await handle.createWritable());
-      for await (const chunk of chunks) {
-        if (cancel) throw new Cancelled();
-        await sink.write(chunk); done += chunk.length; progress(id, done, total, entry.path);
-      }
-      await sink.close(); written++;
-    } catch (error) {
-      if (sink) await sink.abort();
-      if (parent && handle) await parent.removeEntry(entry.path.slice(slash + 1)).catch(() => {});
-      if (error instanceof Cancelled || error instanceof NeedsPassword || error instanceof WrongPassword || error instanceof LimitError) throw error;
-      failed.push({ path: entry.path, reason: describe(error).message });
+  const created = [];
+  let root = dir; let folder = null;
+  try {
+    if (mode !== 'here') ({ name: folder, handle: root } = await freshFolder(dir, current.file.name, created));
+    const layout = planExtraction(entries, { existing: mode === 'here' ? await scan(root, foldersToScan(entries)) : new Map(), choices: mode === 'here' ? choices : {} });
+    const handles = new Map([['', root]]);
+    async function folderAt(path) {
+      if (handles.has(path)) return handles.get(path);
+      const slash = path.lastIndexOf('/');
+      const parent = await folderAt(slash < 0 ? '' : path.slice(0, slash)); const name = path.slice(slash + 1);
+      const handle = await lookup(parent, name, 'directory') ?? await createNew(parent, name, 'directory', created);
+      if (!handle) throw new Error(`${path}: a file with this name is in the way.`);
+      handles.set(path, handle); return handle;
     }
+    for (const path of layout.directories) await folderAt(path).catch(() => {});
+    const targets = new Map(layout.files.map((f) => [f.id, f]));
+    for await (const { entry, chunks } of chunksOf(layout.files.map((f) => f.id), password, LIMITS.diskTotal)) {
+      if (cancel) throw new Cancelled();
+      const target = targets.get(entry.id); if (!target) continue;
+      const slash = target.path.lastIndexOf('/');
+      try {
+        const parent = await folderAt(slash < 0 ? '' : target.path.slice(0, slash));
+        await writeEntry(parent, target.path.slice(slash + 1), target.replace, chunks, created, (chunk) => {
+          if (cancel) throw new Cancelled();
+          done += chunk.length; progress(id, done, total, entry.path);
+        });
+        written++;
+      } catch (error) {
+        if (error instanceof Cancelled || error instanceof NeedsPassword || error instanceof WrongPassword || error instanceof LimitError) throw error;
+        failed.push({ path: entry.path, reason: describe(error).message });
+      }
+    }
+    self.postMessage({ type: 'extracted', id, written, failed, folder, skipped: layout.skipped.length, renamed: layout.renamed.filter((r) => r.reason !== 'portable').length, replaced: layout.files.filter((f) => f.replace).length });
+  } catch (error) {
+    // Stopped part way: remove only the empty folders this run created. Files already written stay.
+    for (const item of [...created].reverse()) if (item.kind === 'directory') await removeCreated(created, item);
+    throw error;
   }
-  self.postMessage({ type: 'extracted', id, written, failed });
 }
 
 // Re-packs the chosen entries as a plain ZIP, for browsers that cannot write to a folder.
@@ -161,7 +184,7 @@ async function check({ id, password }) {
   self.postMessage({ type: 'checked', id });
 }
 
-const JOBS = { create, open, toFolder, toZip, one, inspect, check };
+const JOBS = { create, open, plan, toFolder, toZip, one, inspect, check };
 
 self.onmessage = async ({ data }) => {
   if (data.type === 'cancel') { cancel = true; return; }

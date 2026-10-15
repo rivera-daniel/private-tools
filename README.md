@@ -170,7 +170,7 @@ wrangler.jsonc           Cloudflare Worker configuration
 
 ## Development
 
-Requires Node.js 22 or later. The site has no runtime dependencies and no build step.
+Requires Node.js 22 or later. The site has no runtime dependencies and no build step. The test and deploy tools (`playwright-core` and `wrangler`) are pinned to exact versions in `package.json` and `package-lock.json`: run `npm ci` once to install them.
 
 ```sh
 npm run dev       # serve site/ at http://127.0.0.1:4176/ with the production headers
@@ -192,7 +192,7 @@ The existing HTML robots directives and response headers still disable indexing.
 
 ### Browser tests
 
-`tests/browser.mjs` runs the inspector in Chromium with the network disabled. It checks that processing makes no network requests, that extracted HTML renders as text, and that the layout works at desktop and mobile widths. It needs `playwright-core` and a Chromium binary.
+`tests/browser.mjs` runs the inspector in Chromium with the network disabled. It checks that processing makes no network requests, that extracted HTML renders as text, and that the layout works at desktop and mobile widths. It needs `playwright-core` (installed by `npm ci`) and a Chromium binary.
 
 ```sh
 BASE=http://127.0.0.1:4176 CHROMIUM=/path/to/chromium npm run test:browser
@@ -234,9 +234,11 @@ EXIFTOOL_DIR=/path/to/Image-ExifTool PERL5LIB=/path/to/Archive-Zip/lib PYTHON=/p
 
 `npm run test:fuzz` mutates the corpus with a seeded generator (bit flips, truncation, inflated length fields, duplicated and self-referencing structures) and runs every case in a child process with a time budget and a memory cap. It fails when the inspector or cleaner throws, hangs or passes the cap, or when a cleaned file still holds a planted secret that ExifTool or the inspector reads as metadata. Options: `--seed`, `--iterations` (default 200), `--external`, `--case N` to replay one case.
 
+GitHub Actions (`.github/workflows/ci.yml`) runs `npm test` and the browser checks on every push to `main` and every pull request, with Chromium installed by `playwright-core`.
+
 ## Deployment
 
-The site is deployed as a Cloudflare Worker with static assets on its own origin, `tools.danielrivera.ai`, so no tool shares an origin with the main site. Requests to the old `danielrivera.ai/tools/` address are redirected there permanently, keeping the path and query. Wrangler needs a `CLOUDFLARE_API_TOKEN` with Workers permissions for the zone.
+The site is deployed as a Cloudflare Worker with static assets on its own origin, `tools.danielrivera.ai`, so no tool shares an origin with the main site. Requests to the old `danielrivera.ai/tools/` address are redirected there permanently, keeping the path and query. Wrangler is the pinned version from `npm ci` and needs a `CLOUDFLARE_API_TOKEN` with Workers permissions for the zone.
 
 ```sh
 npm run deploy

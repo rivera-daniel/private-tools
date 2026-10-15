@@ -177,6 +177,16 @@ npm run test:independent   # cleaned files checked with external tools (see belo
 
 `HOST` and `PORT` change the development server's address.
 
+### Toolkit catalog workflow
+
+See [Adding tools to the Toolkit](docs/catalog-workflow.md) for the complete release, artwork and verification checklist.
+
+The catalog and roadmap include static headings, links and detailed descriptions for readers and crawlers without JavaScript. Edit `site/assets/catalog-data.js`, then run `node scripts/render-catalog.mjs` to regenerate both pages. Catalog cards use scalable artwork from `site/assets/catalog-illustrations.js`. The hero keeps five shortcuts while the grid includes every available tool.
+
+`tests/browser-catalog.mjs` checks static descriptions without JavaScript, illustrated cards, search, filters, navigation and responsive themes. It uses the same BASE, PLAYWRIGHT_CORE and CHROMIUM settings as the other browser checks.
+
+The existing HTML robots directives and response headers still disable indexing. Static descriptions prepare the content for search engines but do not change the site's publication or indexing policy.
+
 ### Browser tests
 
 `tests/browser.mjs` runs the inspector in Chromium with the network disabled. It checks that processing makes no network requests, that extracted HTML renders as text, and that the layout works at desktop and mobile widths. It needs `playwright-core` and a Chromium binary.

@@ -108,10 +108,12 @@ test('changing any signed byte breaks the signature', async () => {
   assert.match(r1.problems[0], /changed after it was signed/);
   // The last bytes of the signature value, then a byte inside the embedded signer certificate.
   const start = text.indexOf('/Contents <') + 11; const end = text.indexOf('>', start); const used = text.slice(start, end).replace(/0+$/, '').length;
-  const sig = signed.slice(); sig[start + used - 3] = sig[start + used - 3] === 0x41 ? 0x42 : 0x41;
+  // Hex is case-insensitive, so swap between 0 and 1 to be sure the value changes.
+  const flip = (b) => (b === 0x30 ? 0x31 : 0x30);
+  const sig = signed.slice(); sig[start + used - 3] = flip(sig[start + used - 3]);
   const r2 = (await verifyPdf(sig)).signatures[0];
   assert.equal(r2.status, 'invalid'); assert.equal(r2.digestOk, true); assert.equal(r2.signatureOk, false);
-  const cert = signed.slice(); cert[start + 400] = cert[start + 400] === 0x41 ? 0x42 : 0x41;
+  const cert = signed.slice(); cert[start + 400] = flip(cert[start + 400]);
   const r4 = (await verifyPdf(cert)).signatures[0];
   assert.equal(r4.status, 'invalid');
   // A byte range that does not reach the end of the file once garbage is appended.

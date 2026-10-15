@@ -28,6 +28,7 @@ import { clearFile, takeFile } from '/tools/lib/handoff.js';
 import { fromSource, rotatePages, removePages, duplicatePages, insertBlank, pickPages, movePagesTo, movePagesBy, entrySize } from '/tools/lib/pdf-editor/plan.js';
 import { parseRanges, splitEvery, onePerPage, groupLabel, PageRangeError } from '/tools/lib/pdf-editor/ranges.js';
 import { isLatin } from '/tools/lib/pdf-editor/text.js';
+import { fitScale, PREVIEW_PIXELS } from '/tools/lib/pdf-editor/render-guard.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, className, text) => { const n = document.createElement(tag); if (className) n.className = className; if (text !== undefined) n.textContent = text; return n; };
@@ -126,6 +127,51 @@ function download(data, name, type) {
   const a = el('a'); a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
 }
 window.addEventListener('pagehide', () => { for (const u of urls) URL.revokeObjectURL(u); });
+
+// With Remove hidden data on, what each exported file still holds: cleaning refused (the file is saved as
+// built) or hidden data the cleaner kept. reports: the worker's per-file reports.
+function retainedItems(reports, options) {
+  if (!options.clean) return [];
+  const items = [];
+  for (const r of reports) {
+    const where = reports.length > 1 ? `${r.name}: ` : '';
+    if (r.refused) items.push(`${where}hidden data was not removed. ${r.refused}`);
+    for (const k of r.retained ?? []) items.push(`${where}${k}.`);
+  }
+  return items;
+}
+
+// Nothing is downloaded until the user has seen exactly what stays and accepted it. Resolves true to save.
+function acknowledge(items) {
+  if (!items.length) return Promise.resolve(true);
+  const dialog = $('retained-dialog');
+  $('retained-list').replaceChildren(...items.map((t) => el('li', 'warn', t)));
+  setBusy(null);
+  return new Promise((resolve) => {
+    const done = (ok) => { dialog.removeEventListener('close', onClose); $('retained-accept').onclick = null; $('retained-cancel').onclick = null; if (dialog.open) dialog.close(); resolve(ok); };
+    const onClose = () => done(false);
+    dialog.addEventListener('close', onClose);
+    $('retained-accept').onclick = () => done(true);
+    $('retained-cancel').onclick = () => done(false);
+    dialog.showModal();
+    $('retained-cancel').focus();
+  });
+}
+
+// The report lines for exported files: what was removed, kept or not removed, per file when there are several.
+function reportItems(reports, options) {
+  const items = [];
+  if (!options.clean) return items;
+  for (const r of reports) {
+    const where = reports.length > 1 ? `${r.name}: ` : '';
+    if (!r.cleaned) { items.push(el('li', 'warn', `${where}Hidden data was not removed: ${r.refused}`)); continue; }
+    const kinds = [...new Set(r.removed.map((x) => x.kind))];
+    items.push(el('li', '', kinds.length ? `${where}Hidden data removed: ${kinds.join(', ')}.` : `${where}No hidden data was found.`));
+    const hidden = new Set(r.retained ?? []);
+    for (const k of r.kept ?? []) items.push(el('li', hidden.has(k) ? 'warn' : '', `${where}Kept: ${k}.`));
+  }
+  return items;
+}
 
 /* Opening files */
 const isPdfName = (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
@@ -246,7 +292,7 @@ function pumpThumbs() {
     if (bitmaps.has(bk) || requested.has(bk)) continue;
     requested.add(bk); inflight++;
     const [w, h] = sources.get(e.src).sizes[e.page];
-    call({ type: 'render', src: e.src, page: e.page, scale: Math.min(2, THUMB / Math.max(w, h, 1)) }).then((r) => {
+    call({ type: 'render', src: e.src, page: e.page, scale: Math.min(2, THUMB / Math.max(w, h, 1)), thumb: true }).then((r) => {
       bitmaps.set(bk, r.bitmap);
       if (bitmaps.size > MAX_BITMAPS) { const [oldest, bmp] = bitmaps.entries().next().value; bitmaps.delete(oldest); bmp.close(); }
       for (const p of plan) if (!p.blank && bitmapKey(p) === bk && nodes.has(p.key)) draw(nodes.get(p.key), p);
@@ -539,7 +585,8 @@ const ctx = {
     const e = plan[i];
     if (!e) throw new Error(`There is no page ${i + 1}.`);
     if (e.blank) {
-      const [w, h] = displayed(e); const c = new OffscreenCanvas(Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale)));
+      const [w, h] = displayed(e); const fit = fitScale([0, 0, w, h], scale, { maxPixels: PREVIEW_PIXELS });
+      const c = new OffscreenCanvas(fit.width, fit.height);
       const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
       return c.transferToImageBitmap();
     }
@@ -582,7 +629,8 @@ const viewCtx = {
     const turn = ((e.rotate ?? 0) + rotate) % 360;
     if (e.blank) {
       const [w, h] = e.blank; const [cw, ch] = turn % 180 ? [h, w] : [w, h];
-      const c = new OffscreenCanvas(Math.max(1, Math.round(cw * scale)), Math.max(1, Math.round(ch * scale)));
+      const fit = fitScale([0, 0, cw, ch], scale, { maxPixels: PREVIEW_PIXELS });
+      const c = new OffscreenCanvas(fit.width, fit.height);
       const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
       return c.transferToImageBitmap();
     }
@@ -618,7 +666,7 @@ const viewCtx = {
     if (bitmaps.has(bk)) return bitmaps.get(bk);
     if (!thumbRequests.has(bk)) {
       const [w, h] = sources.get(e.src).sizes[e.page];
-      thumbRequests.set(bk, call({ type: 'render', src: e.src, page: e.page, scale: Math.min(2, THUMB / Math.max(w, h, 1)) }).then((r) => {
+      thumbRequests.set(bk, call({ type: 'render', src: e.src, page: e.page, scale: Math.min(2, THUMB / Math.max(w, h, 1)), thumb: true }).then((r) => {
         if (!bitmaps.has(bk)) bitmaps.set(bk, r.bitmap); else r.bitmap.close();
         if (bitmaps.size > MAX_BITMAPS) { const [oldest, bmp] = bitmaps.entries().next().value; bitmaps.delete(oldest); bmp.close(); }
         // The page grid shares the cache, so its thumbnails are drawn too.
@@ -690,9 +738,12 @@ $('split-form').addEventListener('submit', async (e) => {
   let options; try { options = outputOptions(); } catch (error) { showError(error.message); return; }
   const base = baseName();
   const names = groups.map((g) => `${base}-${g.length === 1 ? 'page' : 'pages'}-${groupLabel(g)}.pdf`);
+  $('organize-report').hidden = true;
   await job(`Splitting into ${plural(groups.length, 'file')}…`, async () => {
     const r = await call({ type: 'split', plan: plain(plan), groups, names, options });
+    if (!(await acknowledge(retainedItems(r.reports, options)))) { announce('Nothing was saved.'); return; }
     if (r.single) download(r.data, names[0], 'application/pdf'); else download(r.data, `${base}-split.zip`, 'application/zip');
+    showOrganizeReport(r.reports, options);
     announce(`Saved ${plural(r.count, 'file')}.`);
   });
 });
@@ -700,12 +751,20 @@ $('extract').addEventListener('click', async () => {
   const idx = selectedIndexes(); if (!idx.length) return;
   let options; try { options = outputOptions(); } catch (error) { showError(error.message); return; }
   const name = `${baseName()}-extract.pdf`;
+  $('organize-report').hidden = true;
   await job(`Extracting ${plural(idx.length, 'page')}…`, async () => {
     const r = await call({ type: 'split', plan: plain(plan), groups: [idx], names: [name], options });
+    if (!(await acknowledge(retainedItems(r.reports, options)))) { announce('Nothing was saved.'); return; }
     download(r.data, name, 'application/pdf');
+    showOrganizeReport(r.reports, options);
     announce(`Saved ${name}.`);
   });
 });
+function showOrganizeReport(reports, options) {
+  const items = reportItems(reports, options);
+  $('organize-report').replaceChildren(...items);
+  $('organize-report').hidden = !items.length;
+}
 
 /* Convert panel: pages to images */
 const outFormat = () => document.querySelector('input[name=out-format]:checked').value;
@@ -718,10 +777,15 @@ $('export-images').addEventListener('click', async () => {
   const dpi = Number(document.querySelector('input[name=out-dpi]:checked').value);
   const base = baseName();
   const names = idx.map((i) => `${base}-page-${i + 1}.${ext}`);
+  $('export-note').hidden = true;
   await job(`Rendering ${plural(idx.length, 'page')}…`, async () => {
     const r = await call({ type: 'toImages', plan: plain(plan), indexes: idx, format, scale: dpi / 72, quality: Number($('out-quality').value), names }, [], (p) => { $('busy-detail').textContent = `${p.done} of ${p.total}`; });
     if (r.single) download(r.data, names[0], `image/${format}`); else download(r.data, `${base}-images.zip`, 'application/zip');
-    announce(`Saved ${plural(r.count, 'image')}.`);
+    // Pages too large for the pixel budget come out at a lower resolution, which the user is told.
+    const reduced = r.reduced ?? [];
+    const note = reduced.length ? `${plural(reduced.length, 'page')} ${reduced.length === 1 ? 'is' : 'are'} too large to render at ${dpi} dpi and ${reduced.length === 1 ? 'was' : 'were'} saved at ${Math.min(...reduced.map((x) => x.dpi))} dpi${reduced.length === 1 ? '' : ' or more'}.` : '';
+    $('export-note').textContent = note; $('export-note').hidden = !note;
+    announce(`Saved ${plural(r.count, 'image')}.${note ? ` ${note}` : ''}`);
   });
 });
 
@@ -810,6 +874,7 @@ $('save-form').addEventListener('submit', async (e) => {
   $('save-result').hidden = true;
   await job(options.clean ? 'Saving and removing hidden data…' : 'Saving…', async () => {
     const r = await call({ type: 'save', plan: plain(plan), name, options });
+    if (!(await acknowledge(retainedItems([r.report], options)))) { announce('Nothing was saved.'); return; }
     download(r.data, name, 'application/pdf');
     showSaved(r, name, options);
   });
@@ -833,14 +898,7 @@ function showSaved(r, name, options) {
   const parts = [plural(r.pages, 'page'), size(r.data.byteLength)];
   if (r.report.encrypted) parts.push('AES-256 encrypted');
   $('save-detail').textContent = parts.join(' · ');
-  const items = [];
-  if (options.clean) {
-    if (r.report.cleaned && r.report.removed.length) {
-      const kinds = [...new Set(r.report.removed.map((x) => x.kind))];
-      items.push(el('li', '', `Hidden data removed: ${kinds.join(', ')}.`));
-    } else if (r.report.cleaned) items.push(el('li', '', 'No hidden data was found.'));
-    else items.push(el('li', 'warn', `Hidden data was not removed: ${r.report.refused}`));
-  }
+  const items = reportItems([r.report], options);
   if (usedSources().some((s) => s.signed)) items.push(el('li', '', 'The digital signature of the original is no longer valid in this copy.'));
   if (r.report.encrypted) items.push(el('li', '', 'Keep the password safe: it cannot be recovered.'));
   $('save-report').replaceChildren(...items);

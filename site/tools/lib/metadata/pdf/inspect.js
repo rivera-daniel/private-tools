@@ -657,7 +657,7 @@ async function embeddedFiles(I, list) {
 }
 
 // An orientation tag alone is what the image cleaner writes back, so it does not count as metadata.
-const orientationOnly = (rep) => { const s = rep.sources.filter((x) => !x.technical); return s.length === 1 && s[0].name === 'EXIF IFD0' && s[0].fields.every((f) => f.key === 'Orientation'); };
+export const orientationOnly = (rep) => { const s = rep.sources.filter((x) => !x.technical); return s.length === 1 && s[0].name === 'EXIF IFD0' && s[0].fields.every((f) => f.key === 'Orientation'); };
 
 export const imageKey = (raw) => `${raw.length}:${crc32(raw)}`;
 

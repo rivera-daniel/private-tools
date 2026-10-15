@@ -2,8 +2,10 @@
 // and photos are re-encoded as JPEG at the chosen quality. An image is replaced only when the result is
 // smaller. Masks, images with transparency and 1-bit images are left alone.
 import { mupdf } from './index.js';
+import { fitsPixels } from './render-guard.js';
 
 const MAX_DEPTH = 8;
+const SOURCE_PIXELS = 256e6;
 
 // Every image XObject used by the pages, with the largest size in pixels it needs at `dpi`: the longer
 // side of the largest page that shows it.
@@ -61,6 +63,8 @@ export function downsampleImages(doc, { dpi = 150, quality = 75 } = {}) {
       const scale = Math.min(1, limit / Math.max(w, h));
       if (scale >= 1 && !isJpeg) { skipped++; continue; }
       const tw = Math.max(1, Math.round(w * scale)); const th = Math.max(1, Math.round(h * scale));
+      // Both the decoded source and the scaled copy must fit; larger images are left as they are.
+      if (!fitsPixels(w, h, { maxPixels: SOURCE_PIXELS, maxSide: 65535 }) || !fitsPixels(tw, th)) { skipped++; continue; }
       const cs = image.getColorSpace();
       const gray = Boolean(cs && cs.isGray()) || nameOf(obj, 'ColorSpace') === 'DeviceGray';
       const target = gray ? mupdf.ColorSpace.DeviceGray : mupdf.ColorSpace.DeviceRGB;

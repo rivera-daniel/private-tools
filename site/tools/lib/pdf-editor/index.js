@@ -4,6 +4,7 @@
 // came from and the password that opened it. Building never changes a source.
 import * as mupdf from '../../vendor/mupdf/mupdf.js';
 import { cleanImage } from '../clean/index.js';
+import { fitScale, RENDER_PIXELS, PREVIEW_PIXELS } from './render-guard.js';
 
 export { mupdf };
 export const LIMITS = { totalBytes: 500 * 1024 * 1024, maxPages: 10000 };
@@ -207,11 +208,21 @@ export function unlockPdf(bytes, password, { compress = true } = {}) {
 
 /* Rendering */
 
+// The pixmap of a page at scale, or at a smaller scale when the bitmap would exceed maxPixels. The size is
+// checked from the page bounds before anything is allocated.
+function pagePixmap(page, scale, rotate, maxPixels) {
+  const fit = fitScale(page.getBounds(), scale, { rotate, maxPixels });
+  const pix = page.toPixmap(mupdf.Matrix.concat(mupdf.Matrix.scale(fit.scale, fit.scale), mupdf.Matrix.rotate(rotate)), mupdf.ColorSpace.DeviceRGB, false, true);
+  return { pix, fit };
+}
+
 // RGBA pixels of a page at scale (1 = 72 dpi), turned by `rotate` degrees on top of its own rotation.
-export function renderPage(doc, index, scale = 1, rotate = 0) {
+// Returns { width, height, pixels, scale, clamped }: scale is the one used, lower than asked when the page
+// would need more than maxPixels.
+export function renderPage(doc, index, scale = 1, rotate = 0, { maxPixels = PREVIEW_PIXELS } = {}) {
   const page = doc.loadPage(index);
   try {
-    const pix = page.toPixmap(mupdf.Matrix.concat(mupdf.Matrix.scale(scale, scale), mupdf.Matrix.rotate(rotate)), mupdf.ColorSpace.DeviceRGB, false, true);
+    const { pix, fit } = pagePixmap(page, scale, rotate, maxPixels);
     try {
       const width = pix.getWidth(); const height = pix.getHeight(); const stride = pix.getStride(); const src = pix.getPixels();
       const out = new Uint8ClampedArray(width * height * 4);
@@ -219,19 +230,20 @@ export function renderPage(doc, index, scale = 1, rotate = 0) {
         let s = y * stride; let d = y * width * 4;
         for (let x = 0; x < width; x++, s += 3, d += 4) { out[d] = src[s]; out[d + 1] = src[s + 1]; out[d + 2] = src[s + 2]; out[d + 3] = 255; }
       }
-      return { width, height, pixels: out };
+      return { width, height, pixels: out, scale: fit.scale, clamped: fit.clamped };
     } finally { pix.destroy(); }
   } finally { page.destroy(); }
 }
 
-// One page as PNG or JPEG bytes.
-export function pageImage(doc, index, { format = 'png', scale = 2, quality = 85, rotate = 0 } = {}) {
+// One page as PNG or JPEG bytes. Returns { data, scale, clamped }, scale being lower than asked when the
+// page would need more than maxPixels.
+export function pageImage(doc, index, { format = 'png', scale = 2, quality = 85, rotate = 0, maxPixels = RENDER_PIXELS } = {}) {
   const page = doc.loadPage(index);
   try {
-    const pix = page.toPixmap(mupdf.Matrix.concat(mupdf.Matrix.scale(scale, scale), mupdf.Matrix.rotate(rotate)), mupdf.ColorSpace.DeviceRGB, false, true);
+    const { pix, fit } = pagePixmap(page, scale, rotate, maxPixels);
     try {
-      pix.setResolution(Math.round(72 * scale), Math.round(72 * scale));
-      return format === 'jpeg' ? pix.asJPEG(quality) : pix.asPNG();
+      pix.setResolution(Math.round(72 * fit.scale), Math.round(72 * fit.scale));
+      return { data: format === 'jpeg' ? pix.asJPEG(quality) : pix.asPNG(), scale: fit.scale, clamped: fit.clamped };
     } finally { pix.destroy(); }
   } finally { page.destroy(); }
 }

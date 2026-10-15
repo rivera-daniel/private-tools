@@ -84,7 +84,14 @@ input[type=range]{display:block;width:100%;margin:0;accent-color:var(--red)}
 .save-card .result-head p{font-size:13px;margin:3px 0 0;color:var(--text-2)}
 .save-card .result-mark{width:34px;height:34px;border-radius:10px}
 .save-card .report>li{padding:10px 16px;font-size:13px}
-.report li.warn{color:var(--red-text)}
+.report li.warn,.hint.warn{color:var(--red-text)}
+#retained-dialog{max-width:520px}
+#retained-dialog h2{font-size:22px}
+#retained-dialog .report{margin:14px 0 0}
+#retained-dialog .report>li{padding:10px 14px;font-size:14px;overflow-wrap:anywhere}
+#retained-dialog .dialog-actions{gap:10px}
+.organize-report{margin:14px 0 0}
+.organize-report>li{padding:10px 14px;font-size:13px;overflow-wrap:anywhere}
 
 #redact-panel{min-height:200px}
 .unavailable{border:1.5px dashed var(--line-strong);border-radius:16px;padding:48px 24px;text-align:center;background:var(--surface)}

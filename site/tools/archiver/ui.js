@@ -1,5 +1,6 @@
 // Archiver page. File and entry names come from the user's files and archives: render through textContent only.
 import { clearFile, sendFile } from '/tools/lib/handoff.js';
+import { archiveBase } from '/tools/lib/archive/destination.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, className, text) => { const n = document.createElement(tag); if (className) n.className = className; if (text !== undefined) n.textContent = text; return n; };
@@ -312,7 +313,7 @@ function renderOpen() {
   $('open-warnings').hidden = !warnings.length;
   $('open-warnings').replaceChildren(...warnings.map((w) => el('p', '', w)));
   $('unlock').hidden = !encrypted.length || password !== null || !listing.decrypts;
-  $('extract-folder').hidden = !canPickFolder;
+  $('extract-folder').hidden = !canPickFolder; $('extract-here-label').hidden = !canPickFolder;
   $('extract-zip').className = canPickFolder ? 'ghost' : 'primary';
   renderEntries();
 }
@@ -410,19 +411,73 @@ function extractJob(message, title, onDone) {
   });
 }
 
-const baseName = () => openFile.name.replace(/\.(zip|tar\.(gz|xz|bz2|zst)|tgz|txz|tbz2|tar|gz|7z|rar|xz|bz2|zst|iso|cab)$/i, '') || 'archive';
+const baseName = () => archiveBase(openFile.name);
 
+// By default files go into a new folder named after the archive. Extracting directly into the chosen folder
+// first checks which names already exist there and asks what to do with each before anything is written.
 $('extract-folder').addEventListener('click', async () => {
   if (job) return;
   const ids = [...selected];
   if (!ids.length || needsPasswordFirst(ids)) return;
   let dir;
   try { dir = await window.showDirectoryPicker({ mode: 'readwrite' }); } catch (error) { if (error.name !== 'AbortError') showError('open-error', 'The folder could not be opened for writing.'); return; }
-  extractJob({ type: 'toFolder', ids, dir }, 'Extracting…', (r) => {
-    const failed = r.failed.length ? ` ${plural(r.failed.length, 'file')} could not be written: ${r.failed.slice(0, 5).map((f) => `${f.path} (${f.reason})`).join('; ')}${r.failed.length > 5 ? '…' : ''}` : '';
-    done(`Extracted ${plural(r.written, 'file')} to ${dir.name}.${failed}`);
+  if (!$('extract-here').checked) { toFolder(ids, dir, 'new', {}); return; }
+  showError('open-error', null); done(null); setBusy('open', 'Checking the folder…');
+  run({ type: 'plan', ids, dir }, {
+    done: async (r) => {
+      setBusy('open', null);
+      const choices = r.collisions.length ? await askCollisions(r.collisions) : {};
+      if (choices) toFolder(ids, dir, 'here', choices);
+    },
+    error: (r) => { setBusy('open', null); if (!r.cancelled) showError('open-error', r.message); },
   });
 });
+
+function toFolder(ids, dir, mode, choices) {
+  extractJob({ type: 'toFolder', ids, dir, mode, choices }, 'Extracting…', (r) => {
+    const parts = [`Extracted ${plural(r.written, 'file')} to ${r.folder ? `${dir.name}/${r.folder}` : dir.name}.`];
+    if (r.replaced) parts.push(`${plural(r.replaced, 'file')} replaced.`);
+    if (r.renamed) parts.push(`${plural(r.renamed, 'file')} renamed to keep both.`);
+    if (r.skipped) parts.push(`${plural(r.skipped, 'file')} skipped.`);
+    if (r.failed.length) parts.push(`${plural(r.failed.length, 'file')} could not be written: ${r.failed.slice(0, 5).map((f) => `${f.path} (${f.reason})`).join('; ')}${r.failed.length > 5 ? '…' : ''}`);
+    done(parts.join(' '));
+  });
+}
+
+// Shows the names that already exist. Resolves with { path: 'skip' | 'keep' | 'replace' } for every
+// collision, or null when cancelled. Keep both is preselected; Replace is never chosen for the visitor.
+const MAX_COLLISIONS = 200;
+function askCollisions(collisions) {
+  const dialog = $('collide-dialog');
+  const choice = new Map(collisions.map((c) => [c.path, 'keep']));
+  $('collide-title').textContent = collisions.length === 1 ? '1 name already exists' : `${collisions.length.toLocaleString('en-US')} names already exist`;
+  const selects = collisions.slice(0, MAX_COLLISIONS).map((c) => {
+    const li = el('li'); const label = el('span', 'collide-name', c.path);
+    label.append(el('small', '', c.existing === 'directory' ? 'A folder with this name exists. Folders are never replaced.' : c.wanted === 'directory' ? 'A file with this name exists where the archive has a folder.' : 'A file with this name exists.'));
+    const select = el('select'); select.setAttribute('aria-label', `What to do with ${c.path}`);
+    for (const [value, text] of [['skip', 'Skip'], ['keep', 'Keep both'], ['replace', 'Replace']]) { const o = el('option', '', text); o.value = value; o.disabled = value === 'replace' && !c.replaceable; select.append(o); }
+    select.value = 'keep'; select.addEventListener('change', () => choice.set(c.path, select.value));
+    li.append(label, select);
+    return { c, select, li };
+  });
+  $('collide-list').replaceChildren(...selects.map((s) => s.li));
+  const more = collisions.length - selects.length;
+  $('collide-more').hidden = more <= 0;
+  $('collide-more').textContent = `${plural(more, 'more name')} not shown follow the last choice made for all, or Keep both.`;
+  return new Promise((resolve) => {
+    const all = (e) => {
+      const value = e.target.dataset.all; if (!value) return;
+      for (const c of collisions) if (value !== 'replace' || c.replaceable) choice.set(c.path, value);
+      for (const s of selects) s.select.value = choice.get(s.c.path);
+    };
+    const finish = (result) => { dialog.querySelector('.collide-all').removeEventListener('click', all); dialog.onclose = null; $('collide-run').onclick = null; $('collide-cancel').onclick = null; if (dialog.open) dialog.close(); resolve(result); };
+    dialog.querySelector('.collide-all').addEventListener('click', all);
+    $('collide-run').onclick = () => finish(Object.fromEntries(choice));
+    $('collide-cancel').onclick = () => finish(null);
+    dialog.onclose = () => finish(null);
+    dialog.showModal();
+  });
+}
 
 $('extract-zip').addEventListener('click', async () => {
   if (job) return;

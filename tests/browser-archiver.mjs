@@ -55,6 +55,12 @@ bomb.set(enc.encode(`${bombSum.toString(8).padStart(6, '0')}\0 `), 148);
 writeFileSync(`${dir}/bomb.tar`, bomb);
 const haveBomb = tool(has('xz') && 'xz', ['-kf', 'bomb.tar']);
 for (const [name, bytes] of Object.entries(LIBARCHIVE_SAMPLES)) writeFileSync(`${dir}/${name}`, bytes);
+// Names that collide with files already in the chosen folder, and the same archive with report.txt damaged.
+const reportZip = async (entries) => new Uint8Array(await (await createArchive({ items: entries.map(([path, text]) => ({ file: file(path, text), path })), format: 'zip', method: 'store', clean: false, sink: new MemorySink() })).result.arrayBuffer());
+writeFileSync(`${dir}/report.zip`, await reportZip([['report.txt', 'ARCHIVE REPORT'], ['notes.txt', 'archive notes'], ['fresh.txt', 'fresh']]));
+const damaged = await reportZip([['report.txt', 'ARCHIVE REPORT']]);
+damaged[30 + 'report.txt'.length] ^= 1; // first byte of the stored data: the CRC check fails at the end
+writeFileSync(`${dir}/damaged.zip`, damaged);
 if (!have7z || !haveXz) console.log(`skipping ${[!have7z && '7z', !haveXz && 'tar.xz'].filter(Boolean).join(' and ')} fixtures: no tool installed`);
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/usr/sbin/chromium' });
@@ -144,24 +150,100 @@ for (const [label, viewport] of [['desktop', { width: 1280, height: 900 }], ['mo
   assert.deepEqual(rz.entries.map((e) => e.name), ['data.csv', 'notes.txt']);
   assert.equal(rz.entries.some((e) => e.encrypted), false);
 
-  // tar.gz to a folder (the folder picker is answered with the origin's private file system).
+  // tar.gz to a folder (the folder picker is answered with the origin's private file system). By default
+  // the files go into a new folder named after the archive.
   await page.click('#open-another');
   await page.setInputFiles('#open-file', `${dir}/bundle.tar.gz`);
   await page.waitForSelector('#open-panel:not([hidden])');
   assert.match(await page.textContent('#archive-facts'), /tar\.gz archive · 2 files/);
-  await page.evaluate(() => { window.showDirectoryPicker = async () => { const root = await navigator.storage.getDirectory(); return root.getDirectoryHandle('out', { create: true }); }; });
+  await page.evaluate(() => { window.showDirectoryPicker = async () => { const root = await navigator.storage.getDirectory(); return root.getDirectoryHandle(window.pickFolder ?? 'out', { create: true }); }; });
+  assert.equal(await page.isChecked('#extract-here'), false, 'a new folder is the default');
   await page.click('#extract-folder');
   await page.waitForSelector('#open-done:not([hidden])');
-  assert.match(await page.textContent('#open-done'), /Extracted 2 files to out/);
+  assert.match(await page.textContent('#open-done'), /Extracted 2 files to out\/bundle \(extracted\)\./);
   const written = await page.evaluate(async () => {
-    const out = await (await navigator.storage.getDirectory()).getDirectoryHandle('out');
+    const out = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('out')).getDirectoryHandle('bundle (extracted)');
     const pkg = await out.getDirectoryHandle('pkg'); const docs = await pkg.getDirectoryHandle('docs');
     const text = async (d, n) => (await (await d.getFileHandle(n)).getFile()).text();
-    const result = [await text(pkg, 'a.txt'), await text(docs, 'b.txt')];
-    await (await navigator.storage.getDirectory()).removeEntry('out', { recursive: true });
-    return result;
+    return [await text(pkg, 'a.txt'), await text(docs, 'b.txt')];
   });
   assert.deepEqual(written, ['alpha '.repeat(100), 'bravo']);
+  // A second extraction gets its own folder.
+  await page.click('#extract-folder');
+  await page.waitForFunction(() => /bundle \(extracted\) 2/.test(document.querySelector('#open-done').textContent));
+  await page.evaluate(async () => (await navigator.storage.getDirectory()).removeEntry('out', { recursive: true }));
+
+  // Names that already exist in the chosen folder: the preexisting files are never deleted, and are replaced
+  // only after an explicit Replace.
+  const listing = () => page.evaluate(async () => {
+    const files = {};
+    async function walk(d, prefix) { for await (const [n, h] of d.entries()) { if (h.kind === 'file') files[prefix + n] = await (await h.getFile()).text(); else await walk(h, `${prefix}${n}/`); } }
+    await walk(await (await navigator.storage.getDirectory()).getDirectoryHandle('mine'), ''); return files;
+  });
+  const seed = () => page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    await root.removeEntry('mine', { recursive: true }).catch(() => {});
+    const d = await root.getDirectoryHandle('mine', { create: true });
+    for (const [name, text] of [['report.txt', 'VALUABLE ORIGINAL'], ['Notes.TXT', 'MY NOTES']]) { const w = await (await d.getFileHandle(name, { create: true })).createWritable(); await w.write(text); await w.close(); }
+    window.pickFolder = 'mine';
+  });
+  const extractHere = async (path, here) => {
+    await page.click('#open-another'); await page.setInputFiles('#open-file', path); await page.waitForSelector('#open-panel:not([hidden])');
+    await page.setChecked('#extract-here', here); await page.click('#extract-folder');
+  };
+  const original = { 'report.txt': 'VALUABLE ORIGINAL', 'Notes.TXT': 'MY NOTES' };
+  await seed();
+  await extractHere(`${dir}/report.zip`, false);
+  await page.waitForSelector('#open-done:not([hidden])');
+  assert.deepEqual(await listing(), { ...original, 'report (extracted)/report.txt': 'ARCHIVE REPORT', 'report (extracted)/notes.txt': 'archive notes', 'report (extracted)/fresh.txt': 'fresh' });
+
+  // Extract here with the preselected Keep both: both versions stay.
+  await seed();
+  await extractHere(`${dir}/report.zip`, true);
+  await page.waitForSelector('#collide-dialog[open]');
+  assert.match(await page.textContent('#collide-title'), /2 names already exist/);
+  assert.deepEqual(await page.$$eval('#collide-list select', (s) => s.map((x) => x.value)), ['keep', 'keep']);
+  assert.equal(await page.evaluate(() => { const d = document.querySelector('#collide-dialog'); return d.scrollWidth <= d.clientWidth; }), true, `collisions dialog fits at ${label} width`);
+  await page.screenshot({ path: `${shots}/archiver-${label}-collisions.png` });
+  await page.click('#collide-run');
+  await page.waitForSelector('#open-done:not([hidden])');
+  assert.match(await page.textContent('#open-done'), /Extracted 3 files to mine\. 2 files renamed to keep both\./);
+  assert.deepEqual(await listing(), { ...original, 'report (1).txt': 'ARCHIVE REPORT', 'notes (1).txt': 'archive notes', 'fresh.txt': 'fresh' });
+
+  // Cancel writes nothing.
+  await seed();
+  await extractHere(`${dir}/report.zip`, true);
+  await page.waitForSelector('#collide-dialog[open]');
+  await page.click('#collide-cancel');
+  await page.waitForSelector('#collide-dialog', { state: 'hidden' });
+  assert.deepEqual(await listing(), original);
+
+  // Replace chosen for a damaged entry: the entry fails and the original file is still there, unchanged.
+  await seed();
+  await extractHere(`${dir}/damaged.zip`, true);
+  await page.waitForSelector('#collide-dialog[open]');
+  await page.selectOption('select[aria-label="What to do with report.txt"]', 'replace');
+  await page.click('#collide-run');
+  await page.waitForSelector('#open-done:not([hidden])');
+  assert.match(await page.textContent('#open-done'), /could not be written: report\.txt \(.*checksum/);
+  assert.deepEqual(await listing(), original, 'a failed replace leaves the original and no temporary file');
+  // The same damaged entry extracted by default leaves the folder's files alone too.
+  await extractHere(`${dir}/damaged.zip`, false);
+  await page.waitForSelector('#open-done:not([hidden])');
+  assert.deepEqual(await listing(), original);
+
+  // Replace all, chosen explicitly: existing files are replaced under their own names.
+  await seed();
+  await extractHere(`${dir}/report.zip`, true);
+  await page.waitForSelector('#collide-dialog[open]');
+  await page.click('#collide-dialog [data-all=replace]');
+  assert.deepEqual(await page.$$eval('#collide-list select', (s) => s.map((x) => x.value)), ['replace', 'replace']);
+  await page.click('#collide-run');
+  await page.waitForSelector('#open-done:not([hidden])');
+  assert.match(await page.textContent('#open-done'), /2 files replaced\./);
+  assert.deepEqual(await listing(), { 'report.txt': 'ARCHIVE REPORT', 'Notes.TXT': 'archive notes', 'fresh.txt': 'fresh' });
+  await page.setChecked('#extract-here', false);
+  await page.evaluate(async () => { await (await navigator.storage.getDirectory()).removeEntry('mine', { recursive: true }); window.pickFolder = null; });
 
   // A tar that tries to escape the folder: the entry is listed, blocked and never extracted.
   await page.click('#open-another');

@@ -1,5 +1,5 @@
 // OpenDocument: ODT, ODS, ODP and ODG with their templates. The rules here are shared with the cleaner.
-import { parseXml, rootOf, elements, all, walk, get, text, attrNs, attrLocal, dropAttrs, remove, clear, child } from './xml.js';
+import { parseXml, rootOf, elements, all, walk, get, text, attrNs, attrLocal, dropAttrs, prune, clear, child } from './xml.js';
 import { DOC_LIMITS, budget, readPart, entryBlock, rewriteBlock, flag, flagUsers, sample, targetKind, isLeftover } from './package.js';
 import { utf8 } from '../bytes.js';
 
@@ -48,7 +48,7 @@ export async function planOdf(zip, b, options = {}) {
       }
     }
   }
-  const macros = hasMacros(names) ? names.filter((n) => isMacroEntry(n) && !n.endsWith('/')) : [];
+  const macros = new Set(hasMacros(names) ? names.filter((n) => isMacroEntry(n) && !n.endsWith('/')) : []);
   const remove = new Map();
   for (const e of zip.entries) {
     const n = e.name;
@@ -57,7 +57,7 @@ export async function planOdf(zip, b, options = {}) {
     else if (/^Thumbnails\//.test(n)) remove.set(n, 'Thumbnail');
     else if (/^META-INF\/(document|macro)?signatures[^/]*\.xml$/i.test(n)) remove.set(n, 'Digital signature');
     else if (n === 'layout-cache') remove.set(n, 'Unused part');
-    else if (macros.includes(n)) { if (options.removeMacros) remove.set(n, 'Macros'); }
+    else if (macros.has(n)) { if (options.removeMacros) remove.set(n, 'Macros'); }
     else if (manifest && !listed.has(n) && !n.startsWith('META-INF/')) remove.set(n, 'Unused part');
   }
   return { manifest, listed, encrypted, macros, remove, options };
@@ -84,18 +84,20 @@ export function sanitizeOdf(doc, kind, plan) {
     return s;
   }
   if (kind === 'settings') {
+    const dead = [];
     for (const item of all(root, (x) => x.ns === ODF.config && x.local === 'config-item')) {
       const name = get(item, 'name', ODF.config); const value = text(item).trim();
       if (PRINTER_ITEMS.has(name)) { s.printer++; if (name === 'PrinterName' && value) s.printerNames.push(value); }
       else if (SOURCE_ITEMS.has(name)) { if (value) s.sources.push(value); }
       else if (RSID_ITEMS.has(name)) { s.fingerprints++; s.fingerprintBytes += 60; }
       else continue;
-      remove(item); s.changed = true;
+      dead.push(item);
     }
+    if (dead.length) { prune(dead); s.changed = true; }
     return s;
   }
   const accept = plan.options.acceptChanges;
-  const changes = []; const markers = []; const fetched = []; const listeners = [];
+  const changes = []; const markers = []; const fetched = []; const listeners = []; const notes = [];
   walk(root, (el) => {
     const n = dropAttrs(el, (a) => attrNs(el, a) === ODF.officeooo && /rsid$/.test(attrLocal(a)));
     if (n) { s.fingerprints += n; s.fingerprintBytes += n * 30; s.changed = true; }
@@ -105,7 +107,7 @@ export function sanitizeOdf(doc, kind, plan) {
         const body = all(el, (x) => x.ns === ODF.text && x.local === 'p').map(text).join(' ');
         s.comments.push({ who: who.trim(), body });
       }
-      remove(el); s.changed = true; return false;
+      notes.push(el); return false;
     }
     if ((el.ns === ODF.text || el.ns === ODF.table) && el.local === 'tracked-changes') {
       const regions = elements(el).length;
@@ -133,30 +135,31 @@ export function sanitizeOdf(doc, kind, plan) {
     }
     return true;
   });
+  if (notes.length) { prune(notes); s.changed = true; }
   // A linked picture or object goes; its frame goes too when nothing else is left in it.
-  for (const el of fetched) {
-    const frame = el.parent;
-    remove(el);
-    if (frame?.ns === ODF.draw && frame.local === 'frame' && !elements(frame).some((c) => c.ns === ODF.draw)) remove(frame);
+  if (fetched.length) {
+    const frames = [...new Set(fetched.map((el) => el.parent))];
+    prune(fetched);
+    prune(frames.filter((f) => f?.ns === ODF.draw && f.local === 'frame' && !elements(f).some((c) => c.ns === ODF.draw)));
     s.changed = true;
   }
-  if (plan.options.removeMacros) {
-    for (const el of listeners) {
-      const list = el.parent; remove(el); s.macros++; s.changed = true;
-      if (list?.local === 'event-listeners' && !elements(list).length) remove(list);
-    }
+  if (plan.options.removeMacros && listeners.length) {
+    const lists = [...new Set(listeners.map((el) => el.parent))];
+    prune(listeners); s.macros = listeners.length; s.changed = true;
+    prune(lists.filter((l) => l?.local === 'event-listeners' && !elements(l).length));
   }
-  if (accept && (changes.length || markers.length)) { for (const el of [...changes, ...markers]) remove(el); s.changed = true; }
+  if (accept && (changes.length || markers.length)) { prune([...changes, ...markers]); s.changed = true; }
   return s;
 }
 
 export async function parseOdf(zip, r, id) {
   const b = budget(DOC_LIMITS.maxReadBytes);
+  const byName = new Map(zip.entries.map((e) => [e.name, e]));
   const plan = await planOdf(zip, b, { removeMacros: true, acceptChanges: true });
   r.field('Document', 'Format', id.format);
   if (plan.encrypted) { r.field('Document', 'Encrypted', 'Yes'); r.warn('The document is password protected, so its content could not be read.'); }
   for (const [name, kind] of plan.remove) {
-    const e = zip.entries.find((x) => x.name === name);
+    const e = byName.get(name);
     if (!e || kind === 'System leftovers' || kind === 'Macros') continue;
     entryBlock(r, kind, e);
     if (kind === 'Thumbnail') flag(r, 'thumbnail', `${name} is a small picture of the first page, which can show content later removed.`, 'Package');
@@ -165,8 +168,8 @@ export async function parseOdf(zip, r, id) {
       for (const m of (data ? utf8.decode(data) : '').matchAll(/<(?:\w+:)?X509SubjectName>([^<]+)</g)) { r.add('People', 'Signed by', m[1]); flag(r, 'signature', `The digital signature names ${m[1]}. Cleaning removes the signature, which would no longer be valid.`, name); }
     }
   }
-  for (const name of plan.macros) entryBlock(r, 'Macros', zip.entries.find((x) => x.name === name), { note: 'Removed only when macro removal is chosen. Removing macros changes what the document does.' });
-  if (plan.macros.length) flag(r, 'macros', 'The document contains macros, code that can run when it is opened.', 'Basic');
+  for (const name of plan.macros) entryBlock(r, 'Macros', byName.get(name), { note: 'Removed only when macro removal is chosen. Removing macros changes what the document does.' });
+  if (plan.macros.size) flag(r, 'macros', 'The document contains macros, code that can run when it is opened.', 'Basic');
   const hidden = { text: 0, sections: 0, rows: 0, cols: 0, tables: 0, slides: 0, notes: null };
   let skipped = false;
   const media = [];
@@ -192,7 +195,7 @@ export async function parseOdf(zip, r, id) {
   count(hidden.text, 'hidden text passage'); count(hidden.sections, 'hidden section'); count(hidden.rows, 'hidden row');
   count(hidden.cols, 'hidden column'); count(hidden.tables, 'hidden sheet'); count(hidden.slides, 'hidden slide');
   if (parts.length) {
-    const content = zip.entries.find((x) => x.name === 'content.xml') ?? zip.entries[0];
+    const content = byName.get('content.xml') ?? zip.entries[0];
     entryBlock(r, 'Hidden content', content, { removable: false, note: 'Part of the document; reveal and delete it in your editor' });
     r.field('Hidden content', 'Summary', parts.join(', '));
     flag(r, 'hidden', `The document has content that is not shown: ${parts.join(', ')}.`, 'content.xml');

@@ -1,7 +1,7 @@
 // Office Open XML packages: the part and relationship model, the removal plan and the in-part rewrites.
 // The inspector and the cleaner both run these, so what the inspector reports is exactly what the
 // cleaner removes, and a cleaned file inspects as clean.
-import { parseXml, rootOf, serialize, all, walk, elements, get, set, dropAttrs, attrNs, attrLocal, attrValue, remove, unwrap, clear, text } from './xml.js';
+import { parseXml, rootOf, serialize, all, walk, elements, get, set, dropAttrs, attrNs, attrLocal, attrValue, prune, unwrapAll, clear, text } from './xml.js';
 import { DOC_LIMITS, budget, readPart, targetKind, bareName, isLeftover } from './package.js';
 import { utf8 } from '../bytes.js';
 
@@ -140,7 +140,7 @@ export function mainPart(pkg) {
 // remove: Map(part -> kind). dropRels: Set(rel). retarget: Map(rel -> new target). removedIds: Map(source part -> Set(id)).
 export async function planPackage(pkg, options = {}) {
   const remove = new Map(); const dropRels = new Set(); const retarget = new Map(); const external = [];
-  const macros = []; const revisions = []; const vmlNotes = new Set(); const keptXml = [];
+  const macros = new Set(); const revisions = new Set(); const vmlNotes = new Set(); const keptXml = [];
   let customXmlRemoved = false;
   for (const [, list] of pkg.rels) {
     for (const rel of list) {
@@ -161,8 +161,8 @@ export async function planPackage(pkg, options = {}) {
         if (root && root.local === 'DataMashup') keptXml.push(rel.part);
         else if (!(root && root.local === 'Sources' && root.ns === NS.BIB)) { kind = 'Custom XML'; customXmlRemoved = true; }
       }
-      if (MACROS.has(rel.kind)) { macros.push(rel.part); if (options.removeMacros) kind = 'Macros'; }
-      if (REVISIONS.has(rel.kind)) { revisions.push(rel.part); if (options.acceptChanges) kind = 'Tracked changes'; }
+      if (MACROS.has(rel.kind)) { macros.add(rel.part); if (options.removeMacros) kind = 'Macros'; }
+      if (REVISIONS.has(rel.kind)) { revisions.add(rel.part); if (options.acceptChanges) kind = 'Tracked changes'; }
       if (kind && !remove.has(rel.part)) remove.set(rel.part, kind);
     }
   }
@@ -180,31 +180,27 @@ export async function planPackage(pkg, options = {}) {
       } catch { /* left as is; the check afterwards decides */ }
     }
   }
-  // Parts no relationship reaches any more are dropped too. Their kind follows the part that referenced them.
-  const reach = (skip) => {
-    const seen = new Set(); const queue = [''];
-    while (queue.length) {
-      const src = queue.shift();
-      for (const rel of pkg.rels.get(src) ?? []) {
-        if (rel.external || !rel.part || seen.has(rel.part) || (skip && (remove.has(rel.part) || dropRels.has(rel)))) continue;
-        if (!pkg.entries.has(rel.part)) continue;
-        seen.add(rel.part); queue.push(rel.part);
-      }
+  // Parts no relationship reaches any more are dropped too.
+  const reached = new Set(); const queue = [''];
+  for (let k = 0; k < queue.length; k++) {
+    for (const rel of pkg.rels.get(queue[k]) ?? []) {
+      if (rel.external || !rel.part || reached.has(rel.part) || remove.has(rel.part) || dropRels.has(rel) || !pkg.entries.has(rel.part)) continue;
+      reached.add(rel.part); queue.push(rel.part);
     }
-    return seen;
-  };
-  const after = reach(true);
+  }
   const orphans = [];
   for (const [lower, e] of pkg.entries) {
-    if (lower === '[content_types].xml' || /(^|\/)_rels\/[^/]*\.rels$/.test(lower) || remove.has(lower) || after.has(lower)) continue;
+    if (lower === '[content_types].xml' || /(^|\/)_rels\/[^/]*\.rels$/.test(lower) || remove.has(lower) || reached.has(lower)) continue;
     if (isLeftover(e.name)) remove.set(lower, 'System leftovers'); else orphans.push(lower);
   }
-  // A part only a dropped part referenced is reported under that part's kind.
-  for (let changed = true; changed;) {
-    changed = false;
-    for (const lower of orphans) {
-      if (remove.has(lower)) continue;
-      for (const [src, list] of pkg.rels) if (remove.has(src) && list.some((r) => r.part === lower)) { remove.set(lower, remove.get(src)); changed = true; break; }
+  // A part only a dropped part referenced is reported under that part's kind: one walk outward from the
+  // dropped parts.
+  const orphanSet = new Set(orphans);
+  const walkFrom = [...remove.keys()];
+  for (let k = 0; k < walkFrom.length; k++) {
+    const src = walkFrom[k];
+    for (const rel of pkg.rels.get(src) ?? []) {
+      if (rel.part && orphanSet.has(rel.part) && !remove.has(rel.part)) { remove.set(rel.part, remove.get(src)); walkFrom.push(rel.part); }
     }
   }
   for (const lower of orphans) if (!remove.has(lower)) remove.set(lower, 'Unused part');
@@ -233,13 +229,14 @@ export function isNoteShape(shape) {
 
 // Applies the plan's relationship edits to a parsed .rels document.
 export function rewriteRels(doc, pkg, plan) {
-  let changed = false;
+  let changed = false; const dead = [];
   for (const el of elements(rootOf(doc))) {
     const rel = pkg.relByEl.get(el);
     if (!rel) continue;
-    if (plan.dropRels.has(rel)) { remove(el); changed = true; }
+    if (plan.dropRels.has(rel)) { dead.push(el); changed = true; }
     else if (plan.retarget.has(rel)) { set(el, 'Target', '', plan.retarget.get(rel)); changed = true; }
   }
+  prune(dead);
   return changed;
 }
 
@@ -259,32 +256,34 @@ export function sanitizePart(doc, info, plan) {
     return s;
   }
   if (info.family === 'vml' && plan.vmlNotes.has(info.name)) {
-    for (const shape of all(root, (x) => x.ns === NS.V && x.local === 'shape' && isNoteShape(x))) { remove(shape); s.changed = true; }
+    const notes = all(root, (x) => x.ns === NS.V && x.local === 'shape' && isNoteShape(x));
+    if (notes.length) { prune(notes); s.changed = true; }
   }
   // References to relationships the plan removes.
   if (removedIds.size) {
-    const hits = [];
+    const dead = [];
     walk(root, (el) => {
       for (const a of el.attrs) {
-        if ((NS.R.has(attrNs(el, a)) || (attrNs(el, a) === NS.O && attrLocal(a) === 'relid')) && removedIds.has(attrValue(a))) { hits.push([el, a]); }
+        if (!(NS.R.has(attrNs(el, a)) || (attrNs(el, a) === NS.O && attrLocal(a) === 'relid')) || !removedIds.has(attrValue(a))) continue;
+        if (ATTR_ONLY.has(el.local)) el.attrs = el.attrs.filter((x) => x !== a); else dead.push(el);
+        s.changed = true;
       }
     });
-    for (const [el, a] of hits) {
-      if (ATTR_ONLY.has(el.local)) el.attrs = el.attrs.filter((x) => x !== a);
-      else removeWithEmptyExt(el);
-      s.changed = true;
-    }
+    pruneWithEmptyExt(dead);
   }
   if (info.family === 'word') sanitizeWord(root, plan, s);
   else if (info.family === 'xl') sanitizeSheet(root, s);
   return s;
 }
 
-function removeWithEmptyExt(el) {
-  let parent = el.parent;
-  remove(el);
-  while (parent && parent.type === 'el' && (parent.local === 'ext' || parent.local === 'extLst' || parent.local === 'AlternateContent' || parent.local === 'Choice') && !elements(parent).length) {
-    const up = parent.parent; remove(parent); parent = up;
+// Extension containers left empty by a removal are not valid, so they go too, level by level.
+const CONTAINERS = new Set(['ext', 'extLst', 'AlternateContent', 'Choice']);
+function pruneWithEmptyExt(nodes) {
+  let level = nodes;
+  while (level.length) {
+    const parents = new Set(level.map((n) => n.parent).filter(Boolean));
+    prune(level);
+    level = [...parents].filter((p) => p.type === 'el' && p.parent && CONTAINERS.has(p.local) && !elements(p).length);
   }
 }
 
@@ -293,10 +292,13 @@ const TRACK_CHANGE = new Set(['rPrChange', 'pPrChange', 'sectPrChange', 'tblPrCh
 const TRACK_RANGE = new Set(['moveFromRangeStart', 'moveFromRangeEnd', 'moveToRangeStart', 'moveToRangeEnd', 'customXmlInsRangeStart', 'customXmlInsRangeEnd', 'customXmlDelRangeStart', 'customXmlDelRangeEnd', 'customXmlMoveFromRangeStart', 'customXmlMoveFromRangeEnd', 'customXmlMoveToRangeStart', 'customXmlMoveToRangeEnd', 'cellIns', 'cellDel', 'cellMerge']);
 const COMMENT_MARK = new Set(['commentRangeStart', 'commentRangeEnd', 'commentReference']);
 const SETTINGS_DROP = new Set(['rsids', 'docVars', 'mailMerge']);
+const emptyRun = (run) => run?.local === 'r' && !elements(run).some((c) => c.local !== 'rPr' && !c.dead);
 
+// Removals are collected during the walk and applied in batches, so the work stays linear even for
+// parts crafted with hundreds of thousands of sibling elements.
 function sanitizeWord(root, plan, s) {
   const accept = plan.options.acceptChanges;
-  const wraps = []; const markers = []; const drops = []; const rowsDeleted = []; const marksDeleted = []; const strays = [];
+  const wraps = []; const markers = []; const tracked = []; const anchors = []; const rows = []; const joins = []; const strays = []; const settings = [];
   walk(root, (el) => {
     const n = dropAttrs(el, (a) => {
       const ns = attrNs(el, a); const local = attrLocal(a);
@@ -306,7 +308,7 @@ function sanitizeWord(root, plan, s) {
     });
     if (n) { s.fingerprints += n; s.changed = true; }
     if (!isW(el)) {
-      if ((el.ns === NS.W14 || el.ns === NS.W15) && el.local === 'docId' && root.local === 'settings') { s.ids.push(get(el, 'val', el.ns)); s.fingerprints++; s.fingerprintBytes += 40; remove(el); s.changed = true; return false; }
+      if ((el.ns === NS.W14 || el.ns === NS.W15) && el.local === 'docId' && root.local === 'settings') { s.ids.push(get(el, 'val', el.ns)); s.fingerprints++; s.fingerprintBytes += 40; settings.push(el); return false; }
       return true;
     }
     const local = el.local;
@@ -318,45 +320,62 @@ function sanitizeWord(root, plan, s) {
       if (local === 'rsids') { s.fingerprints += all(el, () => true).length; s.fingerprintBytes += serialize(el).length; }
       else if (local === 'docVars') for (const v of all(el, (x) => isW(x) && x.local === 'docVar')) s.docVars.push([get(v, 'name', v.ns) ?? '', get(v, 'val', v.ns) ?? '']);
       else { s.mailMerge++; for (const x of all(el, (y) => isW(y) && (y.local === 'connectString' || y.local === 'query'))) s.paths.push(get(x, 'val', x.ns) ?? ''); }
-      remove(el); s.changed = true; return false;
+      settings.push(el); return false;
     }
-    if (COMMENT_MARK.has(local)) { s.comments++; drops.push(el); return false; }
-    if (local === 'dataBinding' && plan.customXmlRemoved) { drops.push(el); return false; }
+    if (COMMENT_MARK.has(local)) { s.comments++; anchors.push(el); return false; }
+    if (local === 'dataBinding' && plan.customXmlRemoved) { anchors.push(el); return false; }
     const parent = el.parent?.local;
     if (TRACK_WRAP.has(local)) {
       s.tracked++; noteChange(el, s);
-      if (parent === 'rPr' && el.parent.parent?.local === 'pPr') { if (local === 'del' || local === 'moveFrom') marksDeleted.push(el); else markers.push(el); }
-      else if (parent === 'trPr') { if (local === 'del') rowsDeleted.push(el); else markers.push(el); }
+      if (parent === 'rPr' && el.parent.parent?.local === 'pPr') { markers.push(el); if (local === 'del' || local === 'moveFrom') joins.push(el.parent.parent.parent); }
+      else if (parent === 'trPr') { markers.push(el); if (local === 'del') rows.push(el.parent.parent); }
       else if (parent === 'rPr' || parent === 'tcPr' || parent === 'numPr') markers.push(el);
-      else if (local === 'del' || local === 'moveFrom') { drops.push(el); return false; }
+      else if (local === 'del' || local === 'moveFrom') { tracked.push(el); return false; }
       else wraps.push(el);
       return true;
     }
-    if (TRACK_CHANGE.has(local) || TRACK_RANGE.has(local)) { s.tracked++; noteChange(el, s); drops.push(el); return false; }
+    if (TRACK_CHANGE.has(local) || TRACK_RANGE.has(local)) { s.tracked++; noteChange(el, s); tracked.push(el); return false; }
     if (local === 'delText' || local === 'delInstrText') { strays.push(el); return false; }
     return true;
   });
-  // Comment anchors go whatever the tracked-change decision is.
-  for (const el of drops.filter((x) => COMMENT_MARK.has(x.local) || x.local === 'dataBinding')) { const run = el.parent; remove(el); if (run?.local === 'r' && !elements(run).some((c) => c.local !== 'rPr')) remove(run); s.changed = true; }
-  neutralizeFields(root, s);
-  if (!accept) return;
-  for (const el of drops.filter((x) => !COMMENT_MARK.has(x.local) && x.local !== 'dataBinding')) remove(el);
-  for (const el of strays) remove(el);
-  for (const el of rowsDeleted) { const row = el.parent.parent; if (row?.local === 'tr') remove(row); }
-  for (const el of marksDeleted) {
-    const p = el.parent.parent.parent; remove(el);
-    if (p?.local !== 'p' || !p.parent) continue;
-    const siblings = elements(p.parent); const next = siblings[siblings.indexOf(p) + 1];
-    if (!next || next.local !== 'p' || !isW(next)) continue;
-    const moving = p.children.filter((c) => !(c.type === 'el' && c.local === 'pPr'));
-    const at = next.children.findIndex((c) => c.type === 'el' && c.local === 'pPr') + 1;
-    for (const c of moving) c.parent = next;
-    next.children.splice(at, 0, ...moving);
-    remove(p);
+  if (settings.length) { prune(settings); s.changed = true; }
+  // Comment anchors go whatever the tracked-change decision is, with runs they leave empty.
+  if (anchors.length) {
+    const runs = [...new Set(anchors.map((a) => a.parent))];
+    prune(anchors);
+    prune(runs.filter(emptyRun));
+    s.changed = true;
   }
-  for (const el of wraps) unwrap(el);
-  for (const el of markers) remove(el);
-  if (s.tracked) s.changed = true;
+  neutralizeFields(root, s);
+  if (!accept || !s.tracked) return;
+  prune([...tracked, ...strays, ...rows.filter((r) => r?.local === 'tr'), ...markers]);
+  joinParagraphs(joins.filter((p) => p?.local === 'p' && isW(p) && !p.dead));
+  unwrapAll(wraps.filter((w) => !w.dead));
+  s.changed = true;
+}
+
+// A deleted paragraph mark joins the paragraph to the next one: its content moves to the start of the
+// next paragraph, which keeps its own properties. Done in one pass per parent.
+function joinParagraphs(paragraphs) {
+  const marked = new Set(paragraphs);
+  for (const parent of new Set(paragraphs.map((p) => p.parent))) {
+    const out = []; let carry = [];
+    const list = parent.children;
+    const nextElement = (k) => { for (let j = k + 1; j < list.length; j++) if (list[j].type === 'el') return list[j]; return null; };
+    list.forEach((c, k) => {
+      if (marked.has(c)) {
+        const next = nextElement(k);
+        if (next && next.local === 'p' && isW(next)) { carry.push(...c.children.filter((x) => !(x.type === 'el' && x.local === 'pPr'))); return; }
+      }
+      if (carry.length && c.type === 'el' && c.local === 'p') {
+        const at = c.children.findIndex((x) => x.type === 'el' && x.local === 'pPr') + 1;
+        for (const x of carry) x.parent = c;
+        c.children.splice(at, 0, ...carry); carry = [];
+      }
+      out.push(c);
+    });
+    parent.children = out;
+  }
 }
 
 function noteChange(el, s) {
@@ -368,51 +387,54 @@ function noteChange(el, s) {
 // Turns fields that fetch content (INCLUDEPICTURE, LINK, DDE…) into their last result, so opening the
 // document fetches nothing. Clickable HYPERLINK fields are only listed.
 function neutralizeFields(root, s) {
+  const simple = [];
   for (const f of all(root, (x) => isW(x) && x.local === 'fldSimple')) {
     const instr = get(f, 'instr', f.ns) ?? '';
-    if (AUTO_FIELD.test(instr)) { s.fields.push(instr.trim()); unwrap(f); s.changed = true; }
+    if (AUTO_FIELD.test(instr)) { s.fields.push(instr.trim()); simple.push(f); }
     else if (/^\s*HYPERLINK\b/i.test(instr)) s.links.push(fieldTarget(instr));
   }
-  const stack = [];
+  if (simple.length) { unwrapAll(simple); s.changed = true; }
+  const stack = []; const dead = []; const touched = [];
   const finish = (f) => {
     if (/^\s*HYPERLINK\b/i.test(f.instr)) { s.links.push(fieldTarget(f.instr)); return; }
     if (!AUTO_FIELD.test(f.instr)) return;
     s.fields.push(f.instr.trim()); s.changed = true;
-    for (const run of f.instrRuns) remove(run);
-    for (const [run, mark] of [[f.separate, f.sepMark], [f.end, f.endMark]]) {
-      if (!run) continue;
-      remove(mark);
-      if (!elements(run).some((c) => c.local !== 'rPr')) remove(run);
-    }
+    dead.push(...f.instrRuns);
+    for (const [run, mark] of [[f.separate, f.sepMark], [f.end, f.endMark]]) if (run) { dead.push(mark); touched.push(run); }
   };
   for (const run of all(root, (x) => isW(x) && x.local === 'r')) {
     for (const c of elements(run)) {
       if (!isW(c)) continue;
       if (c.local === 'fldChar') {
         const type = get(c, 'fldCharType', c.ns);
-        if (type === 'begin') stack.push({ instr: '', instrRuns: [run], state: 'instr' });
+        if (type === 'begin') { if (stack.length < 64) stack.push({ instr: '', instrRuns: [run], state: 'instr' }); }
         else if (type === 'separate' && stack.length && stack.at(-1).state === 'instr') Object.assign(stack.at(-1), { state: 'result', separate: run, sepMark: c });
         else if (type === 'end' && stack.length) { const f = stack.pop(); f.end = run; f.endMark = c; finish(f); }
-      } else if (c.local === 'instrText' && stack.length && stack.at(-1).state === 'instr') stack.at(-1).instr += text(c);
+      } else if (c.local === 'instrText' && stack.length && stack.at(-1).state === 'instr' && stack.at(-1).instr.length < 4096) stack.at(-1).instr += text(c);
     }
     for (const f of stack) if (f.state === 'instr' && f.instrRuns.at(-1) !== run) f.instrRuns.push(run);
   }
+  if (!dead.length) return;
+  prune(dead);
+  prune(touched.filter((run) => !run.dead && emptyRun(run)));
 }
 
 function sanitizeSheet(root, s) {
+  const dead = [];
   walk(root, (el) => {
     const n = dropAttrs(el, (a) => attrLocal(a) === 'uid' && XR.test(attrNs(el, a)));
     if (n) { s.fingerprints += n; s.fingerprintBytes += n * 50; s.changed = true; }
     if (el.ns === NS.MC && el.local === 'AlternateContent' && all(el, (x) => x.ns === NS.X15AC && x.local === 'absPath').length) {
       for (const p of all(el, (x) => x.ns === NS.X15AC && x.local === 'absPath')) s.paths.push(get(p, 'url') ?? '');
-      remove(el); s.changed = true; return false;
+      dead.push(el); return false;
     }
-    if (XR.test(el.ns) && el.local === 'revisionPtr') { s.ids.push(get(el, 'documentId') ?? ''); s.fingerprints++; s.fingerprintBytes += serialize(el).length; remove(el); s.changed = true; return false; }
-    if (NS.S.has(el.ns) && el.local === 'fileVersion' && root.local === 'workbook') { s.software = [get(el, 'appName'), get(el, 'lastEdited'), get(el, 'rupBuild')].filter(Boolean).join(' '); s.fingerprints++; s.fingerprintBytes += serialize(el).length; remove(el); s.changed = true; return false; }
+    if (XR.test(el.ns) && el.local === 'revisionPtr') { s.ids.push(get(el, 'documentId') ?? ''); s.fingerprints++; s.fingerprintBytes += serialize(el).length; dead.push(el); return false; }
+    if (NS.S.has(el.ns) && el.local === 'fileVersion' && root.local === 'workbook') { s.software = [get(el, 'appName'), get(el, 'lastEdited'), get(el, 'rupBuild')].filter(Boolean).join(' '); s.fingerprints++; s.fingerprintBytes += serialize(el).length; dead.push(el); return false; }
     if (NS.S.has(el.ns) && el.local === 'fileSharing' && get(el, 'userName')) { s.people.push(get(el, 'userName')); dropAttrs(el, (a) => a.name === 'userName'); s.changed = true; }
     if (NS.S.has(el.ns) && el.local === 'connection' && get(el, 'refreshOnLoad')) { s.refresh++; dropAttrs(el, (a) => a.name === 'refreshOnLoad'); s.changed = true; }
     return true;
   });
+  if (dead.length) { prune(dead); s.changed = true; }
 }
 
 // Which rewrite family an XML part belongs to, or null for parts that are copied unchanged.

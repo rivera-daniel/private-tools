@@ -7,6 +7,9 @@ import { readZip, readEntry, writeZip } from '../site/tools/lib/zip/index.js';
 import { parseXml } from '../site/tools/lib/metadata/documents/xml.js';
 import { PERSON, TRACKER, docx, xlsx, pptx, odt, epub, rawZip, unixExtra, timeExtra, ntfsExtra, dos } from './fixtures/documents.js';
 
+const within = async (ms, fn) => { const started = Date.now(); const out = await fn(); assert.ok(Date.now() - started < ms, `finished in ${Date.now() - started} ms`); return out; };
+const rebuild = async (u8, change) => { const zip = readZip(u8); const list = []; for (const e of zip.entries) list.push({ name: e.name, data: await readEntry(zip, e), method: e.name === 'mimetype' ? 0 : undefined }); return writeZip(change(list)); };
+
 const enc = new TextEncoder(); const dec = new TextDecoder();
 const titles = (r) => r.signals.map((s) => s.title);
 const kinds = (r) => r.blocks.map((b) => b.kind);
@@ -276,7 +279,11 @@ test('EPUB: package metadata, store record and remote resources found and remove
   assert.equal(zip.entries[0].name, 'mimetype');
   assert.ok(!files.has('iTunesMetadata.plist') && !files.has('META-INF/calibre_bookmarks.txt'));
   const opf = text('OEBPS/content.opf');
-  for (const secret of [PERSON.name, 'calibre', 'Example Press', 'remote-resources', '2025-']) assert.ok(!opf.includes(secret), `${secret} is gone`);
+  for (const secret of [PERSON.name, 'calibre', 'Example Press', 'remote-resources', '2025-', 'calibre_id', '8812']) assert.ok(!opf.includes(secret), `${secret} is gone`);
+  assert.ok(r.blocks.some((b) => b.kind === 'Properties' && b.container === 'OEBPS/toc.ncx'), 'the table of contents author is found');
+  const ncx = text('OEBPS/toc.ncx');
+  assert.ok(!ncx.includes(PERSON.name) && !ncx.includes('calibre'), 'the table of contents loses author and generator');
+  assert.match(ncx, /dtb:uid/);
   for (const needed of ['dc:identifier', 'dc:title', 'dc:language', 'dcterms:modified', 'name="cover"', 'rendition:layout']) assert.ok(opf.includes(needed), `${needed} stays`);
   assert.ok(!/tracker\.example|fonts\.example/.test(text('OEBPS/text/ch1.xhtml') + text('OEBPS/style.css')));
   assert.match(text('OEBPS/text/ch1.xhtml'), /&#160;starts/, 'untouched text is written back as it was');
@@ -389,6 +396,27 @@ test('hostile: malformed XML, entity expansion and deep nesting are refused, not
   assert.throws(() => parseXml('<a>&undefined;</a>'));
   assert.throws(() => parseXml('<a/><b/>'));
   assert.doesNotThrow(() => parseXml('<a>&nbsp;</a>', { lenient: true }));
+});
+
+test('hostile: crafted entry, item and relationship counts stay fast', async () => {
+  const many = await rebuild(await odt(), (list) => [...list, ...Array.from({ length: 80000 }, (_, i) => ({ name: `junk/${i}.txt`, data: new Uint8Array(), method: 0 }))]);
+  const odtResult = await within(15000, async () => { await inspectFile(many, 'many.odt'); return cleanFile(many, 'many.odt'); });
+  assert.ok(odtResult.ok, odtResult.reason);
+  assert.equal(readZip(odtResult.data).entries.length, 7);
+  const items = Array.from({ length: 80000 }, (_, i) => (i % 2 ? `<item id="r${i}" href="https://cdn.example/${i}.png" media-type="image/png"/>` : `<item id="l${i}" href="missing/${i}.xhtml" media-type="application/xhtml+xml"/>`)).join('');
+  const book = await rebuild(await epub(), (list) => list.map((e) => (e.name === 'OEBPS/content.opf' ? { ...e, data: enc.encode(dec.decode(e.data).replace('</manifest>', `${items}</manifest>`)) } : e)));
+  const epubResult = await within(15000, async () => { await inspectFile(book, 'big.epub'); return cleanFile(book, 'big.epub'); });
+  assert.ok(epubResult.ok, epubResult.reason);
+  const chain = 1000;
+  const word = await rebuild(await docx(), (list) => {
+    const rel = (target) => enc.encode(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="urn:example:part" Target="${target}"/></Relationships>`);
+    const extra = [{ name: 'word/_rels/comments.xml.rels', data: rel('x0.xml') }];
+    for (let i = 0; i < chain; i++) extra.push({ name: `word/x${i}.xml`, data: enc.encode('<x/>') }, { name: `word/_rels/x${i}.xml.rels`, data: rel(`x${i + 1}.xml`) });
+    return [...list, ...extra.reverse()];
+  });
+  const docxResult = await within(15000, async () => { await inspectFile(word, 'chain.docx'); return cleanFile(word, 'chain.docx'); });
+  assert.ok(docxResult.ok, docxResult.reason);
+  assert.ok(![...readZip(docxResult.data).entries].some((e) => /word\/x\d+\.xml/.test(e.name)), 'the whole chain goes with the comments');
 });
 
 test('non-ZIP input and a ZIP name on plain data are not claimed', async () => {

@@ -1,7 +1,7 @@
 // OpenDocument cleaner: drops thumbnails, signatures and unlisted files, empties meta.xml, rewrites
 // content, styles and settings, and keeps the manifest in step with the entries.
 import { writeZip } from '../../zip/index.js';
-import { parseXml, all, get, remove, serialize } from '../../metadata/documents/xml.js';
+import { parseXml, all, get, prune, serialize } from '../../metadata/documents/xml.js';
 import { planOdf, sanitizeOdf, odfKind, ODF } from '../../metadata/documents/odf.js';
 import { DOC_LIMITS, budget, readPart } from '../../metadata/documents/package.js';
 import { utf8 } from '../../metadata/bytes.js';
@@ -17,7 +17,8 @@ export async function cleanOdf(zip, report, options) {
   if (plan.encrypted) refuse('This document is password protected. It cannot be rewritten without the password, so it was left untouched.');
   if (!plan.manifest) refuse('The document has no readable manifest, so it was left untouched.');
   const out = new Map(); const removed = archiveRemovals(report);
-  for (const [name, kind] of plan.remove) removed.push({ kind, container: name, bytes: zip.entries.find((e) => e.name === name)?.size ?? 0 });
+  const byName = new Map(zip.entries.map((e) => [e.name, e]));
+  for (const [name, kind] of plan.remove) removed.push({ kind, container: name, bytes: byName.get(name)?.size ?? 0 });
   const images = budget(DOC_LIMITS.maxImageBytes);
   for (const e of zip.entries) {
     if (plan.remove.has(e.name) || e.directory) continue;
@@ -41,15 +42,19 @@ export async function cleanOdf(zip, report, options) {
     if (s.remote.length || s.paths.length) removed.push({ kind: 'Remote resource', container: e.name, bytes: 0 });
     if (s.sources.length) removed.push({ kind: 'Data source', container: e.name, bytes: 0 });
   }
-  // The manifest lists exactly the entries that remain.
+  // The manifest lists exactly the entries that remain. A folder entry goes only when the cleaner emptied it.
+  // Folders are collected 32 levels deep at most; a deeper folder entry is simply kept.
+  const folders = (names) => { const out = new Set(); for (const n of names) { let at = -1; for (let k = 0; k < 32 && (at = n.indexOf('/', at + 1)) >= 0; k++) out.add(n.slice(0, at + 1)); } return out; };
   const kept = new Set(zip.entries.filter((e) => !plan.remove.has(e.name)).map((e) => e.name));
-  let manifestChanged = false;
+  const keptFolders = folders(kept); const emptied = folders(plan.remove.keys());
+  const dead = [];
   for (const fe of all(plan.manifest, (x) => x.ns === ODF.manifest && x.local === 'file-entry')) {
     const path = get(fe, 'full-path', ODF.manifest) ?? '';
-    // A folder entry goes only when the cleaner emptied the folder.
-    const gone = path.endsWith('/') ? path !== '/' && [...plan.remove.keys()].some((n) => n.startsWith(path)) && ![...kept].some((n) => n.startsWith(path)) : !kept.has(path);
-    if (gone) { remove(fe); manifestChanged = true; }
+    const gone = path.endsWith('/') ? path !== '/' && emptied.has(path) && !keptFolders.has(path) : !kept.has(path);
+    if (gone) dead.push(fe);
   }
+  prune(dead);
+  const manifestChanged = dead.length > 0;
   if (manifestChanged) out.set('META-INF/manifest.xml', serialize(plan.manifest));
   const entries = [];
   const mimetype = zip.entries.find((e) => e.name === 'mimetype');
@@ -61,7 +66,7 @@ export async function cleanOdf(zip, report, options) {
   }
   const result = await writeZip(entries);
   verify(result, out, plan.manifest);
-  const keepMacros = !options.removeMacros && plan.macros.length > 0;
+  const keepMacros = !options.removeMacros && plan.macros.size > 0;
   const keptList = report.blocks.filter((x) => x.removable === false).map((x) => `${x.kind} (${x.container})${x.note ? `: ${x.note}` : ''}`);
   if (keepMacros) keptList.push('Macros (Basic): kept because removing them changes what the document does');
   return { data: result, removed, kept: keptList, allowed: (x) => keepMacros && x.kind === 'Macros' };

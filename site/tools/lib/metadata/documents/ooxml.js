@@ -43,7 +43,7 @@ export async function parseOoxml(zip, r, id) {
   for (const [lower, kind] of plan.remove) {
     const e = pkg.entries.get(lower);
     if (!e || /(^|\/)_rels\//.test(lower) || kind === 'System leftovers') continue;
-    if (plan.macros.includes(lower) || plan.revisions.includes(lower)) continue;
+    if (plan.macros.has(lower) || plan.revisions.has(lower)) continue;
     entryBlock(r, kind, e);
     try { await describeDropped(r, pkg, e, kind, unused); }
     catch { r.warn('Some metadata parts could not be read.'); }

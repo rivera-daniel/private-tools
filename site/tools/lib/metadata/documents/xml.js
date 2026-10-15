@@ -191,5 +191,19 @@ export function unwrap(el) {
   for (const c of el.children) c.parent = el.parent;
   list.splice(k, 1, ...el.children);
 }
+// Removes many nodes with one pass per parent instead of one search per node.
+export function prune(nodes) {
+  const parents = new Set();
+  for (const n of nodes) if (n?.parent) { n.dead = true; parents.add(n.parent); }
+  for (const p of parents) p.children = p.children.filter((c) => !c.dead);
+}
+
+// Replaces each node by its children, nested ones included, with one pass per parent.
+export function unwrapAll(nodes) {
+  const marked = new Set(nodes);
+  const expand = (list, parent) => list.flatMap((c) => (marked.has(c) ? expand(c.children, parent) : [Object.assign(c, { parent })]));
+  for (const p of new Set(nodes.map((n) => n.parent).filter((x) => x && !marked.has(x)))) p.children = expand(p.children, p);
+}
+
 export function clear(el) { el.children = []; el.selfClose = true; }
 export const elements = (el) => el.children.filter((c) => c.type === 'el');

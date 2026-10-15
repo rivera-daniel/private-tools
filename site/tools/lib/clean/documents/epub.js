@@ -2,7 +2,7 @@
 // positions dropped, remote resources removed from content documents and style sheets.
 import { writeZip } from '../../zip/index.js';
 import { parseXml, serialize } from '../../metadata/documents/xml.js';
-import { planEpub, sanitizeOpf, sanitizeContent, mayLoadRemote, contentParts } from '../../metadata/documents/epub.js';
+import { planEpub, sanitizeOpf, sanitizeNcx, sanitizeContent, mayLoadRemote, contentParts } from '../../metadata/documents/epub.js';
 import { DOC_LIMITS, budget, readPart } from '../../metadata/documents/package.js';
 import { utf8 } from '../../metadata/bytes.js';
 import { refuse, copyEntry, cleanPicture, reopen, archiveRemovals } from './common.js';
@@ -15,7 +15,8 @@ export async function cleanEpub(zip, report) {
   if (plan.drm) refuse('This book is DRM protected. It cannot be rewritten, so it was left untouched.');
   if (!plan.opf) refuse('The book has no readable package document, so it was left untouched.');
   const out = new Map(); const removed = archiveRemovals(report);
-  for (const [name, kind] of plan.remove) removed.push({ kind, container: name, bytes: zip.entries.find((e) => e.name === name)?.size ?? 0 });
+  const byName = new Map(zip.entries.map((e) => [e.name, e]));
+  for (const [name, kind] of plan.remove) removed.push({ kind, container: name, bytes: byName.get(name)?.size ?? 0 });
   const s = sanitizeOpf(plan.opf);
   if (s.changed) {
     out.set(plan.opfPath, serialize(plan.opf));
@@ -32,6 +33,12 @@ export async function cleanEpub(zip, report) {
     const data = await readPart(zip, e, b);
     if (!data) refuse(`${e.name} is too large to clean safely, so the book was left untouched.`);
     const t = utf8.decode(data);
+    if (kind === 'ncx') {
+      let doc;
+      try { doc = parseXml(t); } catch (error) { refuse(`${e.name} is not well-formed (${error.message}), so the book was left untouched.`); }
+      if (sanitizeNcx(doc).changed) { out.set(e.name, serialize(doc)); removed.push({ kind: 'Properties', container: e.name, bytes: 0 }); }
+      continue;
+    }
     if (!mayLoadRemote(t)) continue;
     let c;
     try { c = sanitizeContent(t, kind); } catch (error) { refuse(`${e.name} is not well-formed (${error.message}), so the book was left untouched.`); }

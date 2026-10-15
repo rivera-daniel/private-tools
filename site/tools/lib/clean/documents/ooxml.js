@@ -67,9 +67,9 @@ export async function cleanOoxml(zip, report, options) {
   }
   const result = await writeZip(entries);
   await verify(result, pkg, plan, out);
-  const keepMacros = !options.removeMacros && plan.macros.length > 0;
+  const keepMacros = !options.removeMacros && plan.macros.size > 0;
   const kept = report.blocks.filter((b) => b.removable === false).map((b) => `${b.kind} (${b.container})${b.note ? `: ${b.note}` : ''}`);
-  if (keepMacros) kept.push(...plan.macros.map((m) => `Macros (${pkg.entries.get(m)?.name}): kept because removing them changes what the document does`));
+  if (keepMacros) kept.push(...[...plan.macros].map((m) => `Macros (${pkg.entries.get(m)?.name}): kept because removing them changes what the document does`));
   return { data: result, removed, kept, allowed: (b) => keepMacros && b.kind === 'Macros' };
 }
 

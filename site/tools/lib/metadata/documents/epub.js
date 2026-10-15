@@ -1,5 +1,5 @@
 // EPUB 2 and 3. The rules here are shared with the cleaner.
-import { parseXml, rootOf, elements, all, get, set, text, remove, dropAttrs, attrLocal, attrValue, escapeText, serialize } from './xml.js';
+import { parseXml, rootOf, elements, all, get, set, text, prune, dropAttrs, attrLocal, attrValue, escapeText, serialize } from './xml.js';
 import { DOC_LIMITS, budget, readPart, entryBlock, rewriteBlock, flag, sample, targetKind, isLeftover } from './package.js';
 import { resolveTarget } from './opc.js';
 import { utf8 } from '../bytes.js';
@@ -65,12 +65,17 @@ export function sanitizeOpf(doc) {
   const root = rootOf(doc);
   const metadata = root && all(root, (x) => x.ns === OPF && x.local === 'metadata')[0];
   if (!metadata) return s;
-  const dropped = new Set();
-  const drop = (el, key, value) => { s.fields.push([key, value]); const id = get(el, 'id'); if (id) dropped.add(`#${id}`); remove(el); };
+  const dead = []; const refiners = new Map();
+  const drop = (el, key, value) => { s.fields.push([key, value]); dead.push(el); };
+  const unique = get(root, 'unique-identifier');
   for (const el of elements(metadata)) {
+    const refines = el.local === 'meta' ? get(el, 'refines') : undefined;
+    // Only the identifier the package names stays; others (library IDs, store IDs) fingerprint a copy.
+    if (el.ns === DC && el.local === 'identifier' && unique && get(el, 'id') !== unique) { drop(el, 'identifier', text(el).trim()); continue; }
+    if (refines) { if (!refiners.has(refines)) refiners.set(refines, []); refiners.get(refines).push(el); }
     if (el.ns === DC && DC_DROP.has(el.local)) { drop(el, el.local, text(el).trim()); continue; }
     if (el.local === 'meta') {
-      const name = get(el, 'name'); const property = get(el, 'property'); const refines = get(el, 'refines');
+      const name = get(el, 'name'); const property = get(el, 'property');
       if (name !== undefined) { if (name !== 'cover') drop(el, name, get(el, 'content') ?? ''); continue; }
       if (property === 'dcterms:modified' && !refines) {
         if (text(el).trim() !== MODIFIED) { s.fields.push(['modified', text(el).trim()]); el.children = [{ type: 'text', raw: escapeText(MODIFIED), parent: el }]; }
@@ -79,31 +84,41 @@ export function sanitizeOpf(doc) {
       if (!refines && !META_KEEP.test(property ?? '')) drop(el, property ?? 'meta', text(el).trim());
       continue;
     }
-    if (el.local === 'link' && isRemote(get(el, 'href') ?? '')) { s.remote.push(get(el, 'href')); remove(el); }
+    if (el.local === 'link' && isRemote(get(el, 'href') ?? '')) { s.remote.push(get(el, 'href')); dead.push(el); }
   }
   // Refinements of removed elements go with them, and so do refinements of those.
-  for (let again = true; again;) {
-    again = false;
-    for (const el of elements(metadata)) {
-      const refines = el.local === 'meta' ? get(el, 'refines') : undefined;
-      if (refines && dropped.has(refines)) { drop(el, get(el, 'property') ?? 'meta', text(el).trim()); again = true; }
-    }
+  const queue = [...dead]; const gone = new Set(dead);
+  for (let k = 0; k < queue.length; k++) {
+    const id = get(queue[k], 'id');
+    for (const el of (id && refiners.get(`#${id}`)) || []) if (!gone.has(el)) { gone.add(el); queue.push(el); drop(el, get(el, 'property') ?? 'meta', text(el).trim()); }
   }
   const manifest = all(root, (x) => x.ns === OPF && x.local === 'manifest')[0];
+  const spineRefs = new Map();
+  for (const ref of all(root, (x) => x.local === 'itemref')) { const id = get(ref, 'idref'); if (!spineRefs.has(id)) spineRefs.set(id, []); spineRefs.get(id).push(ref); }
   for (const item of manifest ? elements(manifest) : []) {
     const href = get(item, 'href') ?? '';
-    if (isRemote(href)) {
-      s.remote.push(href);
-      const id = get(item, 'id');
-      for (const ref of all(root, (x) => x.local === 'itemref' && get(x, 'idref') === id)) remove(ref);
-      remove(item);
-    } else if (/\bremote-resources\b/.test(get(item, 'properties') ?? '')) {
+    if (isRemote(href)) { s.remote.push(href); dead.push(item, ...(spineRefs.get(get(item, 'id')) ?? [])); }
+    else if (/\bremote-resources\b/.test(get(item, 'properties') ?? '')) {
       const rest = get(item, 'properties').split(/\s+/).filter((p) => p && p !== 'remote-resources');
       if (rest.length) set(item, 'properties', '', rest.join(' ')); else dropAttrs(item, (a) => a.name === 'properties');
       s.changed = true;
     }
   }
+  prune(dead);
   if (s.fields.length || s.remote.length) s.changed = true;
+  return s;
+}
+
+// The EPUB 2 table of contents repeats the author and can name the program that made it.
+const NCX_KEEP = /^dtb:(uid|depth|totalPageCount|maxPageNumber)$/;
+export function sanitizeNcx(doc) {
+  const s = { fields: [], changed: false }; const dead = [];
+  for (const el of all(doc, (x) => x.local === 'docAuthor' || (x.local === 'meta' && x.parent?.local === 'head'))) {
+    if (el.local === 'meta' && NCX_KEEP.test(get(el, 'name') ?? '')) continue;
+    s.fields.push([el.local === 'meta' ? get(el, 'name') ?? 'meta' : 'docAuthor', el.local === 'meta' ? get(el, 'content') ?? '' : text(el).trim()]);
+    dead.push(el);
+  }
+  if (dead.length) { prune(dead); s.changed = true; }
   return s;
 }
 
@@ -140,7 +155,7 @@ export function sanitizeContent(value, kind) {
       }
     }
   }
-  for (const el of fetchers) if (el.parent) remove(el);
+  prune(fetchers);
   for (const [el, a] of attrs) el.attrs = el.attrs.filter((x) => x !== a);
   return { remote, out: changed || fetchers.length || attrs.length ? serialize(doc) : null };
 }
@@ -153,14 +168,14 @@ function cleanCss(css, remote) {
 
 // Content documents and style sheets the book lists, with the kind of rewrite they get.
 export function contentParts(zip, plan) {
-  const out = [];
+  const out = []; const byName = new Map(zip.entries.map((e) => [e.name, e]));
   for (const item of all(plan.opf, (x) => x.ns === OPF && x.local === 'item')) {
     const href = get(item, 'href'); const type = get(item, 'media-type') ?? '';
     if (!href || targetKind(href) !== 'local') continue;
     const name = resolveTarget(plan.opfPath, href);
-    const e = zip.entries.find((x) => x.name === name);
+    const e = byName.get(name);
     if (!e || plan.obfuscated.has(name) || plan.remove.has(name)) continue;
-    const kind = /^image\//.test(type) && !/svg/.test(type) ? 'image' : /css/.test(type) ? 'css' : /xml|html|svg/.test(type) ? 'xml' : null;
+    const kind = /^image\//.test(type) && !/svg/.test(type) ? 'image' : /css/.test(type) ? 'css' : /dtbncx/.test(type) ? 'ncx' : /xml|html|svg/.test(type) ? 'xml' : null;
     if (kind) out.push({ e, kind });
   }
   return out;
@@ -174,8 +189,9 @@ export async function parseEpub(zip, r) {
   if (plan.opfPath) r.field('Document', 'Package document', plan.opfPath);
   if (plan.drm) { r.field('Document', 'DRM', 'Yes'); r.warn('The book is DRM protected, so most of its content could not be read.'); }
   if (plan.obfuscated.size) r.field('Document', 'Obfuscated fonts', String(plan.obfuscated.size));
+  const byName = new Map(zip.entries.map((e) => [e.name, e]));
   for (const [name, kind] of plan.remove) {
-    const e = zip.entries.find((x) => x.name === name);
+    const e = byName.get(name);
     if (!e || kind === 'System leftovers') continue;
     entryBlock(r, kind, e);
     if (kind === 'Store purchase record') {
@@ -185,7 +201,7 @@ export async function parseEpub(zip, r) {
     }
   }
   if (!plan.opf) return [];
-  const opfEntry = zip.entries.find((e) => e.name === plan.opfPath);
+  const opfEntry = byName.get(plan.opfPath);
   describeOpf(r, plan.opf);
   const s = sanitizeOpf(plan.opf);
   if (s.fields.length) rewriteBlock(r, 'Properties', opfEntry, s.fields.reduce((n, [k, v]) => n + k.length + v.length + 30, 0), { note: 'Creator, publisher, dates and vendor metadata' });
@@ -198,6 +214,12 @@ export async function parseEpub(zip, r) {
     try {
       const data = await readPart(zip, e, b); if (!data) continue;
       const t = utf8.decode(data);
+      if (kind === 'ncx') {
+        const n = sanitizeNcx(parseXml(t));
+        for (const [k, v] of n.fields) { r.field('Table of contents', k, v); if (k === 'docAuthor' && v) r.add('People', 'Author', v); }
+        if (n.changed) rewriteBlock(r, 'Properties', e, n.fields.reduce((x, [k, v]) => x + k.length + v.length + 30, 0), { note: 'Author and generator in the table of contents' });
+        continue;
+      }
       if (!mayLoadRemote(t)) continue;
       const c = sanitizeContent(t, kind);
       if (c.remote.length) { rewriteBlock(r, 'Remote resource', e, c.remote.join('').length); remote.push(...c.remote); }
